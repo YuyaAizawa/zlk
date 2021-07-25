@@ -1,23 +1,37 @@
 package zlk.parser;
 
+import static zlk.parser.Token.Kind.ARROW;
+import static zlk.parser.Token.Kind.COLON;
+import static zlk.parser.Token.Kind.DIGITS;
+import static zlk.parser.Token.Kind.EOF;
+import static zlk.parser.Token.Kind.EQUAL;
+import static zlk.parser.Token.Kind.LCID;
+import static zlk.parser.Token.Kind.LPAREN;
+import static zlk.parser.Token.Kind.MODULE;
+import static zlk.parser.Token.Kind.RPAREN;
+import static zlk.parser.Token.Kind.SEMICOLON;
+import static zlk.parser.Token.Kind.UCID;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import zlk.ast.App;
-import zlk.ast.CompileUnit;
 import zlk.ast.Const;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
-import zlk.ast.I32;
 import zlk.ast.Id;
+import zlk.ast.Module;
 import zlk.common.TyArrow;
 import zlk.common.Type;
+import zlk.parser.Token.Kind;
 
 /*
  * 文法
- * <compileUnit> : module <ucid> <decl>+
+ * <compileUnit> : <module>
  *
- * <decl> : <lcid> \: <type> = <exp> ;
+ * <module> : module <ucid> <decl>+
+ *
+ * <decl> : <lcid>+ \: <type> = <exp> ;
  *
  * <exp> : <aExp>+
  *
@@ -43,68 +57,68 @@ public class Parser {
 		this.next = lexer.nextToken();
 	}
 
-	private void nextToken() {
-		current = next;
-		next = lexer.nextToken();
+	public Module parse() {
+		return parseModule(lexer.getFileName());
 	}
 
-	private void consume(Token.Kind expected) {
-		if(current.type() == expected) {
-			nextToken();
-		} else {
-			throw new RuntimeException(
-					"cannot consume. expected: "+expected+" actual: "+current.type());
-		}
-	}
+	public Module parseModule(String fileName) {
+		consume(MODULE);
 
-	public CompileUnit parse() {
-		consume(Token.Kind.MODULE);
-
-		String name = current.value();
-		consume(Token.Kind.UCID);
+		String name = parse(UCID);
 
 		List<Decl> decls = new ArrayList<>();
-		while(next.type() != Token.Kind.EOF) {
+		while(next.kind() != EOF) {
 			decls.add(parseDecl());
 		}
 
-		return new CompileUnit(name, decls);
+		return new Module(name, decls, fileName);
 	}
 
 	public Decl parseDecl() {
-		String name = current.value();
-		consume(Token.Kind.LCID);
+		String name = parse(LCID);
 
-		consume(Token.Kind.COLON);
+		List<String> args = new ArrayList<>();
+		while(current.kind() == LCID) {
+			args.add(parse(LCID));
+		}
+
+		consume(COLON);
 
 		Type type = parseType();
 
-		consume(Token.Kind.EQUAL);
+		consume(EQUAL);
 
 		Exp body = parseExp();
 
-		consume(Token.Kind.SEMICOLON);
+		consume(SEMICOLON);
 
-		return new Decl(name, type, body);
+		return new Decl(name, args, type, body);
 	}
 
 	public Exp parseExp() {
 
 		if(aExpStartToken(current)) {
-			Exp left = parseATerm();
-			while(aExpStartToken(current)) {
-				left = new App(left, parseATerm());
+			Exp first = parseAExp();
+
+			if(aExpStartToken(current)) {
+				List<Exp> exps = new ArrayList<>();
+				exps.add(first);
+				while(aExpStartToken(current)) {
+					exps.add(parseAExp());
+				}
+				return new App(exps);
+			} else {
+				return first;
 			}
-			return left;
 		}
 
-		throw new RuntimeException();
+		throw new RuntimeException("not exp");
 	}
 
-	private Exp parseATerm() {
-		return switch(current.type()) {
+	private Exp parseAExp() {
+		return switch(current.kind()) {
 
-		case LPAREN -> parseParenTerm();
+		case LPAREN -> parseParenExp();
 
 		case TRUE -> {
 			nextToken();
@@ -116,24 +130,16 @@ public class Parser {
 			yield Const.bool(false);
 		}
 
-		case DIGITS -> {
-			I32 i32 = Const.i32(Integer.valueOf(current.value()));
-			nextToken();
-			yield i32;
-		}
+		case DIGITS -> Const.i32(Integer.valueOf(parse(DIGITS)));
 
-		case LCID -> {
-			Id id = new Id(current.value());
-			nextToken();
-			yield id;
-		}
+		case LCID -> new Id(parse(LCID));
 
 		default -> throw new RuntimeException("not a exp");
 		};
 	}
 
 	private static boolean aExpStartToken(Token token) {
-		switch (token.type()) {
+		switch (token.kind()) {
 		case LCID:
 		case DIGITS:
 		case TRUE:
@@ -145,17 +151,20 @@ public class Parser {
 		}
 	}
 
-	private Exp parseParenTerm() {
-		consume(Token.Kind.LPAREN);
-		Exp term = parseExp();
-		consume(Token.Kind.RPAREN);
-		return term;
+	private Exp parseParenExp() {
+		consume(LPAREN);
+
+		Exp exp = parseExp();
+
+		consume(RPAREN);
+
+		return exp;
 	}
 
 	private Type parseType() {
 		Type ty = parseAType();
 
-		if(current.type() == Token.Kind.ARROW) {
+		if(current.kind() == ARROW) {
 			nextToken();
 			return new TyArrow(ty, parseType());
 		} else {
@@ -164,12 +173,12 @@ public class Parser {
 	}
 
 	private Type parseAType() {
-		return switch(current.type()) {
+		return switch(current.kind()) {
 		case LPAREN -> parseParenType();
 		case UCID -> {
 			Type type = switch(current.value()) {
-			case "Bool" -> Type.BOOL;
-			case "I32"  -> Type.I32;
+			case "Bool" -> Type.bool;
+			case "I32"  -> Type.i32;
 			default -> throw new RuntimeException(
 					"cannot accept as type: \""+current.value()+"\"");
 			};
@@ -181,9 +190,37 @@ public class Parser {
 	}
 
 	private Type parseParenType() {
-		consume(Token.Kind.LPAREN);
+		consume(LPAREN);
+
 		Type type = parseAType();
-		consume(Token.Kind.RPAREN);
+
+		consume(RPAREN);
+
 		return type;
+	}
+
+	private void nextToken() {
+		current = next;
+		next = lexer.nextToken();
+	}
+
+	private String parse(Kind expected) {
+		if(current.kind() == expected) {
+			String ret = current.value();
+			nextToken();
+			return ret;
+		} else {
+			throw new RuntimeException(
+					"cannot consume. expected: "+expected+" actual: "+current.kind());
+		}
+	}
+
+	private void consume(Kind expected) {
+		if(current.kind() == expected) {
+			nextToken();
+		} else {
+			throw new RuntimeException(
+					"cannot consume. expected: "+expected+" actual: "+current.kind());
+		}
 	}
 }

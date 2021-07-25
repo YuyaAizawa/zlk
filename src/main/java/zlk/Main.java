@@ -8,8 +8,10 @@ import java.nio.file.Paths;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-import zlk.ast.CompileUnit;
+import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
+import zlk.idcalc.IcModule;
+import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
 
@@ -20,15 +22,24 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				ten : I32 =
-						10;
+				add3 i j k : I32 -> I32 -> I32 -> I32 =
+					add (add i j) k;
 
 				ans : I32 =
-						add ten (add (add ten ten) 12);
+					add3 13 14 15;
 				""";
 
-		CompileUnit ast = new Parser(new Lexer(src)).parse();
-		byte[] bin = new BytecodeGenerator().compile(ast);
+		Module ast = new Parser(new Lexer(name, src)).parse();
+
+		System.out.println();
+		System.out.println(ast.mkString());
+
+		IcModule idcalc = new NameEvaluator().eval(ast);
+
+		System.out.println();
+		System.out.println(idcalc.mkString());
+
+		byte[] bin = new BytecodeGenerator().compile(idcalc);
 
 		new ClassReader(bin).accept(
 				new TraceClassVisitor(

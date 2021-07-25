@@ -1,54 +1,41 @@
 package zlk.bytecodegen;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.ast.CompileUnit;
-import zlk.ast.Decl;
-import zlk.ast.Exp;
+import zlk.common.TyArrow;
 import zlk.common.Type;
+import zlk.idcalc.IcDecl;
+import zlk.idcalc.IcExp;
+import zlk.idcalc.IcModule;
 
 public final class BytecodeGenerator {
 
 	private static final int FLAG = ClassWriter.COMPUTE_MAXS;
 
-	private static final Map<String, Consumer<MethodVisitor>> builtins = Map.of(
-			"add", mv -> mv.visitInsn(Opcodes.IADD),
-			"sub", mv -> mv.visitInsn(Opcodes.ISUB),
-			"mul", mv -> mv.visitInsn(Opcodes.IMUL),
-			"div", mv -> mv.visitInsn(Opcodes.IDIV));
-
 	private ClassWriter cw;
 	private MethodVisitor mv;
-	private Map<String, MethodInfo> methodInfo;
 
-	public byte[] compile(CompileUnit compileUnit) {
-
-		List<Decl> decls = compileUnit.decls();
-
-		registerSignatures(compileUnit);
-
+	public byte[] compile(IcModule module) {
 		cw = new ClassWriter(FLAG);
 
 		cw.visit(
 				Opcodes.V16,
-				Opcodes.ACC_PUBLIC + Opcodes.ACC_SUPER,
-				compileUnit.name(),
+				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
+				module.name(),
 				null,
 				"java/lang/Object",
 				null);
 
-		cw.visitSource(compileUnit.name() + ".zlk", null);
+		cw.visitSource(module.origin() + ".zlk", null);
 
 		genConstructor();
 
-		decls.forEach(decl -> genCode(decl));
+		module.decls().forEach(decl -> genCode(decl));
 
 		genMain();
 
@@ -103,64 +90,45 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private void registerSignatures(CompileUnit cu) {
-		methodInfo = new HashMap<>();
-		cu.decls().forEach(
-				decl -> methodInfo.put(decl.name(), new MethodInfo(
-						cu.name(),
-						decl.name(),
-						toDescription(decl.type()))));
-	}
+	private void genCode(IcDecl decl) {
 
-	private void genCode(Decl decl) {
-
-		MethodInfo info = methodInfo.get(decl.name());
+		MethodStyle methodType = MethodStyle.of(decl.type());
 
 		mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-				info.name(),
-				info.desc(),
+				decl.fun().name(),
+				methodType.toDescription(),
 				null,
 				null);
 		mv.visitCode();
 
 		genCode(decl.body());
 
-		Type ret = decl.type().map(
-				unit -> unit,
-				bool -> bool,
-				i32  -> i32,
-				fun  -> fun.ret());
-
-		genReturn(ret);
+		genReturn(methodType.ret());
 
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
 	}
 
-	private void genCode(Exp exp) {
+	private void genCode(IcExp exp) {
 		exp.match(
-			cnst -> {
-				mv.visitLdcInsn(cnst.map(
+			cnst ->
+				mv.visitLdcInsn(cnst.cnst().map(
 						bool -> bool.value() ? 1 : 0,
-						i32  -> i32.value()));
-			},
-			id -> {
-				Consumer<MethodVisitor> builtin = builtins.get(id.name());
-				if(builtin != null) {
-					builtin.accept(mv);
-				} else {
-					MethodInfo info = methodInfo.get(id.name());
-					mv.visitMethodInsn(
-							Opcodes.INVOKESTATIC,
-							info.owner(),
-							info.name(),
-							info.desc(),
-							false);
-				}
-			},
+						i32  -> i32.value())),
+			id ->
+				id.idInfo().match(
+					fun ->
+						mv.visitMethodInsn(
+								Opcodes.INVOKESTATIC,
+								fun.module(),
+								fun.name(),
+								MethodStyle.of(fun.type()).toDescription(),
+								false),
+					arg -> mv.visitIntInsn(Opcodes.ILOAD, arg.idx()),
+					builtin ->builtin.action().accept(mv)),
 			app  -> {
-				genCode(app.arg());
+				app.args().forEach(arg -> genCode(arg));
 				genCode(app.fun());
 			});
 	}
@@ -172,26 +140,46 @@ public final class BytecodeGenerator {
 				i32  -> mv.visitInsn(Opcodes.IRETURN),
 				fun  -> {throw new IllegalArgumentException(type.mkString());});
 	}
+}
 
-	private static String toDescription(Type type) {
-		Type arg = type.map(
-				unit -> Type.unit,
-				bool -> Type.unit,
-				i32  -> Type.unit,
-				fun  -> fun.arg());
+record MethodStyle(
+		List<Type> args,
+		Type ret)
+{
+	public static MethodStyle of(Type zlkStyle) {
+		List<Type> args = new ArrayList<>();
 
-		Type ret = type.map(
-				unit -> unit,
-				bool -> bool,
-				i32  -> i32,
-				fun  -> fun.ret());
+		TyArrow arrow = asArrow(zlkStyle);
+		Type ret = zlkStyle;
+		while(arrow != null) {
+			args.add(arrow.arg());
+			ret = arrow.ret();
+			arrow = asArrow(ret);
+		}
 
-		return "("+toBinary(arg)+")"+toBinary(ret);
+		return new MethodStyle(args, ret);
+	}
+
+	private static TyArrow asArrow(Type type) {
+		return type.map(
+				unit  -> null,
+				bool  -> null,
+				i32   -> null,
+				arrow -> arrow);
+	}
+
+	public String toDescription() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("(");
+		args.forEach(arg -> sb.append(toBinary(arg)));
+		sb.append(")");
+		sb.append(toBinary(ret));
+		return sb.toString();
 	}
 
 	private static String toBinary(Type type) {
 		return type.map(
-				unit -> "",
+				unit -> "V",
 				bool -> "Z",
 				i32  -> "I",
 				fun -> {throw new IllegalArgumentException(type.mkString());});

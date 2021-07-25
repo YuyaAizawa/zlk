@@ -1,24 +1,24 @@
-package zlk.ast;
+package zlk.idcalc;
 
 import java.util.List;
 
 import zlk.common.Type;
 
-public record Decl(
-		String name,
-		List<String> args,
+public record IcDecl(
+		IcVar fun,
+		List<IcVar> args,
 		Type type,
-		Exp body) {
+		IcExp body) {
 
 	public void mkString(StringBuilder sb) {
-		sb.append(name);
+		fun.mkString(sb);
 		args.forEach(arg -> {
-			sb.append(" ").append(arg);
+			sb.append(" ");
+			arg.mkString(sb);
 		});
 		sb.append(" : ");
 		type.mkString(sb);
 		sb.append(" = ");
 		body.mkString(sb);
-		sb.append(";");
 	}
 }
