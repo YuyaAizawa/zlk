@@ -13,6 +13,7 @@ import java.io.UncheckedIOException;
  *
  */
 public class Lexer {
+	private final String fileName;
 	private final Reader reader;
 	int current;
 	int buffer;
@@ -20,10 +21,15 @@ public class Lexer {
 
 	int[] wordArray = new int[256];
 
-	public Lexer(String src) {
+	public Lexer(String fileName, String src) {
+		this.fileName = fileName;
 		this.reader = new StringReader(src);
 		next();
 		next();
+	}
+
+	public String getFileName() {
+		return fileName;
 	}
 
 	public Token nextToken() {

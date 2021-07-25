@@ -7,9 +7,12 @@ import java.util.function.Function;
 public sealed interface Type
 permits TyUnit, TyBool, TyI32, TyArrow {
 
-	static final TyUnit unit = new TyUnit();
-	static final TyBool BOOL = new TyBool();
-	static final TyI32 I32 = new TyI32();
+	public static final TyUnit unit = new TyUnit();
+	public static final TyBool bool = new TyBool();
+	public static final TyI32 i32 = new TyI32();
+	public static Type arrow(Type fun, Type arg) {
+		return new TyArrow(fun, arg);
+	}
 
 	<R> R map(
 			Function<TyUnit, R> forUnit,
