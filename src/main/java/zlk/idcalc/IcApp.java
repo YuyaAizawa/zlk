@@ -12,7 +12,8 @@ public record IcApp(
 	public <R> R map(
 			Function<IcConst, R> forConst,
 			Function<IcVar, R> forVar,
-			Function<IcApp, R> forApp) {
+			Function<IcApp, R> forApp,
+			Function<IcIf, R> forIf) {
 		return forApp.apply(this);
 	}
 
@@ -20,7 +21,8 @@ public record IcApp(
 	public void match(
 			Consumer<IcConst> forConst,
 			Consumer<IcVar> forVar,
-			Consumer<IcApp> forApp) {
+			Consumer<IcApp> forApp,
+			Consumer<IcIf> forIf) {
 		forApp.accept(this);
 	}
 

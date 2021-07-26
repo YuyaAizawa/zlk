@@ -2,17 +2,15 @@ package zlk.idcalc;
 
 import java.util.List;
 
+import zlk.util.MkString;
+
 public record IcModule(
 		String name,
 		List<IcDecl> decls,
 		String origin)
-{
-	public String mkString() {
-		StringBuilder sb = new StringBuilder();
-		mkString(sb);
-		return sb.toString();
-	}
+implements MkString{
 
+	@Override
 	public void mkString(StringBuilder sb) {
 		sb.append("module ").append(name()).append("\n");
 		decls.forEach(decl -> {

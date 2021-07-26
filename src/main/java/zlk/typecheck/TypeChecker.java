@@ -43,6 +43,12 @@ public final class TypeChecker {
 						restType = arrow.ret();
 					}
 					return restType;
+				},
+				ifExp -> {
+					assertEqual(check(ifExp.cond()), Type.bool);
+					Type exp1Type = check(ifExp.exp1());
+					assertEqual(check(ifExp.exp2()), exp1Type);
+					return exp1Type;
 				});
 	}
 

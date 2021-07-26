@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -126,10 +127,26 @@ public final class BytecodeGenerator {
 								MethodStyle.of(fun.type()).toDescription(),
 								false),
 					arg -> mv.visitIntInsn(Opcodes.ILOAD, arg.idx()),
-					builtin ->builtin.action().accept(mv)),
+					builtin -> builtin.action().accept(mv)),
 			app  -> {
 				app.args().forEach(arg -> genCode(arg));
 				genCode(app.fun());
+			},
+			ifExp -> {
+				Label l1 = new Label();
+				Label l2 = new Label();
+				genCode(ifExp.cond());
+				mv.visitJumpInsn(
+						Opcodes.IFEQ, // = 0; false
+						l1);
+				genCode(ifExp.exp1());
+				mv.visitJumpInsn(Opcodes.GOTO, l2);
+				mv.visitLabel(l1);
+				mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+				genCode(ifExp.exp2());
+				mv.visitLabel(l2);
+				Object[] stack = toStackmapType(ifExp); // TODO move this to type elaboration phase
+				mv.visitFrame(Opcodes.F_SAME1, 0, null, stack.length, stack);
 			});
 	}
 
@@ -139,6 +156,26 @@ public final class BytecodeGenerator {
 				bool -> mv.visitInsn(Opcodes.IRETURN),
 				i32  -> mv.visitInsn(Opcodes.IRETURN),
 				fun  -> {throw new IllegalArgumentException(type.mkString());});
+	}
+
+	private static Object[] toStackmapType(IcExp exp) {
+		return toStackmapType(typeOf(exp));
+	}
+
+	private static Object[] toStackmapType(Type type) {
+		return type.map(
+				unit  -> new Object[] {},
+				bool  -> new Object[] { Opcodes.INTEGER },
+				i32   -> new Object[] { Opcodes.INTEGER },
+				arrow -> { throw new IllegalArgumentException(type.mkString()); });
+	}
+
+	private static Type typeOf(IcExp exp) {
+		return exp.map(
+				cnst -> cnst.type(),
+				var  -> var.idInfo().type(),
+				app -> typeOf(app.fun()).asArrow().ret(),
+				ifExp -> typeOf(ifExp.exp1()));
 	}
 }
 

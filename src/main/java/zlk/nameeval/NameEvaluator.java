@@ -12,6 +12,7 @@ import zlk.idcalc.IcApp;
 import zlk.idcalc.IcConst;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
+import zlk.idcalc.IcIf;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
 import zlk.idcalc.IdArg;
@@ -65,9 +66,9 @@ public final class NameEvaluator {
 
 	public IcExp eval(Exp exp, Env env) {
 		return exp.map(
-				cnst -> new IcConst(cnst),
-				id   -> new IcVar(id.name(), env.get(id.name())),
-				app  -> {
+				cnst  -> new IcConst(cnst),
+				id    -> new IcVar(id.name(), env.get(id.name())),
+				app   -> {
 					List<Exp> exps = app.exps();
 					IcExp icFun = eval(exps.get(0), env);
 					List<IcExp> icArgs = new ArrayList<>();
@@ -75,7 +76,11 @@ public final class NameEvaluator {
 						icArgs.add(eval(exps.get(i), env));
 					}
 					return new IcApp(icFun, icArgs);
-				});
+				},
+				ifExp -> new IcIf(
+						eval(ifExp.cond(), env),
+						eval(ifExp.exp1(), env),
+						eval(ifExp.exp2(), env)));
 	}
 
 	private Type getArgType(Type funType, int index) {

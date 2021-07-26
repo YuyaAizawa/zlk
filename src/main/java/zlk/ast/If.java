@@ -3,8 +3,10 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public record Id(
-		String name)
+public record If(
+		Exp cond,
+		Exp exp1,
+		Exp exp2)
 implements Exp {
 
 	@Override
@@ -13,7 +15,7 @@ implements Exp {
 			Function<Id, R> forId,
 			Function<App, R> forApp,
 			Function<If, R> forIf) {
-		return forId.apply(this);
+		return forIf.apply(this);
 	}
 
 	@Override
@@ -22,11 +24,16 @@ implements Exp {
 			Consumer<Id> forId,
 			Consumer<App> forApp,
 			Consumer<If> forIf) {
-		forId.accept(this);
+		forIf.accept(this);
 	}
 
 	@Override
 	public void mkString(StringBuilder sb) {
-		sb.append(name);
+		sb.append("if ");
+		cond.mkString(sb);
+		sb.append(" then ");
+		exp1.mkString(sb);
+		sb.append(" else ");
+		exp2.mkString(sb);
 	}
 }
