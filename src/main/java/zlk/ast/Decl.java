@@ -3,13 +3,16 @@ package zlk.ast;
 import java.util.List;
 
 import zlk.common.Type;
+import zlk.util.MkString;
 
 public record Decl(
 		String name,
 		List<String> args,
 		Type type,
-		Exp body) {
+		Exp body)
+implements MkString {
 
+	@Override
 	public void mkString(StringBuilder sb) {
 		sb.append(name);
 		args.forEach(arg -> {

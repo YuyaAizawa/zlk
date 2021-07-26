@@ -23,11 +23,11 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				add3 i j k : I32 -> I32 -> I32 -> I32 =
-					add (add i j) k;
+				fact n : I32 -> I32 =
+					if isZero n then 1 else mul n (fact (sub n 1));
 
 				ans : I32 =
-					add3 13 14 15;
+					fact 10;
 				""";
 
 		Module ast = new Parser(new Lexer(name, src)).parse();

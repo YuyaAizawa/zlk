@@ -3,9 +3,10 @@ package zlk.idcalc;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public record IcVar(
-		String name,
-		IdInfo idInfo)
+public record IcIf(
+		IcExp cond,
+		IcExp exp1,
+		IcExp exp2)
 implements IcExp {
 
 	@Override
@@ -14,7 +15,7 @@ implements IcExp {
 			Function<IcVar, R> forVar,
 			Function<IcApp, R> forApp,
 			Function<IcIf, R> forIf) {
-		return forVar.apply(this);
+		return forIf.apply(this);
 	}
 
 	@Override
@@ -23,11 +24,16 @@ implements IcExp {
 			Consumer<IcVar> forVar,
 			Consumer<IcApp> forApp,
 			Consumer<IcIf> forIf) {
-		forVar.accept(this);
+		forIf.accept(this);
 	}
 
 	@Override
 	public void mkString(StringBuilder sb) {
-		sb.append(idInfo.name()).append(String.format("<%04d>", idInfo.id()));
+		sb.append("if ");
+		cond.mkString(sb);
+		sb.append(" then ");
+		exp1.mkString(sb);
+		sb.append(" else ");
+		exp2.mkString(sb);
 	}
 }
