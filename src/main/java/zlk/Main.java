@@ -14,6 +14,7 @@ import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
+import zlk.typecheck.TypeChecker;
 
 public class Main {
 	public static void main( String[] args ) throws IOException {
@@ -31,16 +32,21 @@ public class Main {
 
 		Module ast = new Parser(new Lexer(name, src)).parse();
 
-		System.out.println();
+		System.out.println("-- AST --");
 		System.out.println(ast.mkString());
 
 		IcModule idcalc = new NameEvaluator().eval(ast);
 
-		System.out.println();
+		System.out.println("-- ID CALC --");
 		System.out.println(idcalc.mkString());
 
-		byte[] bin = new BytecodeGenerator().compile(idcalc);
+		System.out.println("-- TYPE CHECK --");
+		idcalc.decls().forEach(
+				decl -> System.out.println(decl.fun().name() + " : " + TypeChecker.check(decl).mkString()));
+		System.out.println();
 
+		System.out.println("-- BYTECODE --");
+		byte[] bin = new BytecodeGenerator().compile(idcalc);
 		new ClassReader(bin).accept(
 				new TraceClassVisitor(
 						new PrintWriter(System.out)), 0);

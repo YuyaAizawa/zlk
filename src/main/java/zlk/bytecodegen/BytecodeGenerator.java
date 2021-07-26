@@ -149,23 +149,15 @@ record MethodStyle(
 	public static MethodStyle of(Type zlkStyle) {
 		List<Type> args = new ArrayList<>();
 
-		TyArrow arrow = asArrow(zlkStyle);
+		TyArrow arrow = zlkStyle.asArrow();
 		Type ret = zlkStyle;
 		while(arrow != null) {
 			args.add(arrow.arg());
 			ret = arrow.ret();
-			arrow = asArrow(ret);
+			arrow = ret.asArrow();
 		}
 
 		return new MethodStyle(args, ret);
-	}
-
-	private static TyArrow asArrow(Type type) {
-		return type.map(
-				unit  -> null,
-				bool  -> null,
-				i32   -> null,
-				arrow -> arrow);
 	}
 
 	public String toDescription() {
