@@ -26,6 +26,14 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 			Consumer<TyI32> forI32,
 			Consumer<TyArrow> forArrow);
 
+	public default TyArrow asArrow() {
+		return map(
+				unit  -> null,
+				bool  -> null,
+				i32   -> null,
+				arrow -> arrow);
+	}
+
 	void mkString(StringBuilder sb);
 
 	default String mkString() {

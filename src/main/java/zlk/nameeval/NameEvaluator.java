@@ -22,7 +22,8 @@ public final class NameEvaluator {
 	Env env = new Env();
 
 	public NameEvaluator() {
-		registerBuiltins(env);
+		Builtin.builtins().forEach(
+				fun -> env.registerBuiltinVar(fun.name(), fun.type(), fun.action()));
 	}
 
 	public IcModule eval(Module module) {
@@ -75,11 +76,6 @@ public final class NameEvaluator {
 					}
 					return new IcApp(icFun, icArgs);
 				});
-	}
-
-	private void registerBuiltins(Env env) {
-		Builtin.builtins().forEach(
-				fun -> env.registerBuiltinVar(fun.name(), fun.type(), fun.action()));
 	}
 
 	private Type getArgType(Type funType, int index) {
