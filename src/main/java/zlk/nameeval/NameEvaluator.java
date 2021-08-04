@@ -65,7 +65,7 @@ public final class NameEvaluator {
 	}
 
 	public IcExp eval(Exp exp, Env env) {
-		return exp.map(
+		return exp.fold(
 				cnst  -> new IcConst(cnst),
 				id    -> new IcVar(id.name(), env.get(id.name())),
 				app   -> {

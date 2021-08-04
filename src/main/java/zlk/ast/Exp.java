@@ -14,15 +14,39 @@ import zlk.util.MkString;
 public sealed interface Exp extends MkString
 permits Const, Id, App, If {
 
-	<R> R map(
+	default <R> R fold(
 			Function<Const, R> forConst,
 			Function<Id, R> forId,
 			Function<App, R> forApp,
-			Function<If, R> forIf);
+			Function<If, R> forIf) {
+		if(this instanceof Const cnst) {
+			return forConst.apply(cnst);
+		} else if(this instanceof Id id) {
+			return forId.apply(id);
+		} else if(this instanceof App app) {
+			return forApp.apply(app);
+		} else if(this instanceof If ifExp) {
+			return forIf.apply(ifExp);
+		} else {
+			throw new Error(this.getClass().toString());
+		}
+	}
 
-	void match(
+	default void match(
 			Consumer<Const> forConst,
 			Consumer<Id> forId,
 			Consumer<App> forApp,
-			Consumer<If> forIf);
+			Consumer<If> forIf) {
+		if(this instanceof Const cnst) {
+			forConst.accept(cnst);
+		} else if(this instanceof Id id) {
+			forId.accept(id);
+		} else if(this instanceof App app) {
+			forApp.accept(app);
+		} else if(this instanceof If ifExp) {
+			forIf.accept(ifExp);
+		} else {
+			throw new Error(this.getClass().toString());
+		}
+	}
 }

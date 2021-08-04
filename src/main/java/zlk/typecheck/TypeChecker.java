@@ -24,7 +24,7 @@ public final class TypeChecker {
 	}
 
 	private static Type check(IcExp exp) {
-		return exp.map(
+		return exp.fold(
 				cnst -> cnst.type(),
 				var  -> var.idInfo().type(),
 				app  -> {

@@ -114,7 +114,7 @@ public final class BytecodeGenerator {
 	private void genCode(IcExp exp) {
 		exp.match(
 			cnst ->
-				mv.visitLdcInsn(cnst.cnst().map(
+				mv.visitLdcInsn(cnst.cnst().fold(
 						bool -> bool.value() ? 1 : 0,
 						i32  -> i32.value())),
 			id ->
@@ -171,7 +171,7 @@ public final class BytecodeGenerator {
 	}
 
 	private static Type typeOf(IcExp exp) {
-		return exp.map(
+		return exp.fold(
 				cnst -> cnst.type(),
 				var  -> var.idInfo().type(),
 				app -> typeOf(app.fun()).asArrow().ret(),
