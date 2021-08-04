@@ -15,30 +15,28 @@ permits Bool, I32 {
 		return new I32(value);
 	}
 
-	<R> R map(
+	default <R> R fold(
 			Function<Bool, R> forBool,
-			Function<I32, R> forI32);
-
-	void match(
-			Consumer<Bool> forBool,
-			Consumer<I32> forI32);
-
-	@Override
-	default <R> R map(
-			Function<Const, R> forConst,
-			Function<Id, R> forId,
-			Function<App, R> forApp,
-			Function<If, R> forIf) {
-		return forConst.apply(this);
+			Function<I32, R> forI32) {
+		if(this instanceof Bool bool) {
+			return forBool.apply(bool);
+		} else if(this instanceof I32 i32) {
+			return forI32.apply(i32);
+		} else {
+			throw new Error(this.getClass().toString());
+		}
 	}
 
-	@Override
 	default void match(
-			Consumer<Const> forConst,
-			Consumer<Id> forId,
-			Consumer<App> forApp,
-			Consumer<If> forIf) {
-		forConst.accept(this);
+			Consumer<Bool> forBool,
+			Consumer<I32> forI32) {
+		if(this instanceof Bool bool) {
+			forBool.accept(bool);
+		} else if(this instanceof I32 i32) {
+			forI32.accept(i32);
+		} else {
+			throw new Error(this.getClass().toString());
+		}
 	}
 
 	@Override
@@ -48,3 +46,4 @@ permits Bool, I32 {
 				i32  -> sb.append(i32.value()));
 	}
 }
+
