@@ -28,6 +28,6 @@ implements IcExp {
 
 	@Override
 	public void mkString(StringBuilder sb) {
-		sb.append(idInfo.name()).append(String.format("<%04d>", idInfo.id()));
+		sb.append(name()).append(String.format("<%04d>", idInfo.id()));
 	}
 }

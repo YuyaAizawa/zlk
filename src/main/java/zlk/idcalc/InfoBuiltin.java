@@ -7,26 +7,25 @@ import org.objectweb.asm.MethodVisitor;
 
 import zlk.common.Type;
 
-public record IdBuiltin(
-		int id,
+public record InfoBuiltin(
 		String name,
 		Type type,
 		Consumer<MethodVisitor> action)
-implements IdInfo {
+implements Info {
 
 	@Override
 	public <R> R map(
-			Function<IdFun, R> forFun,
-			Function<IdArg, R> forArg,
-			Function<IdBuiltin, R> forBuiltin) {
+			Function<InfoFun, R> forFun,
+			Function<InfoArg, R> forArg,
+			Function<InfoBuiltin, R> forBuiltin) {
 		return forBuiltin.apply(this);
 	}
 
 	@Override
 	public void match(
-			Consumer<IdFun> forFun,
-			Consumer<IdArg> forArg,
-			Consumer<IdBuiltin> forBuiltin) {
+			Consumer<InfoFun> forFun,
+			Consumer<InfoArg> forArg,
+			Consumer<InfoBuiltin> forBuiltin) {
 		forBuiltin.accept(this);
 	}
 }
