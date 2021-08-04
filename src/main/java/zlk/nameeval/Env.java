@@ -10,10 +10,10 @@ import java.util.function.Consumer;
 import org.objectweb.asm.MethodVisitor;
 
 import zlk.common.Type;
-import zlk.idcalc.IdArg;
-import zlk.idcalc.IdBuiltin;
-import zlk.idcalc.IdFun;
 import zlk.idcalc.IdInfo;
+import zlk.idcalc.InfoArg;
+import zlk.idcalc.InfoBuiltin;
+import zlk.idcalc.InfoFun;
 
 public final class Env {
 	int fresh = 0;
@@ -58,20 +58,20 @@ public final class Env {
 		envStack.peek().put(name, info);
 	}
 
-	public IdFun registerFun(String module, String name, Type ty) {
-		IdFun idFun = new IdFun(fresh++, module, name, ty);
+	public IdInfo registerFun(String module, String name, Type ty) {
+		IdInfo idFun = new IdInfo(fresh++, new InfoFun(module, name, ty));
 		put(name, idFun);
 		return idFun;
 	}
 
-	public IdArg registerArg(String name, Type ty, IdFun fun, int idx) {
-		IdArg idArg = new IdArg(fresh++, name, ty, fun, idx);
+	public IdInfo registerArg(String name, Type ty, InfoFun fun, int idx) {
+		IdInfo idArg = new IdInfo(fresh++, new InfoArg(name, ty, fun, idx));
 		put(name, idArg);
 		return idArg;
 	}
 
-	public IdBuiltin registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
-		IdBuiltin idBuiltin = new IdBuiltin(fresh++, name, ty, action);
+	public IdInfo registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
+		IdInfo idBuiltin = new IdInfo(fresh++, new InfoBuiltin(name, ty, action));
 		put(name, idBuiltin);
 		return idBuiltin;
 	}

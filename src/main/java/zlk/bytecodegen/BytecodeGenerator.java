@@ -118,7 +118,7 @@ public final class BytecodeGenerator {
 						bool -> bool.value() ? 1 : 0,
 						i32  -> i32.value())),
 			id ->
-				id.idInfo().match(
+				id.idInfo().info().match(
 					fun ->
 						mv.visitMethodInsn(
 								Opcodes.INVOKESTATIC,

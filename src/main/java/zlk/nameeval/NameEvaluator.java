@@ -15,8 +15,8 @@ import zlk.idcalc.IcExp;
 import zlk.idcalc.IcIf;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
-import zlk.idcalc.IdArg;
-import zlk.idcalc.IdFun;
+import zlk.idcalc.IdInfo;
+import zlk.idcalc.InfoFun;
 
 public final class NameEvaluator {
 
@@ -47,14 +47,14 @@ public final class NameEvaluator {
 	public IcDecl eval(Decl decl, Env env) {
 		env.push();
 
-		IdFun funInfo = (IdFun) env.get(decl.name());
-		IcVar icFun = new IcVar(decl.name(), funInfo);
+		IdInfo funId = env.get(decl.name());
+		IcVar icFun = new IcVar(decl.name(), funId);
 
 		List<IcVar> icArgs = new ArrayList<>();
 		List<String> args = decl.args();
 		for(int i = 0; i < args.size(); i++) {
 			String arg = args.get(i);
-			IdArg argInfo = env.registerArg(arg, getArgType(decl.type(), i), funInfo, i);
+			IdInfo argInfo = env.registerArg(arg, getArgType(decl.type(), i), (InfoFun) funId.info(), i);
 			icArgs.add(new IcVar(arg, argInfo));
 		}
 

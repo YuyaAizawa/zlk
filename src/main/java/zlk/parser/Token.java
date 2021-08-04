@@ -4,8 +4,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import zlk.parser.Token.Kind;
-
 public record Token(Kind kind, String value) {
 
 	public enum Kind {

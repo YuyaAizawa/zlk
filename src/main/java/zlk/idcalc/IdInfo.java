@@ -1,8 +1,5 @@
 package zlk.idcalc;
 
-import java.util.function.Consumer;
-import java.util.function.Function;
-
 import zlk.common.Type;
 
 /**
@@ -10,21 +7,38 @@ import zlk.common.Type;
  * @author YuyaAizawa
  *
  */
-@SuppressWarnings("preview")
-public sealed interface IdInfo
-permits IdFun, IdArg, IdBuiltin {
+public final class IdInfo {
+	private final int id;
+	private final Info info;
 
-	int id();
-	String name();
-	Type type();
+	public IdInfo(int id, Info info) {
+		this.id = id;
+		this.info = info;
+	}
 
-	<R> R map(
-			Function<IdFun, R> forFun,
-			Function<IdArg, R> forArg,
-			Function<IdBuiltin, R> forBuiltin);
+	public int id() {
+		return id;
+	}
 
-	void match(
-			Consumer<IdFun> forFun,
-			Consumer<IdArg> forArg,
-			Consumer<IdBuiltin> forBuiltin);
+	public Info info() {
+		return info;
+	}
+
+	public Type type() {
+		return info.type();
+	}
+
+	@Override
+	public int hashCode() {
+		return id;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj != null && obj instanceof IdInfo target) {
+			return this.id == target.id;
+		} else {
+			return false;
+		}
+	}
 }

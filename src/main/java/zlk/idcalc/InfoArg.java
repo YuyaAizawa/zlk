@@ -5,27 +5,26 @@ import java.util.function.Function;
 
 import zlk.common.Type;
 
-public record IdArg(
-		int id,
+public record InfoArg(
 		String name,
 		Type type,
-		IdFun fun,
+		InfoFun fun,
 		int idx)
-implements IdInfo {
+implements Info {
 
 	@Override
 	public <R> R map(
-			Function<IdFun, R> forFun,
-			Function<IdArg, R> forArg,
-			Function<IdBuiltin, R> forBuiltin) {
+			Function<InfoFun, R> forFun,
+			Function<InfoArg, R> forArg,
+			Function<InfoBuiltin, R> forBuiltin) {
 		return forArg.apply(this);
 	}
 
 	@Override
 	public void match(
-			Consumer<IdFun> forFun,
-			Consumer<IdArg> forArg,
-			Consumer<IdBuiltin> forBuiltin) {
+			Consumer<InfoFun> forFun,
+			Consumer<InfoArg> forArg,
+			Consumer<InfoBuiltin> forBuiltin) {
 		forArg.accept(this);
 	}
 }
