@@ -5,8 +5,8 @@ import java.util.List;
 import zlk.common.Type;
 
 public record IcDecl(
-		IcVar fun,
-		List<IcVar> args,
+		IdInfo fun,
+		List<IdInfo> args,
 		Type type,
 		IcExp body) {
 

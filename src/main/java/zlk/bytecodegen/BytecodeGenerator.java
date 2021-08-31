@@ -13,6 +13,7 @@ import zlk.common.Type;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IdInfo;
 
 public final class BytecodeGenerator {
 
@@ -117,17 +118,19 @@ public final class BytecodeGenerator {
 				mv.visitLdcInsn(cnst.cnst().fold(
 						bool -> bool.value() ? 1 : 0,
 						i32  -> i32.value())),
-			id ->
-				id.idInfo().info().match(
+			id -> {
+				IdInfo idInfo = id.idInfo();
+				idInfo.info().match(
 					fun ->
 						mv.visitMethodInsn(
 								Opcodes.INVOKESTATIC,
 								fun.module(),
-								fun.name(),
+								idInfo.name(),
 								MethodStyle.of(fun.type()).toDescription(),
 								false),
-					arg -> mv.visitIntInsn(Opcodes.ILOAD, arg.idx()),
-					builtin -> builtin.action().accept(mv)),
+					arg -> mv.visitIntInsn(Opcodes.ILOAD, arg.index()),
+					builtin -> builtin.action().accept(mv));
+			},
 			app  -> {
 				app.args().forEach(arg -> genCode(arg));
 				genCode(app.fun());

@@ -6,16 +6,16 @@ import zlk.common.TyArrow;
 import zlk.common.Type;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcVar;
+import zlk.idcalc.IdInfo;
 
 public final class TypeChecker {
 	private TypeChecker() {}
 
 	public static Type check(IcDecl decl) {
-		List<IcVar> args = decl.args();
+		List<IdInfo> args = decl.args();
 
 		for (int i = 0; i < args.size(); i++) {
-			assertEqual(args.get(i).idInfo().type(), nth(decl.type(), i));
+			assertEqual(args.get(i).type(), nth(decl.type(), i));
 		}
 
 		assertEqual(check(decl.body()), nth(decl.type(), args.size()));

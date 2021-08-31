@@ -20,9 +20,10 @@ import zlk.idcalc.InfoFun;
 
 public final class NameEvaluator {
 
-	Env env = new Env();
+	private final Env env;
 
-	public NameEvaluator() {
+	public NameEvaluator(IdGenerator generator) {
+		env = new Env(generator);
 		Builtin.builtins().forEach(
 				fun -> env.registerBuiltinVar(fun.name(), fun.type(), fun.action()));
 	}
@@ -47,27 +48,26 @@ public final class NameEvaluator {
 	public IcDecl eval(Decl decl, Env env) {
 		env.push();
 
-		IdInfo funId = env.get(decl.name());
-		IcVar icFun = new IcVar(decl.name(), funId);
+		IdInfo idFun = env.get(decl.name());
 
-		List<IcVar> icArgs = new ArrayList<>();
+		List<IdInfo> idArgs = new ArrayList<>();
 		List<String> args = decl.args();
 		for(int i = 0; i < args.size(); i++) {
 			String arg = args.get(i);
-			IdInfo argInfo = env.registerArg(arg, getArgType(decl.type(), i), (InfoFun) funId.info(), i);
-			icArgs.add(new IcVar(arg, argInfo));
+			IdInfo argInfo = env.registerArg((InfoFun) idFun.info(), i, arg, getArgType(decl.type(), i));
+			idArgs.add(argInfo);
 		}
 
 		IcExp icBody = eval(decl.body(), env);
 
 		env.pop();
-		return new IcDecl(icFun, icArgs, decl.type(), icBody);
+		return new IcDecl(idFun, idArgs, idFun.type(), icBody);
 	}
 
 	public IcExp eval(Exp exp, Env env) {
 		return exp.fold(
 				cnst  -> new IcConst(cnst),
-				id    -> new IcVar(id.name(), env.get(id.name())),
+				id    -> new IcVar(env.get(id.name())),
 				app   -> {
 					List<Exp> exps = app.exps();
 					IcExp icFun = eval(exps.get(0), env);

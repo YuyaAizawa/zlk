@@ -16,10 +16,11 @@ import zlk.idcalc.InfoBuiltin;
 import zlk.idcalc.InfoFun;
 
 public final class Env {
-	int fresh = 0;
+	IdGenerator fresh;
 	Deque<Map<String, IdInfo>> envStack = new ArrayDeque<>();
 
-	public Env() {
+	public Env(IdGenerator fresh) {
+		this.fresh = fresh;
 		push();
 	}
 
@@ -59,19 +60,19 @@ public final class Env {
 	}
 
 	public IdInfo registerFun(String module, String name, Type ty) {
-		IdInfo idFun = new IdInfo(fresh++, new InfoFun(module, name, ty));
+		IdInfo idFun = new IdInfo(fresh.generate(), new InfoFun(module, name, ty));
 		put(name, idFun);
 		return idFun;
 	}
 
-	public IdInfo registerArg(String name, Type ty, InfoFun fun, int idx) {
-		IdInfo idArg = new IdInfo(fresh++, new InfoArg(name, ty, fun, idx));
+	public IdInfo registerArg(InfoFun fun, int index, String name, Type ty) {
+		IdInfo idArg = new IdInfo(fresh.generate(), new InfoArg(fun, index, name, ty));
 		put(name, idArg);
 		return idArg;
 	}
 
 	public IdInfo registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
-		IdInfo idBuiltin = new IdInfo(fresh++, new InfoBuiltin(name, ty, action));
+		IdInfo idBuiltin = new IdInfo(fresh.generate(), new InfoBuiltin(name, ty, action));
 		put(name, idBuiltin);
 		return idBuiltin;
 	}
