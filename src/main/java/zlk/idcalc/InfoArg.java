@@ -1,30 +1,22 @@
 package zlk.idcalc;
 
-import java.util.function.Consumer;
-import java.util.function.Function;
-
 import zlk.common.Type;
 
-public record InfoArg(
-		String name,
-		Type type,
-		InfoFun fun,
-		int idx)
-implements Info {
+public final class InfoArg extends Info {
+	private final InfoFun fun;
+	private final int index;
 
-	@Override
-	public <R> R map(
-			Function<InfoFun, R> forFun,
-			Function<InfoArg, R> forArg,
-			Function<InfoBuiltin, R> forBuiltin) {
-		return forArg.apply(this);
+	public InfoArg(InfoFun fun, int index, String name, Type type) {
+		super(name, type);
+		this.fun = fun;
+		this.index = index;
 	}
 
-	@Override
-	public void match(
-			Consumer<InfoFun> forFun,
-			Consumer<InfoArg> forArg,
-			Consumer<InfoBuiltin> forBuiltin) {
-		forArg.accept(this);
+	public InfoFun fun() {
+		return fun;
+	}
+
+	public int index() {
+		return index;
 	}
 }

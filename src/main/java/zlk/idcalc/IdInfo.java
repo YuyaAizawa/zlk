@@ -28,6 +28,14 @@ public final class IdInfo {
 		return info.type();
 	}
 
+	public String name() {
+		return info.name().orElseGet(() -> String.format("$%04d", id));
+	}
+
+	public void mkString(StringBuilder sb) {
+		sb.append(name());
+	}
+
 	@Override
 	public int hashCode() {
 		return id;

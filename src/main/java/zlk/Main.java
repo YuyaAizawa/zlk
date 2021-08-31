@@ -11,6 +11,7 @@ import org.objectweb.asm.util.TraceClassVisitor;
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.idcalc.IcModule;
+import zlk.nameeval.IdGenerator;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
@@ -35,7 +36,8 @@ public class Main {
 		System.out.println("-- AST --");
 		System.out.println(ast.mkString());
 
-		IcModule idcalc = new NameEvaluator().eval(ast);
+		IdGenerator fresh = new IdGenerator();
+		IcModule idcalc = new NameEvaluator(fresh).eval(ast);
 
 		System.out.println("-- ID CALC --");
 		System.out.println(idcalc.mkString());

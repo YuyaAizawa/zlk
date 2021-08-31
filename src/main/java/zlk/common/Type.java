@@ -34,6 +34,24 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 				arrow -> arrow);
 	}
 
+	default Type nth(int idx) {
+		Type type = this;
+		int rest = idx;
+		while(rest > 0) {
+			type = type.map(
+					unit  -> { throw new IndexOutOfBoundsException(idx); },
+					bool  -> { throw new IndexOutOfBoundsException(idx); },
+					i32   -> { throw new IndexOutOfBoundsException(idx); },
+					arrow -> arrow.ret());
+			rest--;
+		}
+		return type.map(
+				unit  -> unit,
+				bool  -> bool,
+				i32   -> i32,
+				arrow -> arrow.arg());
+	}
+
 	void mkString(StringBuilder sb);
 
 	default String mkString() {

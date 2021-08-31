@@ -1,31 +1,20 @@
 package zlk.idcalc;
 
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import org.objectweb.asm.MethodVisitor;
 
 import zlk.common.Type;
 
-public record InfoBuiltin(
-		String name,
-		Type type,
-		Consumer<MethodVisitor> action)
-implements Info {
+public final class InfoBuiltin extends Info {
+	private final Consumer<MethodVisitor> action;
 
-	@Override
-	public <R> R map(
-			Function<InfoFun, R> forFun,
-			Function<InfoArg, R> forArg,
-			Function<InfoBuiltin, R> forBuiltin) {
-		return forBuiltin.apply(this);
+	public InfoBuiltin(String name, Type type, Consumer<MethodVisitor> action) {
+		super(name, type);
+		this.action = action;
 	}
 
-	@Override
-	public void match(
-			Consumer<InfoFun> forFun,
-			Consumer<InfoArg> forArg,
-			Consumer<InfoBuiltin> forBuiltin) {
-		forBuiltin.accept(this);
+	public Consumer<MethodVisitor> action() {
+		return action;
 	}
 }
