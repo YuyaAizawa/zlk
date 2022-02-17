@@ -6,7 +6,6 @@ import java.util.function.Function;
 
 import zlk.common.Type;
 
-@SuppressWarnings("preview")
 public sealed abstract class Info
 permits InfoFun, InfoArg, InfoBuiltin {
 
