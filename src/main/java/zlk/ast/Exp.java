@@ -10,7 +10,6 @@ import zlk.util.MkString;
  * @author YuyaAizawa
  *
  */
-@SuppressWarnings("preview")
 public sealed interface Exp extends MkString
 permits Const, Id, App, If {
 

@@ -5,7 +5,6 @@ import java.util.function.Function;
 
 import zlk.util.MkString;
 
-@SuppressWarnings("preview")
 public sealed interface IcExp extends MkString
 permits IcConst, IcVar, IcApp, IcIf {
 

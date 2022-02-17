@@ -3,7 +3,6 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-@SuppressWarnings("preview")
 public sealed interface Type
 permits TyUnit, TyBool, TyI32, TyArrow {
 

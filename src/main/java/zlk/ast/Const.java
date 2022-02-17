@@ -3,7 +3,6 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-@SuppressWarnings("preview")
 public sealed interface Const extends Exp
 permits Bool, I32 {
 
