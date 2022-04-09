@@ -7,7 +7,7 @@ import java.util.function.Function;
 import zlk.common.Type;
 
 public sealed abstract class Info
-permits InfoFun, InfoArg, InfoBuiltin {
+permits InfoVar, InfoArg, InfoBuiltin {
 
 	private Optional<String> name;
 	private Type type;
@@ -31,10 +31,10 @@ permits InfoFun, InfoArg, InfoBuiltin {
 	}
 
 	public final <R> R map(
-			Function<InfoFun, R> forFun,
+			Function<InfoVar, R> forFun,
 			Function<InfoArg, R> forArg,
 			Function<InfoBuiltin, R> forBuiltin) {
-		if(this instanceof InfoFun fun) {
+		if(this instanceof InfoVar fun) {
 			return forFun.apply(fun);
 		} else if(this instanceof InfoArg arg) {
 			return forArg.apply(arg);
@@ -46,11 +46,11 @@ permits InfoFun, InfoArg, InfoBuiltin {
 	}
 
 	public final void match(
-			Consumer<InfoFun> forFun,
+			Consumer<InfoVar> forVar,
 			Consumer<InfoArg> forArg,
 			Consumer<InfoBuiltin> forBuiltin) {
-		if(this instanceof InfoFun fun) {
-			forFun.accept(fun);
+		if(this instanceof InfoVar var) {
+			forVar.accept(var);
 		} else if(this instanceof InfoArg arg) {
 			forArg.accept(arg);
 		} else if(this instanceof InfoBuiltin builtin) {

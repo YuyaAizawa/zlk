@@ -9,13 +9,15 @@ public record IcApp(
 	@Override
 	public void mkString(StringBuilder sb) {
 		fun.mkString(sb);
-		sb.append("(");
 		args.forEach(arg -> {
-			arg.mkString(sb);
-			sb.append(", ");
+			sb.append(" ");
+			arg.match(
+					cnst -> cnst.mkString(sb),
+					var  -> var.mkString(sb),
+					app  -> app.mkStringEnclosed(sb),
+					if_  -> if_.mkStringEnclosed(sb),
+					let  -> let.mkStringEnclosed(sb));
 		});
-		sb.setLength(sb.length()-2);
-		sb.append(")");
 	}
 
 }

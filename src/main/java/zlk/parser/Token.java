@@ -23,6 +23,8 @@ public record Token(Kind kind, String value) {
 		TRUE("true"),
 		FALSE("false"),
 		MODULE("module"),
+		LET("let"),
+		IN("in"),
 		IF("if"),
 		THEN("then"),
 		ELSE("else"),
@@ -33,6 +35,8 @@ public record Token(Kind kind, String value) {
 						TRUE,
 						FALSE,
 						MODULE,
+						LET,
+						IN,
 						IF,
 						THEN,
 						ELSE

@@ -6,13 +6,14 @@ import java.util.function.Function;
 import zlk.util.MkString;
 
 public sealed interface IcExp extends MkString
-permits IcConst, IcVar, IcApp, IcIf {
+permits IcConst, IcVar, IcApp, IcIf, IcLet {
 
 	default <R> R fold(
 			Function<IcConst, R> forConst,
 			Function<IcVar, R> forVar,
 			Function<IcApp, R> forApp,
-			Function<IcIf, R> forIf) {
+			Function<IcIf, R> forIf,
+			Function<IcLet, R> forLet) {
 		if(this instanceof IcConst cnst) {
 			return forConst.apply(cnst);
 		} else if(this instanceof IcVar id) {
@@ -21,6 +22,8 @@ permits IcConst, IcVar, IcApp, IcIf {
 			return forApp.apply(app);
 		} else if(this instanceof IcIf ifExp) {
 			return forIf.apply(ifExp);
+		} else if(this instanceof IcLet let) {
+			return forLet.apply(let);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -30,7 +33,8 @@ permits IcConst, IcVar, IcApp, IcIf {
 			Consumer<IcConst> forConst,
 			Consumer<IcVar> forVar,
 			Consumer<IcApp> forApp,
-			Consumer<IcIf> forIf) {
+			Consumer<IcIf> forIf,
+			Consumer<IcLet> forLet) {
 		if(this instanceof IcConst cnst) {
 			forConst.accept(cnst);
 		} else if(this instanceof IcVar id) {
@@ -39,6 +43,8 @@ permits IcConst, IcVar, IcApp, IcIf {
 			forApp.accept(app);
 		} else if(this instanceof IcIf ifExp) {
 			forIf.accept(ifExp);
+		} else if(this instanceof IcLet let) {
+			forLet.accept(let);
 		} else {
 			throw new Error(this.getClass().toString());
 		}

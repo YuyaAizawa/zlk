@@ -1,13 +1,14 @@
 package zlk.idcalc;
 
 import zlk.common.Type;
+import zlk.util.MkString;
 
 /**
  * 識別子情報．環境で利用して重複や未定義を防ぐ．
  * @author YuyaAizawa
  *
  */
-public final class IdInfo {
+public final class IdInfo implements MkString {
 	private final int id;
 	private final Info info;
 
@@ -32,6 +33,7 @@ public final class IdInfo {
 		return info.name().orElseGet(() -> String.format("$%04d", id));
 	}
 
+	@Override
 	public void mkString(StringBuilder sb) {
 		sb.append(name());
 	}
