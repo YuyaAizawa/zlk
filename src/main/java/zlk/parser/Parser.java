@@ -7,7 +7,9 @@ import static zlk.parser.Token.Kind.ELSE;
 import static zlk.parser.Token.Kind.EOF;
 import static zlk.parser.Token.Kind.EQUAL;
 import static zlk.parser.Token.Kind.IF;
+import static zlk.parser.Token.Kind.IN;
 import static zlk.parser.Token.Kind.LCID;
+import static zlk.parser.Token.Kind.LET;
 import static zlk.parser.Token.Kind.LPAREN;
 import static zlk.parser.Token.Kind.MODULE;
 import static zlk.parser.Token.Kind.RPAREN;
@@ -24,6 +26,7 @@ import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Id;
 import zlk.ast.If;
+import zlk.ast.Let;
 import zlk.ast.Module;
 import zlk.common.TyArrow;
 import zlk.common.Type;
@@ -38,6 +41,7 @@ import zlk.parser.Token.Kind;
  * <decl> : <lcid>+ \: <type> = <exp> ;
  *
  * <exp> : <aExp>+
+ *       | let decl in <exp>
  *       | if <exp> then <exp> else <exp>
  *
  * <aExp> : \( <exp> \)
@@ -118,9 +122,22 @@ public class Parser {
 		}
 
 		return switch(current.kind()) {
+		case LET -> parseLetExp();
 		case IF -> parseIfExp();
 		default -> throw new RuntimeException("not exp");
 		};
+	}
+
+	private Exp parseLetExp() {
+		consume(LET);
+
+		Decl decl = parseDecl();
+
+		consume(IN);
+
+		Exp body = parseExp();
+
+		return new Let(decl, body);
 	}
 
 	private Exp parseIfExp() {

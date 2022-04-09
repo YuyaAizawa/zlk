@@ -13,10 +13,10 @@ import zlk.idcalc.IcConst;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcIf;
+import zlk.idcalc.IcLet;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
 import zlk.idcalc.IdInfo;
-import zlk.idcalc.InfoFun;
 
 public final class NameEvaluator {
 
@@ -24,8 +24,10 @@ public final class NameEvaluator {
 
 	public NameEvaluator(IdGenerator generator) {
 		env = new Env(generator);
-		Builtin.builtins().forEach(
-				fun -> env.registerBuiltinVar(fun.name(), fun.type(), fun.action()));
+	}
+
+	public IdInfo registerBuiltin(Builtin builtin) {
+		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.action());
 	}
 
 	public IcModule eval(Module module) {
@@ -33,7 +35,7 @@ public final class NameEvaluator {
 
 		// resister toplevels
 		module.decls().forEach(decl -> {
-			env.registerFun(module.name(), decl.name(), decl.type());
+			env.registerVar(decl.name(), decl.type());
 		});
 
 		List<IcDecl> icDecls = module.decls()
@@ -46,22 +48,22 @@ public final class NameEvaluator {
 	}
 
 	public IcDecl eval(Decl decl, Env env) {
-		env.push();
+		IdInfo id = env.get(decl.name());
 
-		IdInfo idFun = env.get(decl.name());
+		env.push();
 
 		List<IdInfo> idArgs = new ArrayList<>();
 		List<String> args = decl.args();
 		for(int i = 0; i < args.size(); i++) {
 			String arg = args.get(i);
-			IdInfo argInfo = env.registerArg((InfoFun) idFun.info(), i, arg, getArgType(decl.type(), i));
+			IdInfo argInfo = env.registerArg(id, i, arg, getArgType(decl.type(), i));
 			idArgs.add(argInfo);
 		}
 
 		IcExp icBody = eval(decl.body(), env);
 
 		env.pop();
-		return new IcDecl(idFun, idArgs, idFun.type(), icBody);
+		return new IcDecl(id, idArgs, id.type(), icBody);
 	}
 
 	public IcExp eval(Exp exp, Env env) {
@@ -80,7 +82,16 @@ public final class NameEvaluator {
 				ifExp -> new IcIf(
 						eval(ifExp.cond(), env),
 						eval(ifExp.exp1(), env),
-						eval(ifExp.exp2(), env)));
+						eval(ifExp.exp2(), env)),
+				let -> {
+					env.push();
+					env.registerVar(let.decl().name(), let.decl().type());
+					IcDecl decl = eval(let.decl(), env);
+					IcExp body = eval(let.body(), env);
+					env.pop();
+
+					return new IcLet(decl, body);
+				});
 	}
 
 	private Type getArgType(Type funType, int index) {

@@ -5,13 +5,13 @@ import java.util.List;
 import zlk.common.Type;
 
 public record IcDecl(
-		IdInfo fun,
+		IdInfo id,
 		List<IdInfo> args,
 		Type type,
 		IcExp body) {
 
 	public void mkString(StringBuilder sb) {
-		fun.mkString(sb);
+		id.mkString(sb);
 		args.forEach(arg -> {
 			sb.append(" ");
 			arg.mkString(sb);

@@ -12,14 +12,16 @@ implements Exp {
 				cnst  ->  cnst.mkString(sb),
 				id    ->    id.mkString(sb),
 				app   ->   app.mkString(sb),
-				ifExp -> ifExp.mkStringEnclosed(sb));
+				ifExp -> ifExp.mkStringEnclosed(sb),
+				let   ->   let.mkStringEnclosed(sb));
 		for(int i = 1; i < exps.size(); i++) {
 			sb.append(" ");
 			exps.get(i).match(
 					cnst  ->  cnst.mkString(sb),
 					id    ->    id.mkString(sb),
 					app   ->   app.mkStringEnclosed(sb),
-					ifExp -> ifExp.mkStringEnclosed(sb));
+					ifExp -> ifExp.mkStringEnclosed(sb),
+					let   ->   let.mkStringEnclosed(sb));
 		}
 	}
 

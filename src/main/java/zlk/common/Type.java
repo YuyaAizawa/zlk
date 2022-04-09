@@ -33,6 +33,10 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 				arrow -> arrow);
 	}
 
+	public default boolean isArrow() {
+		return asArrow() != null;
+	}
+
 	default Type nth(int idx) {
 		Type type = this;
 		int rest = idx;

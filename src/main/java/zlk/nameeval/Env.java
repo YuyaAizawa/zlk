@@ -13,7 +13,7 @@ import zlk.common.Type;
 import zlk.idcalc.IdInfo;
 import zlk.idcalc.InfoArg;
 import zlk.idcalc.InfoBuiltin;
-import zlk.idcalc.InfoFun;
+import zlk.idcalc.InfoVar;
 
 public final class Env {
 	IdGenerator fresh;
@@ -59,13 +59,13 @@ public final class Env {
 		envStack.peek().put(name, info);
 	}
 
-	public IdInfo registerFun(String module, String name, Type ty) {
-		IdInfo idFun = new IdInfo(fresh.generate(), new InfoFun(module, name, ty));
+	public IdInfo registerVar(String name, Type ty) {
+		IdInfo idFun = new IdInfo(fresh.generate(), new InfoVar(name, ty));
 		put(name, idFun);
 		return idFun;
 	}
 
-	public IdInfo registerArg(InfoFun fun, int index, String name, Type ty) {
+	public IdInfo registerArg(IdInfo fun, int index, String name, Type ty) {
 		IdInfo idArg = new IdInfo(fresh.generate(), new InfoArg(fun, index, name, ty));
 		put(name, idArg);
 		return idArg;

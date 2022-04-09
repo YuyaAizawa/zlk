@@ -2,6 +2,9 @@ package zlk.bytecodegen;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
@@ -10,6 +13,7 @@ import org.objectweb.asm.Opcodes;
 
 import zlk.common.TyArrow;
 import zlk.common.Type;
+import zlk.core.Builtin;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
@@ -17,13 +21,20 @@ import zlk.idcalc.IdInfo;
 
 public final class BytecodeGenerator {
 
-	private static final int FLAG = ClassWriter.COMPUTE_MAXS;
-
+	private String moduleName;
+	private Set<IdInfo> functionsInModule;
+	private Map<IdInfo, Builtin> builtins;
 	private ClassWriter cw;
 	private MethodVisitor mv;
 
+	public BytecodeGenerator(Map<IdInfo, Builtin> builtins) {
+		this.builtins = builtins;
+	}
+
 	public byte[] compile(IcModule module) {
-		cw = new ClassWriter(FLAG);
+		moduleName = module.name();
+
+		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 
 		cw.visit(
 				Opcodes.V16,
@@ -37,9 +48,8 @@ public final class BytecodeGenerator {
 
 		genConstructor();
 
-		module.decls().forEach(decl -> genCode(decl));
-
-		genMain();
+		functionsInModule = module.decls().stream().map(decl -> decl.id()).collect(Collectors.toSet());
+		module.decls().forEach(decl -> genExposedFunction(decl));
 
 		return cw.toByteArray();
 	}
@@ -64,93 +74,90 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private void genMain() {
-		mv = cw.visitMethod(
-				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-				"main",
-				"([Ljava/lang/String;)V",
-				null,
-				null);
-		mv.visitCode();
-		mv.visitFieldInsn(
-				Opcodes.GETSTATIC,
-				"java/lang/System",
-				"out",
-				"Ljava/io/PrintStream;");
-		mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-				"HelloMyLang",
-				"ans",
-				"()I",
-				false);
-		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
-				"java/io/PrintStream",
-				"println",
-				"(I)V",
-				false);
-		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(0, 0);
-		mv.visitEnd();
-	}
-
-	private void genCode(IcDecl decl) {
+	private void genExposedFunction(IcDecl decl) {
 
 		MethodStyle methodType = MethodStyle.of(decl.type());
 
 		mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-				decl.fun().name(),
+				decl.id().name(),
 				methodType.toDescription(),
 				null,
 				null);
 		mv.visitCode();
 
-		genCode(decl.body());
+		LocalEnv locals = new LocalEnv();
+		decl.args().forEach(arg -> locals.bind(arg));
+		genCode(decl.body(), locals);
 
 		genReturn(methodType.ret());
 
-		mv.visitMaxs(0, 0);
+		mv.visitMaxs(-1, -1); // compute all frames and localautomatically
 		mv.visitEnd();
 	}
 
-	private void genCode(IcExp exp) {
+	private void genCode(IcExp exp, LocalEnv env) {
 		exp.match(
 			cnst ->
 				mv.visitLdcInsn(cnst.cnst().fold(
 						bool -> bool.value() ? 1 : 0,
 						i32  -> i32.value())),
-			id -> {
-				IdInfo idInfo = id.idInfo();
-				idInfo.info().match(
-					fun ->
-						mv.visitMethodInsn(
-								Opcodes.INVOKESTATIC,
-								fun.module(),
-								idInfo.name(),
-								MethodStyle.of(fun.type()).toDescription(),
-								false),
-					arg -> mv.visitIntInsn(Opcodes.ILOAD, arg.index()),
-					builtin -> builtin.action().accept(mv));
+			var -> {
+				IdInfo idInfo = var.idInfo();
+				if(functionsInModule.contains(idInfo)) {
+					mv.visitMethodInsn(
+							Opcodes.INVOKESTATIC,
+							moduleName,
+							idInfo.name(),
+							MethodStyle.of(idInfo.type()).toDescription(),
+							false);
+				} else {
+					Builtin builtin = builtins.get(idInfo);
+					if(builtin == null) {
+						load(env.find(idInfo));
+					} else {
+						builtin.action().accept(mv);
+					}
+				}
 			},
 			app  -> {
-				app.args().forEach(arg -> genCode(arg));
-				genCode(app.fun());
+				app.args().forEach(arg -> genCode(arg, env));
+				genCode(app.fun(), env);
 			},
 			ifExp -> {
 				Label l1 = new Label();
 				Label l2 = new Label();
-				genCode(ifExp.cond());
+				genCode(ifExp.cond(), env);
 				mv.visitJumpInsn(
 						Opcodes.IFEQ, // = 0; false
 						l1);
-				genCode(ifExp.exp1());
+				genCode(ifExp.exp1(), env);
 				mv.visitJumpInsn(Opcodes.GOTO, l2);
 				mv.visitLabel(l1);
-				mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
-				genCode(ifExp.exp2());
+				genCode(ifExp.exp2(), env);
 				mv.visitLabel(l2);
-				Object[] stack = toStackmapType(ifExp); // TODO move this to type elaboration phase
-				mv.visitFrame(Opcodes.F_SAME1, 0, null, stack.length, stack);
+			},
+			let -> {
+				genCode(let.decl().body(), env);
+				store(env.bind(let.decl().id()));
+				genCode(let.body(), env);
 			});
+	}
+
+	private void load(LocalVar local) {
+		if(local.type() == Type.i32) {
+			mv.visitVarInsn(Opcodes.ILOAD, local.idx());
+		} else {
+			throw new Error(String.format("invalid type local variable. type: %s", local.type().mkString()));
+		}
+	}
+
+	private void store(LocalVar local) {
+		if(local.type() == Type.i32) {
+			mv.visitVarInsn(Opcodes.ISTORE, local.idx());
+		} else {
+			throw new Error(String.format("invalid type local variable. type: %s", local.type().mkString()));
+		}
 	}
 
 	private void genReturn(Type type) {
@@ -159,26 +166,6 @@ public final class BytecodeGenerator {
 				bool -> mv.visitInsn(Opcodes.IRETURN),
 				i32  -> mv.visitInsn(Opcodes.IRETURN),
 				fun  -> {throw new IllegalArgumentException(type.mkString());});
-	}
-
-	private static Object[] toStackmapType(IcExp exp) {
-		return toStackmapType(typeOf(exp));
-	}
-
-	private static Object[] toStackmapType(Type type) {
-		return type.map(
-				unit  -> new Object[] {},
-				bool  -> new Object[] { Opcodes.INTEGER },
-				i32   -> new Object[] { Opcodes.INTEGER },
-				arrow -> { throw new IllegalArgumentException(type.mkString()); });
-	}
-
-	private static Type typeOf(IcExp exp) {
-		return exp.fold(
-				cnst -> cnst.type(),
-				var  -> var.idInfo().type(),
-				app -> typeOf(app.fun()).asArrow().ret(),
-				ifExp -> typeOf(ifExp.exp1()));
 	}
 }
 

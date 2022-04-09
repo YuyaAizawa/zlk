@@ -15,19 +15,19 @@ public final class TypeChecker {
 		List<IdInfo> args = decl.args();
 
 		for (int i = 0; i < args.size(); i++) {
-			assertEqual(args.get(i).type(), nth(decl.type(), i));
+			assertEqual(args.get(i).type(), decl.type().nth(i));
 		}
 
-		assertEqual(check(decl.body()), nth(decl.type(), args.size()));
+		assertEqual(check(decl.body()), decl.type().nth(args.size()));
 
 		return decl.type();
 	}
 
 	private static Type check(IcExp exp) {
 		return exp.fold(
-				cnst -> cnst.type(),
-				var  -> var.idInfo().type(),
-				app  -> {
+				cnst  -> cnst.type(),
+				var   -> var.idInfo().type(),
+				app   -> {
 					Type funType = check(app.fun());
 					Type restType = funType;
 					for(IcExp arg : app.args()) {
@@ -49,6 +49,12 @@ public final class TypeChecker {
 					Type exp1Type = check(ifExp.exp1());
 					assertEqual(check(ifExp.exp2()), exp1Type);
 					return exp1Type;
+				},
+				let   -> {
+					if(check(let.decl()).isArrow()) {
+						throw new AssertionError(String.format("let only binds I32. %s : %s", let.decl().id(), let.decl().type()));
+					}
+					return check(let.body());
 				});
 	}
 
@@ -56,22 +62,5 @@ public final class TypeChecker {
 		if(!actual.equals(expected)) {
 			throw new AssertionError(String.format("expect: %s, actual: %s", expected, actual));
 		}
-	}
-
-	private static Type nth(Type type, int idx) {
-		int rest = idx;
-		while(rest > 0) {
-			type = type.map(
-					unit  -> { throw new IndexOutOfBoundsException(idx); },
-					bool  -> { throw new IndexOutOfBoundsException(idx); },
-					i32   -> { throw new IndexOutOfBoundsException(idx); },
-					arrow -> arrow.ret());
-			rest--;
-		}
-		return type.map(
-				unit  -> unit,
-				bool  -> bool,
-				i32   -> i32,
-				arrow -> arrow.arg());
 	}
 }
