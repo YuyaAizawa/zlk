@@ -11,7 +11,7 @@ public class LocalEnv {
 
 	public LocalVar bind(IdInfo idInfo) {
 		int idx = impl.size();
-		Type type = idInfo.info().type();
+		Type type = idInfo.type();
 		LocalVar localVar = new LocalVar(idx, type);
 
 		Kvp kvp = new Kvp(idInfo.id(), localVar);

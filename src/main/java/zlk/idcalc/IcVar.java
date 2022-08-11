@@ -1,8 +1,8 @@
 package zlk.idcalc;
 
 public record IcVar(
-		IdInfo idInfo)
-implements IcExp {
+		IdInfo idInfo
+) implements IcExp {
 
 	@Override
 	public void mkString(StringBuilder sb) {

@@ -11,9 +11,6 @@ import org.objectweb.asm.MethodVisitor;
 
 import zlk.common.Type;
 import zlk.idcalc.IdInfo;
-import zlk.idcalc.InfoArg;
-import zlk.idcalc.InfoBuiltin;
-import zlk.idcalc.InfoVar;
 
 public final class Env {
 	IdGenerator fresh;
@@ -60,19 +57,19 @@ public final class Env {
 	}
 
 	public IdInfo registerVar(String name, Type ty) {
-		IdInfo idFun = new IdInfo(fresh.generate(), new InfoVar(name, ty));
+		IdInfo idFun = new IdInfo(fresh.generate(), name, ty);
 		put(name, idFun);
 		return idFun;
 	}
 
 	public IdInfo registerArg(IdInfo fun, int index, String name, Type ty) {
-		IdInfo idArg = new IdInfo(fresh.generate(), new InfoArg(fun, index, name, ty));
+		IdInfo idArg = new IdInfo(fresh.generate(), name, ty);
 		put(name, idArg);
 		return idArg;
 	}
 
 	public IdInfo registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
-		IdInfo idBuiltin = new IdInfo(fresh.generate(), new InfoBuiltin(name, ty, action));
+		IdInfo idBuiltin = new IdInfo(fresh.generate(), name, ty);
 		put(name, idBuiltin);
 		return idBuiltin;
 	}
