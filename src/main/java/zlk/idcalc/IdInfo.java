@@ -8,29 +8,14 @@ import zlk.util.MkString;
  * @author YuyaAizawa
  *
  */
-public final class IdInfo implements MkString {
-	private final int id;
-	private final Info info;
-
-	public IdInfo(int id, Info info) {
-		this.id = id;
-		this.info = info;
-	}
-
-	public int id() {
-		return id;
-	}
-
-	public Info info() {
-		return info;
-	}
-
-	public Type type() {
-		return info.type();
-	}
+public record IdInfo(
+		int id,
+		String name,
+		Type type
+) implements MkString {
 
 	public String name() {
-		return info.name().orElseGet(() -> String.format("$%04d", id));
+		return name == "" ? String.format("$%04d", id) : name;
 	}
 
 	@Override
