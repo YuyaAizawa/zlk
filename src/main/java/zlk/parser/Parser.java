@@ -13,7 +13,6 @@ import static zlk.parser.Token.Kind.LET;
 import static zlk.parser.Token.Kind.LPAREN;
 import static zlk.parser.Token.Kind.MODULE;
 import static zlk.parser.Token.Kind.RPAREN;
-import static zlk.parser.Token.Kind.SEMICOLON;
 import static zlk.parser.Token.Kind.THEN;
 import static zlk.parser.Token.Kind.UCID;
 
@@ -31,19 +30,25 @@ import zlk.ast.Module;
 import zlk.common.TyArrow;
 import zlk.common.Type;
 import zlk.parser.Token.Kind;
+import zlk.util.Location;
 
 /*
  * 文法
  * <compileUnit> : <module>
  *
- * <module> : module <ucid> <decl>+
- *
- * <decl> : <lcid>+ \: <type> = <exp> ;
+ * <module> : module <ucid> <declList>
  *
  * <exp> : <aExp>+
- *       | let decl in <exp>
+ *       | let $<declList> in <exp>
  *       | if <exp> then <exp> else <exp>
+ * $ The declList starts to the right column of the "let" keyword.
  *
+ * <declList> : $(<decl>+)
+ * $ The all decls start in the same column. This column called decl column of the declList. The elements other than the
+ *   declared identifiers appear to the right of the decl column.
+ *
+ * <decl> : <lcid>+ \: <type> = <exp> ;
+ * 
  * <aExp> : \( <exp> \)
  *        | <constant>
  *        | <lcid>
@@ -60,10 +65,13 @@ public class Parser {
 	private Token current;
 	private Token next;
 
+	private int declColumn;
+	
 	public Parser(Lexer lexer) {
 		this.lexer = lexer;
 		this.current = lexer.nextToken();
 		this.next = lexer.nextToken();
+		this.declColumn = 1;
 	}
 
 	public Module parse() {
@@ -75,31 +83,57 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		List<Decl> decls = new ArrayList<>();
-		while(next.kind() != EOF) {
-			decls.add(parseDecl());
+		this.declColumn = 1;
+		List<Decl> decls = parseDeclList();
+		
+		if (current.kind() != EOF) {
+			throw new RuntimeException(current.location() + "token remained.");
 		}
 
 		return new Module(name, decls, fileName);
 	}
-
+	
+	public List<Decl> parseDeclList() {
+		List<Decl> decls = new ArrayList<>();
+		while(current.kind() == LCID) {
+			decls.add(parseDecl());
+		}
+		return decls;
+	}
+	
 	public Decl parseDecl() {
+		if(current.column() != declColumn) {
+			throw new RuntimeException(
+					current.location() + " declaration must starts to the right column of the \"let\"");
+		}
+		
+		Location location = current.location();
 		String name = parse(LCID);
 
 		List<String> args = new ArrayList<>();
-		while(current.kind() == LCID) {
+		while(current.kind() == LCID && current.column() > declColumn) {
 			args.add(parse(LCID));
 		}
 
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing \":\" on \"" + name + "\"@" + location);
+		}
 		consume(COLON);
 
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing type on \"" + name + "\"@" + location);
+		}
 		Type type = parseType();
 
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing \"=\" on \"" + name + "\"@" + location);
+		}
 		consume(EQUAL);
 
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing body on \"" + name + "\"@" + location);
+		}
 		Exp body = parseExp();
-
-		consume(SEMICOLON);
 
 		return new Decl(name, args, type, body);
 	}
@@ -109,10 +143,10 @@ public class Parser {
 		if(aExpStartToken(current)) {
 			Exp first = parseAExp();
 
-			if(aExpStartToken(current)) {
+			if(aExpStartToken(current) && current.column() > declColumn) {
 				List<Exp> exps = new ArrayList<>();
 				exps.add(first);
-				while(aExpStartToken(current)) {
+				while(aExpStartToken(current) && current.column() > declColumn) {
 					exps.add(parseAExp());
 				}
 				return new App(exps);
@@ -129,15 +163,34 @@ public class Parser {
 	}
 
 	private Exp parseLetExp() {
+		Location letLocation = current.location();
 		consume(LET);
+		
+		List<Decl> declList;
+		if(current.kind() != IN) {
+			if(current.column() <= declColumn) {
+				throw new RuntimeException(current.location() + " declaration list must be indented");
+			}
 
-		Decl decl = parseDecl();
-
+			int oldDeclColumn = declColumn;
+			declColumn = current.column();
+			declList = parseDeclList();
+			declColumn = oldDeclColumn;
+		} else {
+			declList = List.of();
+		}
+		
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing \"in\" for \"let\"@" + letLocation);
+		}
 		consume(IN);
 
+		if(current.column() <= declColumn) {
+			throw new RuntimeException(current.location() + " missing body for \"let\"@" + letLocation);
+		}
 		Exp body = parseExp();
 
-		return new Let(decl, body);
+		return new Let(declList, body);
 	}
 
 	private Exp parseIfExp() {
@@ -244,7 +297,7 @@ public class Parser {
 		current = next;
 		next = lexer.nextToken();
 	}
-
+	
 	private String parse(Kind expected) {
 		if(current.kind() == expected) {
 			String ret = current.value();
@@ -252,7 +305,9 @@ public class Parser {
 			return ret;
 		} else {
 			throw new RuntimeException(
-					"cannot consume. expected: "+expected+" actual: "+current.kind());
+					current.location() + " cannot parse. "
+					+ ", expected: " + expected
+					+ ", actual: " + current.kind());
 		}
 	}
 
@@ -261,7 +316,9 @@ public class Parser {
 			nextToken();
 		} else {
 			throw new RuntimeException(
-					"cannot consume. expected: "+expected+" actual: "+current.kind());
+					current.location() + " cannot consume. "
+					+ "expected: " + expected
+					+ ", actual: " + current.kind());
 		}
 	}
 }

@@ -1,14 +1,16 @@
 package zlk.ast;
 
+import java.util.List;
+
 public record Let(
-		Decl decl,
+		List<Decl> decls,
 		Exp body)
 implements Exp {
 
 	@Override
 	public void mkString(StringBuilder sb) {
 		sb.append("let ");
-		decl.mkString(sb);
+		decls.forEach(decl -> decl.mkString(sb));
 		sb.append(" in ");
 		body.mkString(sb);
 	}

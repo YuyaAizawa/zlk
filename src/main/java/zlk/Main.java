@@ -30,17 +30,22 @@ public class Main {
 				module HelloMyLang
 
 				fact n : I32 -> I32 =
-					if isZero n then
-						1 else
-						let
-							nn : I32 = sub n 1;
-						in
-							mul n (fact nn);
+				  if isZero n
+				  then
+				    1
+				  else
+				    let
+				      one : I32 = 1
+				      nn : I32 = sub n one
+				    in
+				      mul n (fact nn)
 
 				ans : I32 =
-					fact 10;
+				  fact 10
 				""";
 
+		System.out.println("-- SOURCE --");
+		System.out.println(src);
 		System.out.println();
 
 		System.out.println("-- AST --");
