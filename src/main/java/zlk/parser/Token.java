@@ -4,7 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public record Token(Kind kind, String value) {
+import zlk.util.Location;
+
+public record Token(Kind kind, String value, Location location) {
 
 	public enum Kind {
 		UCID(""),
@@ -18,7 +20,6 @@ public record Token(Kind kind, String value) {
 		EQUAL     ("="),
 		LPAREN    ("("),
 		RPAREN    (")"),
-		SEMICOLON (";"),
 
 		TRUE("true"),
 		FALSE("false"),
@@ -47,7 +48,7 @@ public record Token(Kind kind, String value) {
 		private final String str;
 
 		private Kind(String str) {
-			this.str = str;
+			this.str = str.intern();
 		}
 
 		public String str() {
@@ -59,7 +60,19 @@ public record Token(Kind kind, String value) {
 		}
 	}
 
-	public Token(Kind kind) {
-		this(kind, kind.str());
+	public Token(Kind kind, String str, int line, int column) {
+		this(kind, str, new Location(line, column));
+	}
+
+	public Token(Kind kind, int line, int column) {
+		this(kind, kind.str(), line, column);
+	}
+
+	public int line() {
+		return location.line();
+	}
+
+	public int column() {
+		return location.column();
 	}
 }

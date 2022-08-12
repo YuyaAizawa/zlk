@@ -6,9 +6,9 @@ import java.io.StringReader;
 import java.io.UncheckedIOException;
 
 /**
- * コードポイント単位の字句解析器．
+ * コードポイントベースの字句解析器．
  *
- * コメント，オフサイドルールなども処理する予定
+ * コメントも処理する予定
  * @author YuyaAizawa
  *
  */
@@ -18,14 +18,22 @@ public class Lexer {
 	int current;
 	int buffer;
 	int count;
+	
+	int currentLine;
+	int currentColumn;
 
 	int[] wordArray = new int[256];
+
+	private static final char CR = '\r';
+	private static final char LF = '\n';
 
 	public Lexer(String fileName, String src) {
 		this.fileName = fileName;
 		this.reader = new StringReader(src);
 		next();
 		next();
+		currentColumn = 1;
+		currentLine = 1;
 	}
 
 	public String getFileName() {
@@ -37,40 +45,48 @@ public class Lexer {
 
 		Token token = switch(current) {
 
-		case ':' -> new Token(Token.Kind.COLON);
-		case '=' -> new Token(Token.Kind.EQUAL);
-		case '(' -> new Token(Token.Kind.LPAREN);
-		case ')' -> new Token(Token.Kind.RPAREN);
-		case ';' -> new Token(Token.Kind.SEMICOLON);
+		case ':' -> new Token(Token.Kind.COLON, currentLine, currentColumn);
+		case '=' -> new Token(Token.Kind.EQUAL, currentLine, currentColumn);
+		case '(' -> new Token(Token.Kind.LPAREN, currentLine, currentColumn);
+		case ')' -> new Token(Token.Kind.RPAREN, currentLine, currentColumn);
 
-		case '-' -> ifNext('>') ? new Token(Token.Kind.ARROW) : new Token(Token.Kind.ILL, '-' + codepointToString(current));
+		case '-' -> ifNext('>')
+				? new Token(Token.Kind.ARROW, currentLine, currentColumn)
+				: new Token(Token.Kind.ILL, '-' + codepointToString(current), currentLine, currentColumn);
 
-		case  -1 -> new Token(Token.Kind.EOF);
+		case  -1 -> new Token(Token.Kind.EOF, currentLine, currentColumn);
 
 		default -> {
 			if(isLower(current)) {
+				int startColumn = currentColumn;
 				String id = readWord();
 				Token.Kind kind = Token.Kind.lookupKeywordType(id);
 				if(kind == null) {
-					yield new Token(Token.Kind.LCID, id);
+					yield new Token(Token.Kind.LCID, id, currentLine, startColumn);
 				} else {
-					yield new Token(kind);
+					yield new Token(kind, currentLine, startColumn);
 				}
 			} else if(isUpper(current)) {
-				yield new Token(Token.Kind.UCID, readWord());
+				int startColumn = currentColumn;
+				yield new Token(Token.Kind.UCID, readWord(), currentLine, startColumn);
 			} else if(isDigit(current)) {
-				yield new Token(Token.Kind.DIGITS, readWord());
+				int startColumn = currentColumn;
+				yield new Token(Token.Kind.DIGITS, readWord(), currentLine, startColumn);
 			} else {
-				yield new Token(Token.Kind.ILL, new String(new int[] {current}, 0, 1));
+				yield new Token(Token.Kind.ILL, new String(new int[] {current}, 0, 1), currentLine, currentColumn);
 			}
 		}};
 		next();
-		System.out.println(token);
 		return token;
 	}
 
 	private void next() {
+		if(current == LF) {
+			currentLine++;
+			currentColumn = 0;
+		}
 		current = buffer;
+		currentColumn++;
 
 		int data = uncheckRead();
 
@@ -136,7 +152,7 @@ public class Lexer {
 	}
 
 	private static boolean isWhitespace(int cp) {
-		return cp == '\s' || cp == '\t' || cp == '\r' || cp == '\n';
+		return cp == '\s' || cp == CR || cp == LF;
 	}
 
 	private static boolean isLetterOrDigit(int cp) {

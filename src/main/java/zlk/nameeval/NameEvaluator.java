@@ -40,14 +40,14 @@ public final class NameEvaluator {
 
 		List<IcDecl> icDecls = module.decls()
 				.stream()
-				.map(decl -> eval(decl, env))
+				.map(decl -> eval(decl))
 				.toList();
 
 		env.pop();
 		return new IcModule(module.name(), icDecls, module.origin());
 	}
 
-	public IcDecl eval(Decl decl, Env env) {
+	public IcDecl eval(Decl decl) {
 		IdInfo id = env.get(decl.name());
 
 		env.push();
@@ -60,38 +60,45 @@ public final class NameEvaluator {
 			idArgs.add(argInfo);
 		}
 
-		IcExp icBody = eval(decl.body(), env);
+		IcExp icBody = eval(decl.body());
 
 		env.pop();
 		return new IcDecl(id, idArgs, id.type(), icBody);
 	}
 
-	public IcExp eval(Exp exp, Env env) {
+	public IcExp eval(Exp exp) {
 		return exp.fold(
 				cnst  -> new IcConst(cnst),
 				id    -> new IcVar(env.get(id.name())),
 				app   -> {
 					List<Exp> exps = app.exps();
-					IcExp icFun = eval(exps.get(0), env);
+					IcExp icFun = eval(exps.get(0));
 					List<IcExp> icArgs = new ArrayList<>();
 					for(int i = 1; i < exps.size(); i++) {
-						icArgs.add(eval(exps.get(i), env));
+						icArgs.add(eval(exps.get(i)));
 					}
 					return new IcApp(icFun, icArgs);
 				},
 				ifExp -> new IcIf(
-						eval(ifExp.cond(), env),
-						eval(ifExp.exp1(), env),
-						eval(ifExp.exp2(), env)),
+						eval(ifExp.cond()),
+						eval(ifExp.exp1()),
+						eval(ifExp.exp2())),
 				let -> {
 					env.push();
-					env.registerVar(let.decl().name(), let.decl().type());
-					IcDecl decl = eval(let.decl(), env);
-					IcExp body = eval(let.body(), env);
+					IcExp result = eval(let.decls(), 0, let.body());
 					env.pop();
-
-					return new IcLet(decl, body);
+					return result;
 				});
+	}
+	
+	private IcExp eval(List<Decl> decls, int i, Exp body) {
+		if(i < decls.size()) {
+			Decl decl = decls.get(i);
+			env.registerVar(decl.name(), decl.type());
+			return new IcLet(eval(decl), eval(decls, i+1, body));
+		} else {
+			return eval(body);
+		}
 	}
 
 	private Type getArgType(Type funType, int index) {
