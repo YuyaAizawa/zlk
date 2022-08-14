@@ -2,6 +2,7 @@ package zlk.idcalc;
 
 import zlk.ast.Const;
 import zlk.common.Type;
+import zlk.util.PrettyPrinter;
 
 public record IcConst(
 		Const cnst)
@@ -14,7 +15,7 @@ implements IcExp {
 	}
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		cnst().mkString(sb);
+	public void mkString(PrettyPrinter pp) {
+		pp.append(cnst);
 	}
 }

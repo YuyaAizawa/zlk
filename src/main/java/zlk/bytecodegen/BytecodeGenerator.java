@@ -98,57 +98,57 @@ public final class BytecodeGenerator {
 
 	private void genCode(IcExp exp, LocalEnv env) {
 		exp.match(
-			cnst ->
+				cnst ->
 				mv.visitLdcInsn(cnst.cnst().fold(
 						bool -> bool.value() ? 1 : 0,
-						i32  -> i32.value())),
-			var -> {
-				IdInfo idInfo = var.idInfo();
-				if(functionsInModule.contains(idInfo)) {
-					mv.visitMethodInsn(
-							Opcodes.INVOKESTATIC,
-							moduleName,
-							idInfo.name(),
-							MethodStyle.of(idInfo.type()).toDescription(),
-							false);
-				} else {
-					Builtin builtin = builtins.get(idInfo);
-					if(builtin == null) {
-						load(env.find(idInfo));
+								i32  -> i32.value())),
+				var -> {
+					IdInfo idInfo = var.idInfo();
+					if(functionsInModule.contains(idInfo)) {
+						mv.visitMethodInsn(
+								Opcodes.INVOKESTATIC,
+								moduleName,
+								idInfo.name(),
+								MethodStyle.of(idInfo.type()).toDescription(),
+								false);
 					} else {
-						builtin.action().accept(mv);
+						Builtin builtin = builtins.get(idInfo);
+						if(builtin == null) {
+							load(env.find(idInfo));
+						} else {
+							builtin.action().accept(mv);
+						}
 					}
-				}
-			},
-			app  -> {
-				app.args().forEach(arg -> genCode(arg, env));
-				genCode(app.fun(), env);
-			},
-			ifExp -> {
-				Label l1 = new Label();
-				Label l2 = new Label();
-				genCode(ifExp.cond(), env);
-				mv.visitJumpInsn(
-						Opcodes.IFEQ, // = 0; false
-						l1);
-				genCode(ifExp.exp1(), env);
-				mv.visitJumpInsn(Opcodes.GOTO, l2);
-				mv.visitLabel(l1);
-				genCode(ifExp.exp2(), env);
-				mv.visitLabel(l2);
-			},
-			let -> {
-				genCode(let.decl().body(), env);
-				store(env.bind(let.decl().id()));
-				genCode(let.body(), env);
-			});
+				},
+				app  -> {
+					app.args().forEach(arg -> genCode(arg, env));
+					genCode(app.fun(), env);
+				},
+				ifExp -> {
+					Label l1 = new Label();
+					Label l2 = new Label();
+					genCode(ifExp.cond(), env);
+					mv.visitJumpInsn(
+							Opcodes.IFEQ, // = 0; false
+							l1);
+					genCode(ifExp.exp1(), env);
+					mv.visitJumpInsn(Opcodes.GOTO, l2);
+					mv.visitLabel(l1);
+					genCode(ifExp.exp2(), env);
+					mv.visitLabel(l2);
+				},
+				let -> {
+					genCode(let.decl().body(), env);
+					store(env.bind(let.decl().id()));
+					genCode(let.body(), env);
+				});
 	}
 
 	private void load(LocalVar local) {
 		if(local.type() == Type.i32) {
 			mv.visitVarInsn(Opcodes.ILOAD, local.idx());
 		} else {
-			throw new Error(String.format("invalid type local variable. type: %s", local.type().mkString()));
+			throw new Error(String.format("invalid type local variable. type: %s", local.type().toString()));
 		}
 	}
 
@@ -156,7 +156,7 @@ public final class BytecodeGenerator {
 		if(local.type() == Type.i32) {
 			mv.visitVarInsn(Opcodes.ISTORE, local.idx());
 		} else {
-			throw new Error(String.format("invalid type local variable. type: %s", local.type().mkString()));
+			throw new Error(String.format("invalid type local variable. type: %s", local.type().toString()));
 		}
 	}
 
@@ -165,7 +165,7 @@ public final class BytecodeGenerator {
 				unit -> mv.visitInsn(Opcodes.RETURN),
 				bool -> mv.visitInsn(Opcodes.IRETURN),
 				i32  -> mv.visitInsn(Opcodes.IRETURN),
-				fun  -> {throw new IllegalArgumentException(type.mkString());});
+				fun  -> {throw new IllegalArgumentException(type.toString());});
 	}
 }
 
@@ -197,10 +197,10 @@ record MethodStyle(
 	}
 
 	private static String toBinary(Type type) {
-		return type.map(
+		return type.fold(
 				unit -> "V",
 				bool -> "Z",
 				i32  -> "I",
-				fun -> {throw new IllegalArgumentException(type.mkString());});
+				fun  -> { throw new IllegalArgumentException(type.toString()); });
 	}
 }

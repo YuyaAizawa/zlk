@@ -19,7 +19,7 @@ public class LocalEnv {
 		if(type == Type.i32) {
 			impl.add(kvp);
 		} else {
-			throw new IllegalArgumentException(idInfo.mkString());
+			throw new IllegalArgumentException(idInfo.toString());
 		}
 		return localVar;
 	}
@@ -30,7 +30,7 @@ public class LocalEnv {
 				return kvp.value;
 			}
 		}
-		throw new NoSuchElementException(idInfo.mkString());
+		throw new NoSuchElementException(idInfo.toString());
 	}
 
 	static record Kvp(

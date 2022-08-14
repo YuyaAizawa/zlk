@@ -3,9 +3,10 @@ package zlk.idcalc;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.MkString;
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
 
-public sealed interface IcExp extends MkString
+public sealed interface IcExp extends PrettyPrintable
 permits IcConst, IcVar, IcApp, IcIf, IcLet {
 
 	default <R> R fold(
@@ -49,4 +50,20 @@ permits IcConst, IcVar, IcApp, IcIf, IcLet {
 			throw new Error(this.getClass().toString());
 		}
 	}
+
+	static boolean isIf(IcExp exp) {
+		return exp instanceof IcIf;
+	}
+
+	static boolean isLet(IcExp exp) {
+		return exp instanceof IcLet;
+	}
+
+	/**
+	 * Appends the string representation of this expression to specified printer.
+	 * It does not terminate the line.
+	 * @param pp printer to append string.
+	 */
+	@Override
+	void mkString(PrettyPrinter pp);
 }

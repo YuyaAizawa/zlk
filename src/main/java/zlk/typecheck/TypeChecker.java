@@ -31,13 +31,14 @@ public final class TypeChecker {
 					Type funType = check(app.fun());
 					Type restType = funType;
 					for(IcExp arg : app.args()) {
+
 						TyArrow arrow = restType.asArrow();
 						if(arrow == null) {
 							throw new AssertionError(String.format(
 									"too many arguments. fun: %s, type: %s, args: %s",
-									app.fun().mkString(),
-									funType.mkString(),
-									app.args().stream().map(IcExp::mkString).toList()));
+									app.fun().toString(),
+									funType.toString(),
+									app.args().size()));
 						}
 						assertEqual(check(arg), arrow.arg());
 						restType = arrow.ret();

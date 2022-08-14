@@ -3,14 +3,15 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.MkString;
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
 
 /**
  * 式を表すインターフェース．イミュータブル．
  * @author YuyaAizawa
  *
  */
-public sealed interface Exp extends MkString
+public sealed interface Exp extends PrettyPrintable
 permits Const, Id, App, If, Let {
 
 	default <R> R fold(
@@ -54,4 +55,20 @@ permits Const, Id, App, If, Let {
 			throw new Error(this.getClass().toString());
 		}
 	}
+
+	static boolean isIf(Exp exp) {
+		return exp instanceof If;
+	}
+
+	static boolean isLet(Exp exp) {
+		return exp instanceof Let;
+	}
+
+	/**
+	 * Appends the string representation of this expression to specified printer.
+	 * It does not terminate the line.
+	 * @param pp printer to append string.
+	 */
+	@Override
+	void mkString(PrettyPrinter pp);
 }

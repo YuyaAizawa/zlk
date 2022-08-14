@@ -3,6 +3,8 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.PrettyPrinter;
+
 public sealed interface Const extends Exp
 permits Bool, I32 {
 
@@ -39,10 +41,10 @@ permits Bool, I32 {
 	}
 
 	@Override
-	default void mkString(StringBuilder sb) {
+	default void mkString(PrettyPrinter pp) {
 		match(
-				bool -> sb.append(bool.value() ? "True" : "False"),
-				i32  -> sb.append(i32.value()));
+				bool -> pp.append(bool.value() ? "True" : "False"),
+				i32  -> pp.append(i32.value()));
 	}
 }
 

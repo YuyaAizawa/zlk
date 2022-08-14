@@ -2,22 +2,22 @@ package zlk.ast;
 
 import java.util.List;
 
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
+
 public record Module(
 		String name,
 		List<Decl> decls,
-		String origin) {
+		String origin)
+implements PrettyPrintable {
 
-	public String mkString() {
-		StringBuilder sb = new StringBuilder();
-		mkString(sb);
-		return sb.toString();
-	}
+	@Override
+	public void mkString(PrettyPrinter pp) {
+		pp.append("module ").append(name()).endl();
 
-	public void mkString(StringBuilder sb) {
-		sb.append("module ").append(name()).append("\n");
 		decls.forEach(decl -> {
-			decl.mkString(sb);
-			sb.append("\n");
+			pp.endl();
+			pp.append(decl).endl();
 		});
 	}
 }

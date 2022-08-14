@@ -3,11 +3,13 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.PrettyPrinter;
+
 public record TyBool ()
 implements Type {
 
 	@Override
-	public 	<R> R map(
+	public 	<R> R fold(
 			Function<TyUnit, R> forUnit,
 			Function<TyBool, R> forBool,
 			Function<TyI32, R> forI32,
@@ -25,7 +27,12 @@ implements Type {
 	}
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append("Bool");
+	public void mkString(PrettyPrinter pp) {
+		pp.append(toString());
+	}
+
+	@Override
+	public String toString() {
+		return "Bool";
 	}
 }

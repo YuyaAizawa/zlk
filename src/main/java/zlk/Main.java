@@ -32,13 +32,13 @@ public class Main {
 				fact n : I32 -> I32 =
 				  if isZero n
 				  then
-				    1
+				  1
 				  else
-				    let
-				      one : I32 = 1
-				      nn : I32 = sub n one
-				    in
-				      mul n (fact nn)
+				  let
+				    one : I32 = 1
+				    nn : I32 = sub n one
+				  in
+				    mul n (fact nn)
 
 				ans : I32 =
 				  fact 10
@@ -50,18 +50,20 @@ public class Main {
 
 		System.out.println("-- AST --");
 		Module ast = new Parser(new Lexer(name, src)).parse();
-		System.out.println(ast.mkString());
+		ast.pp(System.out);
+		System.out.println();
 
 		System.out.println("-- ID CALC --");
 		IdGenerator fresh = new IdGenerator();
 		NameEvaluator ne = new NameEvaluator(fresh);
 		Map<IdInfo, Builtin> builtins = Builtin.builtins().stream().collect(Collectors.toMap(b -> ne.registerBuiltin(b), b -> b));
 		IcModule idcalc = ne.eval(ast);
-		System.out.println(idcalc.mkString());
+		idcalc.pp(System.out);
+		System.out.println();
 
 		System.out.println("-- TYPE CHECK --");
 		idcalc.decls().forEach(
-				decl -> System.out.println(decl.id().name() + " : " + TypeChecker.check(decl).mkString()));
+				decl -> System.out.println(decl.id().name() + " : " + TypeChecker.check(decl).toString()));
 		System.out.println();
 
 		System.out.println("-- BYTECODE --");
@@ -79,7 +81,7 @@ public class Main {
 			@Override
 			protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
 				return defineClass(name, bin, 0, bin.length);
-			};
+			}
 		});
 
 		System.out.println(clazz.getDeclaredMethod("ans").invoke(null));

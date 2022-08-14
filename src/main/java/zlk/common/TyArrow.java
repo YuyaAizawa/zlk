@@ -3,13 +3,15 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.PrettyPrinter;
+
 public record TyArrow(
 		Type arg,
 		Type ret)
 implements Type {
 
 	@Override
-	public 	<R> R map(
+	public 	<R> R fold(
 			Function<TyUnit, R> forUnit,
 			Function<TyBool, R> forBool,
 			Function<TyI32, R> forI32,
@@ -27,13 +29,19 @@ implements Type {
 	}
 
 	@Override
-	public void mkString(StringBuilder sb) {
+	public void mkString(PrettyPrinter pp) {
 		arg.match(
-				unit -> unit.mkString(sb),
-				bool -> bool.mkString(sb),
-				i32 -> i32.mkString(sb),
-				arrow -> arrow.mkStringEnclosed(sb));
-		sb.append(" -> ");
-		ret.mkString(sb);
+				unit  -> pp.append(unit),
+				bool  -> pp.append(bool),
+				i32   -> pp.append(i32),
+				arrow -> pp.append("(").append(arrow).append(")"));
+		pp.append(" -> ").append(ret);
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		pp(sb);
+		return sb.toString();
 	}
 }

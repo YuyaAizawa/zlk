@@ -2,27 +2,44 @@ package zlk.ast;
 
 import java.util.List;
 
+import zlk.util.PrettyPrinter;
+
 public record App(
 		List<Exp> exps)
 implements Exp {
 
 	@Override
-	public void mkString(StringBuilder sb) {
+	public void mkString(PrettyPrinter pp) {
 		exps.get(0).match(
-				cnst  ->  cnst.mkString(sb),
-				id    ->    id.mkString(sb),
-				app   ->   app.mkString(sb),
-				ifExp -> ifExp.mkStringEnclosed(sb),
-				let   ->   let.mkStringEnclosed(sb));
+				cnst  -> pp.append(cnst),
+				id    -> pp.append(id),
+				app   -> pp.append(app),
+				ifExp -> { pp
+					.append("(").endl()
+					.inc().append(ifExp).endl()
+					.dec().append(")");
+				},
+				let   ->  {
+					pp.append("(").endl()
+					.inc().append(let).endl()
+					.dec().append(")");
+				});
 		for(int i = 1; i < exps.size(); i++) {
-			sb.append(" ");
+			pp.append(" ");
 			exps.get(i).match(
-					cnst  ->  cnst.mkString(sb),
-					id    ->    id.mkString(sb),
-					app   ->   app.mkStringEnclosed(sb),
-					ifExp -> ifExp.mkStringEnclosed(sb),
-					let   ->   let.mkStringEnclosed(sb));
+					cnst  -> pp.append(cnst),
+					id    -> pp.append(id),
+					app   -> pp.append("(").append(app).append(")"),
+					ifExp -> { pp
+						.append("(").endl()
+						.inc().append(ifExp).endl()
+						.dec().append(")");
+					},
+					let   -> { pp
+						.append("(").endl()
+						.inc().append(let).endl()
+						.dec().append(")");
+					});
 		}
 	}
-
 }

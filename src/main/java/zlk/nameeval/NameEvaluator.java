@@ -102,7 +102,7 @@ public final class NameEvaluator {
 	}
 
 	private Type getArgType(Type funType, int index) {
-		return funType.map(
+		return funType.fold(
 				unit -> { throw new IllegalArgumentException(); },
 				bool -> { throw new IllegalArgumentException(); },
 				i32  -> { throw new IllegalArgumentException(); },
