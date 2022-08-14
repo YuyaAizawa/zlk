@@ -1,5 +1,7 @@
 package zlk.idcalc;
 
+import zlk.util.PrettyPrinter;
+
 public record IcIf(
 		IcExp cond,
 		IcExp exp1,
@@ -7,12 +9,15 @@ public record IcIf(
 implements IcExp {
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append("if ");
-		cond.mkString(sb);
-		sb.append(" then ");
-		exp1.mkString(sb);
-		sb.append(" else ");
-		exp2.mkString(sb);
+	public void mkString(PrettyPrinter pp) {
+		pp.append("if ").append(cond).append(" then").endl();
+		pp.inc().append(exp1).dec().endl();
+		pp.append("else");
+		if(IcExp.isIf(exp2)) {
+			pp.append(" ").append(exp2);
+		} else {
+			pp.endl();
+			pp.inc().append(exp2).dec();
+		}
 	}
 }

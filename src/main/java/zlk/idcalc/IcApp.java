@@ -2,22 +2,32 @@ package zlk.idcalc;
 
 import java.util.List;
 
+import zlk.util.PrettyPrinter;
+
 public record IcApp(
 		IcExp fun,
-		List<IcExp> args) implements IcExp {
+		List<IcExp> args)
+implements IcExp {
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		fun.mkString(sb);
+	public void mkString(PrettyPrinter pp) {
+		pp.append(fun);
 		args.forEach(arg -> {
-			sb.append(" ");
+			pp.append(" ");
 			arg.match(
-					cnst -> cnst.mkString(sb),
-					var  -> var.mkString(sb),
-					app  -> app.mkStringEnclosed(sb),
-					if_  -> if_.mkStringEnclosed(sb),
-					let  -> let.mkStringEnclosed(sb));
+					cnst  -> pp.append(cnst),
+					id    -> pp.append(id),
+					app   -> pp.append("(").append(app).append(")"),
+					ifExp -> { pp
+						.append("(").endl()
+						.inc().append(ifExp).endl()
+						.dec().append(")");
+					},
+					let   -> { pp
+						.append("(").endl()
+						.inc().append(let)
+						.dec().append(")");
+					});
 		});
 	}
-
 }

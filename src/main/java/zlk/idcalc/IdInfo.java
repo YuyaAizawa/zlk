@@ -1,7 +1,8 @@
 package zlk.idcalc;
 
 import zlk.common.Type;
-import zlk.util.MkString;
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
 
 /**
  * 識別子情報．環境で利用して重複や未定義を防ぐ．
@@ -11,21 +12,34 @@ import zlk.util.MkString;
 public record IdInfo(
 		int id,
 		String name,
-		Type type
-) implements MkString {
-
-	public String name() {
-		return name == "" ? String.format("$%04d", id) : name;
-	}
+		Type type)
+implements PrettyPrintable {
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append(name());
+	public void mkString(PrettyPrinter pp) {
+		pp.append(name).append("#");
+		appendId(pp);
+		pp.append(":").append(type);
+	}
+
+	void appendId(PrettyPrinter pp) {
+		if(id < 10) {
+			pp.append("000");
+		} else if(id < 100) {
+			pp.append("00");
+		} else if(id < 1000) {
+			pp.append("0");
+		} else if(id < 10000){
+
+		} else {
+			throw new RuntimeException("too big id: "+id);
+		}
+		pp.append(id);
 	}
 
 	@Override
 	public int hashCode() {
-		return id;
+		return Integer.hashCode(id);
 	}
 
 	@Override
@@ -35,5 +49,12 @@ public record IdInfo(
 		} else {
 			return false;
 		}
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		mkString(new PrettyPrinter(sb));
+		return sb.toString();
 	}
 }

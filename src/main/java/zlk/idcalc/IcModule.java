@@ -2,20 +2,21 @@ package zlk.idcalc;
 
 import java.util.List;
 
-import zlk.util.MkString;
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
 
 public record IcModule(
 		String name,
 		List<IcDecl> decls,
 		String origin)
-implements MkString{
+implements PrettyPrintable{
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append("module ").append(name()).append("\n");
+	public void mkString(PrettyPrinter pp) {
+		pp.append("module ").append(name()).endl();
 		decls.forEach(decl -> {
-			decl.mkString(sb);
-			sb.append("\n");
+			pp.endl();
+			pp.append(decl).endl();
 		});
 	}
 }

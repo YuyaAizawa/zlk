@@ -3,25 +3,23 @@ package zlk.ast;
 import java.util.List;
 
 import zlk.common.Type;
-import zlk.util.MkString;
+import zlk.util.PrettyPrintable;
+import zlk.util.PrettyPrinter;
 
 public record Decl(
 		String name,
 		List<String> args,
 		Type type,
 		Exp body)
-implements MkString {
+implements PrettyPrintable {
 
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append(name);
+	public void mkString(PrettyPrinter pp) {
+		pp.append(name);
 		args.forEach(arg -> {
-			sb.append(" ").append(arg);
+			pp.append(" ").append(arg);
 		});
-		sb.append(" : ");
-		type.mkString(sb);
-		sb.append(" = ");
-		body.mkString(sb);
-		sb.append(";");
+		pp.append(" : ").append(type).append(" =").endl();
+		pp.inc().append(body).dec();
 	}
 }

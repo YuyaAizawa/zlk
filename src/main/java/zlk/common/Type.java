@@ -3,7 +3,9 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public sealed interface Type
+import zlk.util.PrettyPrintable;
+
+public sealed interface Type extends PrettyPrintable
 permits TyUnit, TyBool, TyI32, TyArrow {
 
 	public static final TyUnit unit = new TyUnit();
@@ -13,7 +15,7 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 		return new TyArrow(fun, arg);
 	}
 
-	<R> R map(
+	<R> R fold(
 			Function<TyUnit, R> forUnit,
 			Function<TyBool, R> forBool,
 			Function<TyI32, R> forI32,
@@ -26,7 +28,7 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 			Consumer<TyArrow> forArrow);
 
 	public default TyArrow asArrow() {
-		return map(
+		return fold(
 				unit  -> null,
 				bool  -> null,
 				i32   -> null,
@@ -41,31 +43,17 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 		Type type = this;
 		int rest = idx;
 		while(rest > 0) {
-			type = type.map(
+			type = type.fold(
 					unit  -> { throw new IndexOutOfBoundsException(idx); },
 					bool  -> { throw new IndexOutOfBoundsException(idx); },
 					i32   -> { throw new IndexOutOfBoundsException(idx); },
 					arrow -> arrow.ret());
 			rest--;
 		}
-		return type.map(
+		return type.fold(
 				unit  -> unit,
 				bool  -> bool,
 				i32   -> i32,
 				arrow -> arrow.arg());
-	}
-
-	void mkString(StringBuilder sb);
-
-	default String mkString() {
-		StringBuilder sb = new StringBuilder();
-		mkString(sb);
-		return sb.toString();
-	}
-
-	default void mkStringEnclosed(StringBuilder sb) {
-		sb.append("(");
-		mkString(sb);
-		sb.append(")");
 	}
 }

@@ -1,10 +1,8 @@
 package zlk.util;
 
-public record Location(int line, int column) implements MkString {
+public record Location(int line, int column) implements PrettyPrintable {
 	@Override
-	public void mkString(StringBuilder sb) {
-		sb.append(line);
-		sb.append(":");
-		sb.append(column);
+	public void mkString(PrettyPrinter pp) {
+		pp.append(line).append(":").append(column);
 	}
 }
