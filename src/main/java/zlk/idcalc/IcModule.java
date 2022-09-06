@@ -2,8 +2,8 @@ package zlk.idcalc;
 
 import java.util.List;
 
-import zlk.util.PrettyPrintable;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public record IcModule(
 		String name,

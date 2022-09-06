@@ -2,7 +2,7 @@ package zlk.ast;
 
 import java.util.List;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record App(
 		List<Exp> exps)

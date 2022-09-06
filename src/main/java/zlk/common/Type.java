@@ -3,7 +3,7 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.PrettyPrintable;
+import zlk.util.pp.PrettyPrintable;
 
 public sealed interface Type extends PrettyPrintable
 permits TyUnit, TyBool, TyI32, TyArrow {
@@ -27,7 +27,7 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 			Consumer<TyI32> forI32,
 			Consumer<TyArrow> forArrow);
 
-	public default TyArrow asArrow() {
+	default TyArrow asArrow() {
 		return fold(
 				unit  -> null,
 				bool  -> null,
@@ -35,22 +35,24 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 				arrow -> arrow);
 	}
 
-	public default boolean isArrow() {
+	default boolean isArrow() {
 		return asArrow() != null;
 	}
 
-	default Type nth(int idx) {
+	default Type apply(int cnt) {
 		Type type = this;
-		int rest = idx;
-		while(rest > 0) {
+		for(int i = 0; i < cnt ; i++) {
 			type = type.fold(
-					unit  -> { throw new IndexOutOfBoundsException(idx); },
-					bool  -> { throw new IndexOutOfBoundsException(idx); },
-					i32   -> { throw new IndexOutOfBoundsException(idx); },
+					unit  -> { throw new IndexOutOfBoundsException(cnt); },
+					bool  -> { throw new IndexOutOfBoundsException(cnt); },
+					i32   -> { throw new IndexOutOfBoundsException(cnt); },
 					arrow -> arrow.ret());
-			rest--;
 		}
-		return type.fold(
+		return type;
+	}
+
+	default Type arg(int idx) {
+		return apply(idx).fold(
 				unit  -> unit,
 				bool  -> bool,
 				i32   -> i32,

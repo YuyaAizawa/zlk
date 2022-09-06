@@ -3,8 +3,8 @@ package zlk.ast;
 import java.util.List;
 
 import zlk.common.Type;
-import zlk.util.PrettyPrintable;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public record Decl(
 		String name,

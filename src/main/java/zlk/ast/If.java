@@ -1,6 +1,6 @@
 package zlk.ast;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record If(
 		Exp cond,

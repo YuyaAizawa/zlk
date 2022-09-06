@@ -3,7 +3,7 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Const extends Exp
 permits Bool, I32 {

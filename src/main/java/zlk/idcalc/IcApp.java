@@ -2,7 +2,7 @@ package zlk.idcalc;
 
 import java.util.List;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record IcApp(
 		IcExp fun,

@@ -3,8 +3,8 @@ package zlk.idcalc;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.PrettyPrintable;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable
 permits IcConst, IcVar, IcApp, IcIf, IcLet {

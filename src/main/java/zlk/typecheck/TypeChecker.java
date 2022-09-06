@@ -15,10 +15,10 @@ public final class TypeChecker {
 		List<IdInfo> args = decl.args();
 
 		for (int i = 0; i < args.size(); i++) {
-			assertEqual(args.get(i).type(), decl.type().nth(i));
+			assertEqual(args.get(i).type(), decl.type().arg(i));
 		}
 
-		assertEqual(check(decl.body()), decl.type().nth(args.size()));
+		assertEqual(check(decl.body()), decl.type().arg(args.size()));
 
 		return decl.type();
 	}
