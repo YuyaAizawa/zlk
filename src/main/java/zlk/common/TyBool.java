@@ -3,7 +3,7 @@ package zlk.common;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record TyBool ()
 implements Type {

@@ -1,8 +1,8 @@
 package zlk.idcalc;
 
 import zlk.common.Type;
-import zlk.util.PrettyPrintable;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 /**
  * 識別子情報．環境で利用して重複や未定義を防ぐ．
@@ -54,7 +54,7 @@ implements PrettyPrintable {
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		mkString(new PrettyPrinter(sb));
+		pp(sb);
 		return sb.toString();
 	}
 }

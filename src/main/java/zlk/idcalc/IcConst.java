@@ -2,7 +2,7 @@ package zlk.idcalc;
 
 import zlk.ast.Const;
 import zlk.common.Type;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record IcConst(
 		Const cnst)

@@ -1,6 +1,6 @@
 package zlk.idcalc;
 
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrinter;
 
 public record IcVar(
 		IdInfo idInfo)

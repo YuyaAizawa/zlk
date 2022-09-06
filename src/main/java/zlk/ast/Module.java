@@ -2,8 +2,8 @@ package zlk.ast;
 
 import java.util.List;
 
-import zlk.util.PrettyPrintable;
-import zlk.util.PrettyPrinter;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public record Module(
 		String name,
