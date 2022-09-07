@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -85,5 +86,16 @@ public class Main {
 		});
 
 		System.out.println(clazz.getDeclaredMethod("ans").invoke(null));
+
+		Arrays.stream(java.lang.invoke.LambdaMetafactory.class.getMethods())
+			.filter(method -> method.getName().contains("meta"))
+			.flatMap(method -> { System.out.println(method.getReturnType().getCanonicalName()+" "+method.getName()); return Arrays.stream(method.getParameters());})
+			.forEach(param -> System.out.println(param.getType().getCanonicalName()));
+//		try {
+			clazz.getDeclaredMethod("main", String[].class).invoke(null, (Object) new String[0]);
+//		} catch (InvocationTargetException e) {
+//			e.getCause().getCause().printStackTrace();
+//		}
+
 	}
 }

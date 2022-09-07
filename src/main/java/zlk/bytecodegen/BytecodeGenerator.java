@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -39,7 +40,7 @@ public final class BytecodeGenerator {
 		cw.visit(
 				Opcodes.V16,
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
-				module.name(),
+				moduleName,
 				null,
 				"java/lang/Object",
 				null);
@@ -51,6 +52,11 @@ public final class BytecodeGenerator {
 		functionsInModule = module.decls().stream().map(decl -> decl.id()).collect(Collectors.toSet());
 		module.decls().forEach(decl -> genExposedFunction(decl));
 
+		/////////////////
+		genLambdaExpTest();
+		/////////////////
+
+		cw.visitEnd();
 		return cw.toByteArray();
 	}
 
@@ -166,6 +172,140 @@ public final class BytecodeGenerator {
 				bool -> mv.visitInsn(Opcodes.IRETURN),
 				i32  -> mv.visitInsn(Opcodes.IRETURN),
 				fun  -> {throw new IllegalArgumentException(type.toString());});
+	}
+
+	private void genLambdaExpTest() {
+
+		String implMehtod = "implMethod";
+
+		/*
+		 * private static Long implMethod(float arg0, Integer arg1) {
+		 *   return Long.valueOf(((long)(arg1.intValue())) - ((long)((int)(arg0))));
+		 * }
+		 */
+		mv = cw.visitMethod(
+				Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_SYNTHETIC,
+				implMehtod,
+				"(FLjava/lang/Integer;)Ljava/lang/Long;",
+				null,
+				null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitMethodInsn(
+				Opcodes.INVOKEVIRTUAL,
+				"java/lang/Integer",
+				"intValue",
+				"()I",
+				false);
+		mv.visitInsn(Opcodes.I2L);
+		mv.visitVarInsn(Opcodes.FLOAD, 0);
+		mv.visitInsn(Opcodes.F2I);
+		mv.visitInsn(Opcodes.I2L);
+		mv.visitInsn(Opcodes.LSUB);
+		mv.visitMethodInsn(
+				Opcodes.INVOKESTATIC,
+				"java/lang/Long",
+				"valueOf",
+				"(J)Ljava/lang/Long;",
+				false);
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(4, 2);
+		mv.visitEnd();
+
+		/*
+		 * public static main(String[] args) {
+		 *   float x = 2;
+		 *   Function<Integer, Long> f = i -> (long)i - (int)x;
+		 *   long l = f.apply(3);
+		 *   System.out.println(l);
+		 * }
+		 *
+		 * LocalVariableTable:
+		 *   0 args [Ljava/lang/String;
+		 *   1    x F
+		 *   2    f Ljava/util/function/Function;
+		 *   3    l J
+		 *
+		 * LocalVariableTypeTable:
+		 *   2    f Ljava/util/function/Function<Ljava/lang/Integer;Ljava/lang/Long;>;
+		 */
+		mv = cw.visitMethod(
+				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
+				"main",
+				"([Ljava/lang/String;)V",
+				null,
+				null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.FCONST_2);
+		mv.visitVarInsn(Opcodes.FSTORE, 1);
+		mv.visitVarInsn(Opcodes.FLOAD, 1);
+		mv.visitInvokeDynamicInsn(
+				"apply",
+				"(F)Ljava/util/function/Function;",
+				new Handle(
+						Opcodes.H_INVOKESTATIC,
+						"java/lang/invoke/LambdaMetafactory",
+						"metafactory",
+						"(Ljava/lang/invoke/MethodHandles$Lookup;"
+						+ "Ljava/lang/String;"
+						+ "Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;"
+						+ "Ljava/lang/invoke/MethodType;"
+						+ ")Ljava/lang/invoke/CallSite;",
+						false),
+				getMethodType("(Ljava/lang/Object;)Ljava/lang/Object;"),
+				new Handle(
+						Opcodes.H_INVOKESTATIC,
+						moduleName,
+						implMehtod,
+						"(FLjava/lang/Integer;)Ljava/lang/Long;",
+						false),
+				getMethodType("(Ljava/lang/Integer;)Ljava/lang/Long;"));
+		mv.visitVarInsn(Opcodes.ASTORE, 2);
+		mv.visitVarInsn(Opcodes.ALOAD, 2);
+		mv.visitInsn(Opcodes.ICONST_3);
+		mv.visitMethodInsn(
+				Opcodes.INVOKESTATIC,
+				"java/lang/Integer",
+				"valueOf",
+				"(I)Ljava/lang/Integer;",
+				false);
+		mv.visitMethodInsn(
+				Opcodes.INVOKEINTERFACE,
+				"java/util/function/Function",
+				"apply",
+				"(Ljava/lang/Object;)Ljava/lang/Object;",
+				true);
+		mv.visitTypeInsn(
+				Opcodes.CHECKCAST,
+				"java/lang/Long");
+		mv.visitMethodInsn(
+				Opcodes.INVOKEVIRTUAL,
+				"java/lang/Long",
+				"longValue",
+				"()J",
+				false);
+		mv.visitVarInsn(Opcodes.LSTORE, 3);
+		mv.visitFieldInsn(
+				Opcodes.GETSTATIC,
+				"java/lang/System",
+				"out",
+				"Ljava/io/PrintStream;");
+		mv.visitVarInsn(Opcodes.LLOAD, 3);
+		mv.visitMethodInsn(
+				Opcodes.INVOKEVIRTUAL,
+				"java/io/PrintStream",
+				"println",
+				"(J)V",
+				false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(3, 5);
+		mv.visitEnd();
+	}
+
+	private static org.objectweb.asm.Type getMethodType(String descriptor) {
+		return org.objectweb.asm.Type.getMethodType(descriptor);
 	}
 }
 
