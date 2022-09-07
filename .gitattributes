@@ -1,0 +1,3 @@
+*.java      text eol=lf
+*.zlk       text eol=lf
+*.class     binary
