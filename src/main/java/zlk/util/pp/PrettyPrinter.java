@@ -102,12 +102,14 @@ public interface PrettyPrinter extends UncheckedAppendable {
 		if(wrapper.parent == buffer) {
 			this.append(" ");
 			buffer.flush(this);
+			wrapper.parent = this;
+			wrapper.endl();
 		}
 
 		return this;
 	}
 
-	default PrettyPrinter singleline(Iterable<PrettyPrintable> targets, CharSequence delimiter) {
+	default PrettyPrinter oneline(Iterable<? extends PrettyPrintable> targets, CharSequence delimiter) {
 
 		PrettyPrinter impl = wrap(new Wrapper() {
 			boolean appended = false;
