@@ -23,7 +23,7 @@ import zlk.ast.App;
 import zlk.ast.Const;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
-import zlk.ast.Id;
+import zlk.ast.Identifier;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
@@ -226,7 +226,7 @@ public class Parser {
 
 		case DIGITS -> Const.i32(Integer.valueOf(parse(DIGITS)));
 
-		case LCID -> new Id(parse(LCID));
+		case LCID -> new Identifier(parse(LCID));
 
 		default -> throw new RuntimeException("not a exp");
 		};

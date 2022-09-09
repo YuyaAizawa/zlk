@@ -1,39 +1,33 @@
 package zlk.bytecodegen;
 
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
+import zlk.common.Id;
 import zlk.common.Type;
-import zlk.idcalc.IdInfo;
 
 public class LocalEnv {
-	ArrayList<Kvp> impl = new ArrayList<>();
+	Map<Id, LocalVar> impl = new HashMap<>();
 
-	public LocalVar bind(IdInfo idInfo) {
+	public LocalVar bind(Id idInfo) {
 		int idx = impl.size();
 		Type type = idInfo.type();
 		LocalVar localVar = new LocalVar(idx, type);
 
-		Kvp kvp = new Kvp(idInfo.id(), localVar);
-
 		if(type == Type.i32) {
-			impl.add(kvp);
+			impl.put(idInfo, localVar);
 		} else {
 			throw new IllegalArgumentException(idInfo.toString());
 		}
 		return localVar;
 	}
 
-	public LocalVar find(IdInfo idInfo) {
-		for(Kvp kvp : impl) {
-			if(kvp.key == idInfo.id()) {
-				return kvp.value;
-			}
+	public LocalVar find(Id idInfo) {
+		LocalVar result = impl.get(idInfo);
+		if(result == null) {
+			throw new NoSuchElementException(idInfo.toString());
 		}
-		throw new NoSuchElementException(idInfo.toString());
+		return result;
 	}
-
-	static record Kvp(
-			int key,
-			LocalVar value) {}
 }

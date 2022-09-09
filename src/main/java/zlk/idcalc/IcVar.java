@@ -1,14 +1,14 @@
 package zlk.idcalc;
 
+import zlk.common.Id;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcVar(
-		IdInfo idInfo)
+		Id idInfo)
 implements IcExp {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(idInfo.name()).append("#");
-		idInfo.appendId(pp);
+		pp.append(idInfo);
 	}
 }

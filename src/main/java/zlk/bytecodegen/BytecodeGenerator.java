@@ -11,23 +11,23 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import zlk.common.Id;
 import zlk.common.TyArrow;
 import zlk.common.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
-import zlk.idcalc.IdInfo;
 
 public final class BytecodeGenerator {
 
 	private String moduleName;
-	private Set<IdInfo> functionsInModule;
-	private Map<IdInfo, Builtin> builtins;
+	private Set<Id> functionsInModule;
+	private Map<Id, Builtin> builtins;
 	private ClassWriter cw;
 	private MethodVisitor mv;
 
-	public BytecodeGenerator(Map<IdInfo, Builtin> builtins) {
+	public BytecodeGenerator(Map<Id, Builtin> builtins) {
 		this.builtins = builtins;
 	}
 
@@ -103,7 +103,7 @@ public final class BytecodeGenerator {
 						bool -> bool.value() ? 1 : 0,
 								i32  -> i32.value())),
 				var -> {
-					IdInfo idInfo = var.idInfo();
+					Id idInfo = var.idInfo();
 					if(functionsInModule.contains(idInfo)) {
 						mv.visitMethodInsn(
 								Opcodes.INVOKESTATIC,

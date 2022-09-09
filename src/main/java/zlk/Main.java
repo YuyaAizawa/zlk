@@ -13,10 +13,12 @@ import org.objectweb.asm.util.TraceClassVisitor;
 
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
+import zlk.clcalc.CcModule;
+import zlk.clconv.ClosureConveter;
+import zlk.common.Id;
+import zlk.common.IdGenerator;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
-import zlk.idcalc.IdInfo;
-import zlk.nameeval.IdGenerator;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
@@ -28,6 +30,15 @@ public class Main {
 		String src =
 				"""
 				module HelloMyLang
+
+				sq a : I32 -> I32 =
+				  let
+				    pow b c : I32 -> I32 -> I32 =
+				      if isZero c
+				      then 1
+				      else mul b (pow b (sub c 1))
+				  in
+				    pow a 2
 
 				fact n : I32 -> I32 =
 				  if isZero n
@@ -41,7 +52,12 @@ public class Main {
 				    mul n (fact nn)
 
 				ans : I32 =
-				  fact 10
+				  (make_adder 3) 7
+
+				make_adder x : I32 -> I32 -> I32 =
+				  let adder y : I32 -> I32 = add x y in
+				  adder
+
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -56,7 +72,7 @@ public class Main {
 		System.out.println("-- ID CALC --");
 		IdGenerator fresh = new IdGenerator();
 		NameEvaluator ne = new NameEvaluator(fresh);
-		Map<IdInfo, Builtin> builtins = Builtin.builtins().stream().collect(Collectors.toMap(b -> ne.registerBuiltin(b), b -> b));
+		Map<Id, Builtin> builtins = Builtin.builtins().stream().collect(Collectors.toMap(b -> ne.registerBuiltin(b), b -> b));
 		IcModule idcalc = ne.eval(ast);
 		idcalc.pp(System.out);
 		System.out.println();
@@ -64,6 +80,11 @@ public class Main {
 		System.out.println("-- TYPE CHECK --");
 		idcalc.decls().forEach(
 				decl -> System.out.println(decl.id().name() + " : " + TypeChecker.check(decl).toString()));
+		System.out.println();
+
+		System.out.println("-- CL CONV --");
+		CcModule clconv = new ClosureConveter(idcalc, builtins, fresh).convert();
+		clconv.pp(System.out);
 		System.out.println();
 
 		System.out.println("-- BYTECODE --");
