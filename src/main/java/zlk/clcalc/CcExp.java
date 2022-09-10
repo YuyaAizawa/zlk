@@ -5,7 +5,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.common.Id;
-import zlk.common.IdList;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable
@@ -59,32 +58,25 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 		}
 	}
 
-	default CcExp subst(Map<Id, CcExp> map) {
+	default CcExp substId(Map<Id, Id> map) {
 		return fold(
-				cnst -> cnst,
-				var -> map.getOrDefault(var.id(), var),
-				call -> new CcCall(
-						call.fun().subst(map),
-						call.args().stream().map(arg -> arg.subst(map)).toList()),
-				mkCls -> {
-					if(map.containsKey(mkCls.clsFunc())) {
-						// TODO クロージャが変更される場合はletにして置き換える
-						throw new AssertionError("not supported dynamic closuers");
-					}
-					return new CcMkCls(
-							mkCls.clsFunc(),
-
-							// TODO 必要があればletを足す
-							new IdList(mkCls.caps().stream().map(forceVar(map)).toList()));
-				},
-				if_ -> new CcIf(
-						if_.cond().subst(map),
-						if_.thenExp().subst(map),
-						if_.elseExp().subst(map)),
-				let -> new CcLet(
+				cnst  -> cnst,
+				var   -> new CcVar(map.getOrDefault(var.id(), var.id())),
+				call  -> new CcCall(
+						call.fun().substId(map),
+						call.args().stream().map(arg -> arg.substId(map)).toList(),
+						call.returnType()),
+				mkCls -> new CcMkCls(
+						map.getOrDefault(mkCls.clsFunc(), mkCls.clsFunc()),
+						mkCls.caps().substId(map)),
+				if_   -> new CcIf(
+						if_.cond().substId(map),
+						if_.thenExp().substId(map),
+						if_.elseExp().substId(map)),
+				let   -> new CcLet(
 						let.boundVar(),
-						let.boundExp().subst(map),
-						let.mainExp().subst(map),
+						let.boundExp().substId(map),
+						let.mainExp().substId(map),
 						let.varType()));
 	}
 

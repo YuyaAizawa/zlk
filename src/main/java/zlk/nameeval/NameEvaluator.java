@@ -6,8 +6,8 @@ import java.util.List;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
-import zlk.common.IdGenerator;
 import zlk.common.Id;
+import zlk.common.IdGenerator;
 import zlk.common.IdList;
 import zlk.common.Type;
 import zlk.core.Builtin;
@@ -29,7 +29,7 @@ public final class NameEvaluator {
 	}
 
 	public Id registerBuiltin(Builtin builtin) {
-		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.action());
+		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.insn());
 	}
 
 	public IcModule eval(Module module) {

@@ -25,6 +25,9 @@ import zlk.parser.Parser;
 import zlk.typecheck.TypeChecker;
 
 public class Main {
+
+	public static Class<?> clazz;
+
 	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
 		String name = "HelloMyLang";
 		String src =
@@ -41,23 +44,27 @@ public class Main {
 				    pow a 2
 
 				fact n : I32 -> I32 =
-				  if isZero n
-				  then
-				  1
+				  if isZero n then
+				    1
 				  else
-				  let
-				    one : I32 = 1
-				    nn : I32 = sub n one
-				  in
-				    mul n (fact nn)
-
-				ans : I32 =
-				  (make_adder 3) 7
+				    let
+				      one : I32 = 1
+				      nn : I32 = sub n one
+				    in
+				      mul n (fact nn)
 
 				make_adder x : I32 -> I32 -> I32 =
 				  let adder y : I32 -> I32 = add x y in
 				  adder
 
+				ans1 : I32 =
+				  sq 42
+
+				ans2 : I32 =
+				  fact 10
+
+				ans3 : I32 =
+				  (make_adder 3) 7
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -88,7 +95,7 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- BYTECODE --");
-		byte[] bin = new BytecodeGenerator(builtins).compile(idcalc);
+		byte[] bin = new BytecodeGenerator(clconv, builtins).compile();
 		new ClassReader(bin).accept(
 				new TraceClassVisitor(
 						new PrintWriter(System.out)), 0);
@@ -98,13 +105,19 @@ public class Main {
 
 		System.out.println("-- EXECUTE --");
 
-		Class<?> clazz = Class.forName(name, true, new ClassLoader() {
+		clazz = Class.forName(name, true, new ClassLoader() {
 			@Override
 			protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
 				return defineClass(name, bin, 0, bin.length);
 			}
 		});
 
-		System.out.println(clazz.getDeclaredMethod("ans").invoke(null));
+		invoke("ans1", "sq 42 = ");
+		invoke("ans2", "fact 10 = ");
+		invoke("ans3", "(make_adder 3) 7 = ");
+	}
+
+	private static void invoke(String target, String description) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+		System.out.println(description + clazz.getDeclaredMethod(target).invoke(null));
 	}
 }

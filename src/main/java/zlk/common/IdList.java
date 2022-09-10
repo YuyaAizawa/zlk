@@ -2,6 +2,7 @@ package zlk.common;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Map;
 
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -10,8 +11,28 @@ import zlk.util.pp.PrettyPrinter;
 public class IdList extends ArrayList<Id> implements PrettyPrintable {
 
 	public IdList() {}
+	public IdList(int initialSize) {
+		super(initialSize);
+	}
 	public IdList(Collection<? extends Id> ids) {
 		super(ids);
+	}
+
+	public IdList substId(Map<Id, Id> map) {
+		if(stream().anyMatch(map::containsKey)) {
+			IdList retVal = new IdList(size());
+			forEach(id -> retVal.add(map.getOrDefault(id, id)));
+		}
+		return this;
+	}
+
+	public boolean contains(Id id) {
+		return super.contains(id);
+	}
+
+	@Override
+	public boolean contains(Object o) {
+		throw new RuntimeException("do not check as object");
 	}
 
 	@Override

@@ -26,6 +26,7 @@ import zlk.core.Builtin;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.typecheck.TypeChecker;
 
 public final class ClosureConveter {
 
@@ -52,7 +53,7 @@ public final class ClosureConveter {
 
 	/**
 	 * 関数をトップレベルに変換する．クロージャに変換された場合，その作成を返す．
-	 * @return
+	 * @return クロージャの生成（クロージャが必要だったとき）
 	 */
 	private Optional<CcMkCls> compileFunc(IcDecl decl) {
 
@@ -91,15 +92,16 @@ public final class ClosureConveter {
 		Type clsTy = Type.arrow(types);
 		Id clsId = idGenerator.generate(clsName, clsTy);
 
-		IdList clsArgs = new IdList();
-		clsArgs.addAll(originalArgs);
-		clsArgs.addAll(frees);
 
-		Map<Id, CcExp> substMap =
+		Map<Id, Id> idMap =
 				frees.stream().collect(Collectors.toMap(
 						id -> id,
-						id -> new CcVar(idGenerator.generate(id.name(), id.type()))));
-		CcExp clsBody = body.subst(substMap);
+						id -> idGenerator.generate(id.name(), id.type())));
+		IdList clsArgs = new IdList();
+		clsArgs.addAll(originalArgs);
+		frees.forEach(id -> clsArgs.add(idMap.get(id)));
+
+		CcExp clsBody = body.substId(idMap);
 
 		return new CcDecl(clsId, clsArgs, clsTy, clsBody);
 	}
@@ -113,7 +115,8 @@ public final class ClosureConveter {
 					List<CcExp> argExps =
 							app.args().stream()
 							.map(arg -> compile(arg)).toList();
-					return new CcCall(funExp, argExps);
+					Type type = TypeChecker.check(app);
+					return new CcCall(funExp, argExps, type);
 				},
 				if_  -> new CcIf(
 						compile(if_.cond()),

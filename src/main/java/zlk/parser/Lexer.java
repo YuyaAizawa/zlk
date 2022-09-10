@@ -1,5 +1,7 @@
 package zlk.parser;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -18,7 +20,7 @@ public class Lexer {
 	int current;
 	int buffer;
 	int count;
-	
+
 	int currentLine;
 	int currentColumn;
 
@@ -26,6 +28,15 @@ public class Lexer {
 
 	private static final char CR = '\r';
 	private static final char LF = '\n';
+
+	public Lexer(String fileName) throws FileNotFoundException {
+		this.fileName = fileName;
+		this.reader = new FileReader(fileName);
+		next();
+		next();
+		currentColumn = 1;
+		currentLine = 1;
+	}
 
 	public Lexer(String fileName, String src) {
 		this.fileName = fileName;

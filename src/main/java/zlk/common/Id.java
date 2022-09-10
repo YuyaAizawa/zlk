@@ -72,7 +72,7 @@ public class Id implements PrettyPrintable {
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		pp(sb);
+		ppWithType().pp(sb);
 		return sb.toString();
 	}
 }
