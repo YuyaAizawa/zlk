@@ -1,6 +1,5 @@
-package zlk.idcalc;
+package zlk.common;
 
-import zlk.common.Type;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -9,20 +8,39 @@ import zlk.util.pp.PrettyPrinter;
  * @author YuyaAizawa
  *
  */
-public record IdInfo(
-		int id,
-		String name,
-		Type type)
-implements PrettyPrintable {
+public class Id implements PrettyPrintable {
+
+	private final int id;
+	private final String name;
+	private final Type type;
+
+	Id(int id, String name, Type type) {
+		this.id = id;
+		this.name = name;
+		this.type = type;
+	}
+
+	public Type type() {
+		return type;
+	}
+
+	public String name() {
+		return name;
+	}
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(name).append("#");
 		appendId(pp);
-		pp.append(":").append(type);
 	}
 
-	void appendId(PrettyPrinter pp) {
+	public PrettyPrintable ppWithType() {
+		return pp -> {
+			pp.append(this).append(":").append(type);
+		};
+	}
+
+	private void appendId(PrettyPrinter pp) {
 		if(id < 10) {
 			pp.append("000");
 		} else if(id < 100) {
@@ -44,7 +62,7 @@ implements PrettyPrintable {
 
 	@Override
 	public boolean equals(Object obj) {
-		if(obj != null && obj instanceof IdInfo target) {
+		if(obj != null && obj instanceof Id target) {
 			return this.id == target.id;
 		} else {
 			return false;
@@ -54,7 +72,7 @@ implements PrettyPrintable {
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		pp(sb);
+		ppWithType().pp(sb);
 		return sb.toString();
 	}
 }

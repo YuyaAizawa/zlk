@@ -2,7 +2,7 @@ package zlk.ast;
 
 import zlk.util.pp.PrettyPrinter;
 
-public record Id(
+public record Identifier(
 		String name)
 implements Exp {
 

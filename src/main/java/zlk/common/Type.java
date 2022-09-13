@@ -11,8 +11,16 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 	public static final TyUnit unit = new TyUnit();
 	public static final TyBool bool = new TyBool();
 	public static final TyI32 i32 = new TyI32();
-	public static Type arrow(Type fun, Type arg) {
-		return new TyArrow(fun, arg);
+	public static Type arrow(Type... rest) {
+		if(rest.length < 2) {
+			throw new IllegalArgumentException("length: "+rest.length);
+		}
+
+		Type tail = rest[rest.length - 1];
+		for(int idx = rest.length - 2; idx > 0; idx--) {
+			tail = new TyArrow(rest[idx], tail);
+		}
+		return new TyArrow(rest[0], tail);
 	}
 
 	<R> R fold(

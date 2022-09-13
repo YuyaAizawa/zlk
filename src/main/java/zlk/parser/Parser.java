@@ -16,6 +16,7 @@ import static zlk.parser.Token.Kind.RPAREN;
 import static zlk.parser.Token.Kind.THEN;
 import static zlk.parser.Token.Kind.UCID;
 
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,7 +24,7 @@ import zlk.ast.App;
 import zlk.ast.Const;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
-import zlk.ast.Id;
+import zlk.ast.Identifier;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
@@ -48,7 +49,7 @@ import zlk.util.Location;
  *   declared identifiers appear to the right of the decl column.
  *
  * <decl> : <lcid>+ \: <type> = <exp> ;
- * 
+ *
  * <aExp> : \( <exp> \)
  *        | <constant>
  *        | <lcid>
@@ -66,12 +67,16 @@ public class Parser {
 	private Token next;
 
 	private int declColumn;
-	
+
 	public Parser(Lexer lexer) {
 		this.lexer = lexer;
 		this.current = lexer.nextToken();
 		this.next = lexer.nextToken();
 		this.declColumn = 1;
+	}
+
+	public Parser(String fileName) throws FileNotFoundException {
+		this(new Lexer(fileName));
 	}
 
 	public Module parse() {
@@ -85,14 +90,14 @@ public class Parser {
 
 		this.declColumn = 1;
 		List<Decl> decls = parseDeclList();
-		
+
 		if (current.kind() != EOF) {
 			throw new RuntimeException(current.location() + "token remained.");
 		}
 
 		return new Module(name, decls, fileName);
 	}
-	
+
 	public List<Decl> parseDeclList() {
 		List<Decl> decls = new ArrayList<>();
 		while(current.kind() == LCID) {
@@ -100,13 +105,13 @@ public class Parser {
 		}
 		return decls;
 	}
-	
+
 	public Decl parseDecl() {
 		if(current.column() != declColumn) {
 			throw new RuntimeException(
 					current.location() + " declaration must starts to the right column of the \"let\"");
 		}
-		
+
 		Location location = current.location();
 		String name = parse(LCID);
 
@@ -165,7 +170,7 @@ public class Parser {
 	private Exp parseLetExp() {
 		Location letLocation = current.location();
 		consume(LET);
-		
+
 		List<Decl> declList;
 		if(current.kind() != IN) {
 			if(current.column() <= declColumn) {
@@ -179,7 +184,7 @@ public class Parser {
 		} else {
 			declList = List.of();
 		}
-		
+
 		if(current.column() <= declColumn) {
 			throw new RuntimeException(current.location() + " missing \"in\" for \"let\"@" + letLocation);
 		}
@@ -226,7 +231,7 @@ public class Parser {
 
 		case DIGITS -> Const.i32(Integer.valueOf(parse(DIGITS)));
 
-		case LCID -> new Id(parse(LCID));
+		case LCID -> new Identifier(parse(LCID));
 
 		default -> throw new RuntimeException("not a exp");
 		};
@@ -297,7 +302,7 @@ public class Parser {
 		current = next;
 		next = lexer.nextToken();
 	}
-	
+
 	private String parse(Kind expected) {
 		if(current.kind() == expected) {
 			String ret = current.value();

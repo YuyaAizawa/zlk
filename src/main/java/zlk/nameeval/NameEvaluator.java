@@ -6,6 +6,9 @@ import java.util.List;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
+import zlk.common.Id;
+import zlk.common.IdGenerator;
+import zlk.common.IdList;
 import zlk.common.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
@@ -16,7 +19,6 @@ import zlk.idcalc.IcIf;
 import zlk.idcalc.IcLet;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
-import zlk.idcalc.IdInfo;
 
 public final class NameEvaluator {
 
@@ -26,8 +28,8 @@ public final class NameEvaluator {
 		env = new Env(generator);
 	}
 
-	public IdInfo registerBuiltin(Builtin builtin) {
-		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.action());
+	public Id registerBuiltin(Builtin builtin) {
+		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.insn());
 	}
 
 	public IcModule eval(Module module) {
@@ -48,15 +50,15 @@ public final class NameEvaluator {
 	}
 
 	public IcDecl eval(Decl decl) {
-		IdInfo id = env.get(decl.name());
+		Id id = env.get(decl.name());
 
 		env.push();
 
-		List<IdInfo> idArgs = new ArrayList<>();
+		IdList idArgs = new IdList();
 		List<String> args = decl.args();
 		for(int i = 0; i < args.size(); i++) {
 			String arg = args.get(i);
-			IdInfo argInfo = env.registerArg(id, i, arg, getArgType(decl.type(), i));
+			Id argInfo = env.registerArg(id, i, arg, getArgType(decl.type(), i));
 			idArgs.add(argInfo);
 		}
 
@@ -90,7 +92,7 @@ public final class NameEvaluator {
 					return result;
 				});
 	}
-	
+
 	private IcExp eval(List<Decl> decls, int i, Exp body) {
 		if(i < decls.size()) {
 			Decl decl = decls.get(i);

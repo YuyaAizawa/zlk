@@ -1,29 +1,29 @@
 package zlk.idcalc;
 
-import java.util.List;
-
+import zlk.common.Id;
+import zlk.common.IdList;
 import zlk.common.Type;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcDecl(
-		IdInfo id,
-		List<IdInfo> args,
+		Id id,
+		IdList args,
 		Type type,
 		IcExp body)
 implements PrettyPrintable {
 
+	public String name() {
+		return id.name();
+	}
+
+	public Type returnTy() {
+		return type.arg(args.size());
+	}
+
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(id.name()).append("#");
-		id.appendId(pp);
-
-		args.forEach(arg -> {
-			pp.append(" ");
-			pp.append(arg.name()).append("#");
-			arg.appendId(pp);
-		});
-
+		pp.append(id).append(" ").append(args);
 		pp.append(" : ").append(type).append(" =").endl();
 		pp.inc().append(body).dec();
 	}
