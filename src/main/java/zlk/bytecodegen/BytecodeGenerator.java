@@ -1,8 +1,6 @@
 package zlk.bytecodegen;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 
 import org.objectweb.asm.ClassWriter;
@@ -17,6 +15,7 @@ import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
 import zlk.common.Id;
 import zlk.common.IdList;
+import zlk.common.IdMap;
 import zlk.common.TyArrow;
 import zlk.common.Type;
 import zlk.core.Builtin;
@@ -25,8 +24,8 @@ import zlk.util.Stack;
 public final class BytecodeGenerator {
 
 	private final CcModule module;
-	private final Map<Id, Builtin> builtins;
-	private final Map<Id, String> toplevelDescs;
+	private final IdMap<Builtin> builtins;
+	private final IdMap<String> toplevelDescs;
 	private ClassWriter cw;
 
 	// for compileDecl
@@ -34,10 +33,10 @@ public final class BytecodeGenerator {
 	private Stack<Instructions> insnStack;
 	private MethodVisitor mv;
 
-	public BytecodeGenerator(CcModule module, Map<Id, Builtin> builtins) {
+	public BytecodeGenerator(CcModule module, IdMap<Builtin> builtins) {
 		this.module = module;
 		this.builtins = builtins;
-		this.toplevelDescs = new HashMap<>();
+		this.toplevelDescs = new IdMap<>();
 	}
 
 	public byte[] compile() {

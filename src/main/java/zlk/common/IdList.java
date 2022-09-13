@@ -2,7 +2,6 @@ package zlk.common;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Map;
 
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -18,10 +17,11 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 		super(ids);
 	}
 
-	public IdList substId(Map<Id, Id> map) {
+	public IdList substId(IdMap<Id> map) {
 		if(stream().anyMatch(map::containsKey)) {
 			IdList retVal = new IdList(size());
 			forEach(id -> retVal.add(map.getOrDefault(id, id)));
+			return retVal;
 		}
 		return this;
 	}

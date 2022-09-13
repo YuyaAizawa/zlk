@@ -1,14 +1,13 @@
 package zlk.bytecodegen;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.NoSuchElementException;
 
 import zlk.common.Id;
+import zlk.common.IdMap;
 import zlk.common.Type;
 
 public class LocalEnv {
-	Map<Id, LocalVar> impl = new HashMap<>();
+	IdMap<LocalVar> impl = new IdMap<>();
 
 	public LocalVar bind(Id idInfo) {
 		int idx = impl.size();
