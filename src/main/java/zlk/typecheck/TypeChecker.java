@@ -1,29 +1,31 @@
 package zlk.typecheck;
 
-import java.util.List;
-
+import zlk.common.IdList;
 import zlk.common.TyArrow;
 import zlk.common.Type;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IdInfo;
 
 public final class TypeChecker {
 	private TypeChecker() {}
 
 	public static Type check(IcDecl decl) {
-		List<IdInfo> args = decl.args();
+		try {
+			IdList args = decl.args();
 
-		for (int i = 0; i < args.size(); i++) {
-			assertEqual(args.get(i).type(), decl.type().arg(i));
+			for (int i = 0; i < args.size(); i++) {
+				assertEqual(args.get(i).type(), decl.type().arg(i));
+			}
+
+			assertEqual(check(decl.body()), decl.type().apply(args.size()));
+
+			return decl.type();
+		} catch (AssertionError e) {
+			throw new AssertionError("in " + decl.id().name(), e);
 		}
-
-		assertEqual(check(decl.body()), decl.type().arg(args.size()));
-
-		return decl.type();
 	}
 
-	private static Type check(IcExp exp) {
+	public static Type check(IcExp exp) {
 		return exp.fold(
 				cnst  -> cnst.type(),
 				var   -> var.idInfo().type(),
@@ -52,9 +54,9 @@ public final class TypeChecker {
 					return exp1Type;
 				},
 				let   -> {
-					if(check(let.decl()).isArrow()) {
-						throw new AssertionError(String.format("let only binds I32. %s : %s", let.decl().id(), let.decl().type()));
-					}
+//					if(check(let.decl()).isArrow()) {
+//						throw new AssertionError(String.format("let only binds I32. %s : %s", let.decl().id(), let.decl().type()));
+//					}
 					return check(let.body());
 				});
 	}

@@ -12,17 +12,17 @@ import zlk.util.pp.PrettyPrinter;
  *
  */
 public sealed interface Exp extends PrettyPrintable
-permits Const, Id, App, If, Let {
+permits Const, Identifier, App, If, Let {
 
 	default <R> R fold(
 			Function<Const, R> forConst,
-			Function<Id, R> forId,
+			Function<Identifier, R> forId,
 			Function<App, R> forApp,
 			Function<If, R> forIf,
 			Function<Let, R> forLet) {
 		if(this instanceof Const cnst) {
 			return forConst.apply(cnst);
-		} else if(this instanceof Id id) {
+		} else if(this instanceof Identifier id) {
 			return forId.apply(id);
 		} else if(this instanceof App app) {
 			return forApp.apply(app);
@@ -37,13 +37,13 @@ permits Const, Id, App, If, Let {
 
 	default void match(
 			Consumer<Const> forConst,
-			Consumer<Id> forId,
+			Consumer<Identifier> forId,
 			Consumer<App> forApp,
 			Consumer<If> forIf,
 			Consumer<Let> forLet) {
 		if(this instanceof Const cnst) {
 			forConst.accept(cnst);
-		} else if(this instanceof Id id) {
+		} else if(this instanceof Identifier id) {
 			forId.accept(id);
 		} else if(this instanceof App app) {
 			forApp.accept(app);

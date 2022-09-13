@@ -9,12 +9,13 @@ import java.util.function.Consumer;
 
 import org.objectweb.asm.MethodVisitor;
 
+import zlk.common.IdGenerator;
+import zlk.common.Id;
 import zlk.common.Type;
-import zlk.idcalc.IdInfo;
 
 public final class Env {
 	IdGenerator fresh;
-	Deque<Map<String, IdInfo>> envStack = new ArrayDeque<>();
+	Deque<Map<String, Id>> envStack = new ArrayDeque<>();
 
 	public Env(IdGenerator fresh) {
 		this.fresh = fresh;
@@ -29,8 +30,8 @@ public final class Env {
 		envStack.pop();
 	}
 
-	public IdInfo get(String name) {
-		IdInfo info = getOrNull(name);
+	public Id get(String name) {
+		Id info = getOrNull(name);
 		if(info == null) {
 			throw new NoSuchElementException(name);
 		} else {
@@ -38,9 +39,9 @@ public final class Env {
 		}
 	}
 
-	public IdInfo getOrNull(String name) {
+	public Id getOrNull(String name) {
 		for(var env : envStack) {
-			IdInfo value = env.get(name);
+			Id value = env.get(name);
 			if(value != null) {
 				return value;
 			}
@@ -48,28 +49,28 @@ public final class Env {
 		return null;
 	}
 
-	private void put(String name, IdInfo info) {
-		IdInfo old = getOrNull(name);
+	private void put(String name, Id info) {
+		Id old = getOrNull(name);
 		if(old != null) {
 			throw new IllegalArgumentException("already exist: "+old);
 		}
 		envStack.peek().put(name, info);
 	}
 
-	public IdInfo registerVar(String name, Type ty) {
-		IdInfo idFun = new IdInfo(fresh.generate(), name, ty);
+	public Id registerVar(String name, Type ty) {
+		Id idFun = fresh.generate(name, ty);
 		put(name, idFun);
 		return idFun;
 	}
 
-	public IdInfo registerArg(IdInfo fun, int index, String name, Type ty) {
-		IdInfo idArg = new IdInfo(fresh.generate(), name, ty);
+	public Id registerArg(Id fun, int index, String name, Type ty) {
+		Id idArg = fresh.generate(name, ty);
 		put(name, idArg);
 		return idArg;
 	}
 
-	public IdInfo registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
-		IdInfo idBuiltin = new IdInfo(fresh.generate(), name, ty);
+	public Id registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
+		Id idBuiltin = fresh.generate(name, ty);
 		put(name, idBuiltin);
 		return idBuiltin;
 	}

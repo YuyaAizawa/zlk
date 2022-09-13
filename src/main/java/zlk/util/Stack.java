@@ -87,6 +87,11 @@ public class Stack<E> implements Iterable<E> {
 		}
 	};
 
+	/**
+	 * Return an immutable empty stack for formality use.
+	 * @param <E>
+	 * @return
+	 */
 	@SuppressWarnings("unchecked")
 	public static <E> Stack<E> empty() {
 		return EMPTY;
