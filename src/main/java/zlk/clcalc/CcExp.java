@@ -1,10 +1,10 @@
 package zlk.clcalc;
 
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.common.Id;
+import zlk.common.IdMap;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable
@@ -58,7 +58,7 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 		}
 	}
 
-	default CcExp substId(Map<Id, Id> map) {
+	default CcExp substId(IdMap<Id> map) {
 		return fold(
 				cnst  -> cnst,
 				var   -> new CcVar(map.getOrDefault(var.id(), var.id())),
@@ -80,7 +80,7 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 						let.varType()));
 	}
 
-	static Function<Id, Id> forceVar(Map<Id, CcExp> map) {
+	static Function<Id, Id> forceVar(IdMap<CcExp> map) {
 		return id -> {
 			CcExp exp = map.get(id);
 			if(exp == null) {

@@ -3,10 +3,9 @@ package zlk.clconv;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import zlk.clcalc.CcCall;
@@ -21,6 +20,7 @@ import zlk.clcalc.CcVar;
 import zlk.common.Id;
 import zlk.common.IdGenerator;
 import zlk.common.IdList;
+import zlk.common.IdMap;
 import zlk.common.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcDecl;
@@ -31,13 +31,13 @@ import zlk.typecheck.TypeChecker;
 public final class ClosureConveter {
 
 	private final IcModule src;
-	private final Map<Id, Builtin> builtins;
+	private final IdMap<Builtin> builtins;
 	private final IdGenerator idGenerator;
 	private final IdList toplevelIds;
 
 	private final List<CcDecl> toplevels;
 
-	public ClosureConveter(IcModule src, Map<Id, Builtin> builtins, IdGenerator idGenerator) {
+	public ClosureConveter(IcModule src, IdMap<Builtin> builtins, IdGenerator idGenerator) {
 		this.src = src;
 		this.builtins = builtins;
 		this.idGenerator = idGenerator;
@@ -93,9 +93,9 @@ public final class ClosureConveter {
 		Id clsId = idGenerator.generate(clsName, clsTy);
 
 
-		Map<Id, Id> idMap =
-				frees.stream().collect(Collectors.toMap(
-						id -> id,
+		IdMap<Id> idMap =
+				frees.stream().collect(IdMap.collector(
+						Function.identity(),
 						id -> idGenerator.generate(id.name(), id.type())));
 		IdList clsArgs = new IdList();
 		clsArgs.addAll(originalArgs);

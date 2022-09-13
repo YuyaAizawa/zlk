@@ -5,8 +5,6 @@ import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.TraceClassVisitor;
@@ -15,8 +13,8 @@ import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
-import zlk.common.Id;
 import zlk.common.IdGenerator;
+import zlk.common.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
@@ -79,7 +77,7 @@ public class Main {
 		System.out.println("-- ID CALC --");
 		IdGenerator fresh = new IdGenerator();
 		NameEvaluator ne = new NameEvaluator(fresh);
-		Map<Id, Builtin> builtins = Builtin.builtins().stream().collect(Collectors.toMap(b -> ne.registerBuiltin(b), b -> b));
+		IdMap<Builtin> builtins = Builtin.builtins().stream().collect(IdMap.collector(b -> ne.registerBuiltin(b), b -> b));
 		IcModule idcalc = ne.eval(ast);
 		idcalc.pp(System.out);
 		System.out.println();
