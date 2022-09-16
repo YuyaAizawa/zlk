@@ -1,7 +1,9 @@
-package zlk.common;
+package zlk.common.id;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -45,5 +47,9 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 		StringBuilder sb = new StringBuilder();
 		pp(sb);
 		return sb.toString();
+	}
+
+	public static Collector<Id, ?, IdList> collector() {
+		return Collectors.toCollection(IdList::new);
 	}
 }

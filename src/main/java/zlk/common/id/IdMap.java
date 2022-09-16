@@ -1,4 +1,4 @@
-package zlk.common;
+package zlk.common.id;
 
 import java.util.EnumSet;
 import java.util.HashMap;

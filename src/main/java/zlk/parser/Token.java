@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import zlk.util.Location;
+import zlk.util.Position;
 
-public record Token(Kind kind, String value, Location location) {
+public record Token(Kind kind, String value, Position pos) {
 
 	public enum Kind {
 		UCID(""),
@@ -60,19 +60,20 @@ public record Token(Kind kind, String value, Location location) {
 		}
 	}
 
-	public Token(Kind kind, String str, int line, int column) {
-		this(kind, str, new Location(line, column));
-	}
-
-	public Token(Kind kind, int line, int column) {
-		this(kind, kind.str(), line, column);
+	public Token(Kind kind, Position pos) {
+		this(kind, kind.str(), pos);
 	}
 
 	public int line() {
-		return location.line();
+		return pos.line();
 	}
 
 	public int column() {
-		return location.column();
+		return pos.column();
+	}
+
+	public Position endPos() {
+		int codepoints = value.codePointCount(0, value.length());
+		return new Position(line(), column() + codepoints);
 	}
 }

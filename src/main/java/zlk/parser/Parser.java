@@ -16,7 +16,7 @@ import static zlk.parser.Token.Kind.RPAREN;
 import static zlk.parser.Token.Kind.THEN;
 import static zlk.parser.Token.Kind.UCID;
 
-import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,10 +28,12 @@ import zlk.ast.Identifier;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
-import zlk.common.TyArrow;
-import zlk.common.Type;
+import zlk.common.cnst.Bool;
+import zlk.common.type.TyArrow;
+import zlk.common.type.Type;
 import zlk.parser.Token.Kind;
 import zlk.util.Location;
+import zlk.util.Position;
 
 /*
  * 文法
@@ -68,6 +70,8 @@ public class Parser {
 
 	private int declColumn;
 
+	private Position end;
+
 	public Parser(Lexer lexer) {
 		this.lexer = lexer;
 		this.current = lexer.nextToken();
@@ -75,7 +79,7 @@ public class Parser {
 		this.declColumn = 1;
 	}
 
-	public Parser(String fileName) throws FileNotFoundException {
+	public Parser(String fileName) throws IOException {
 		this(new Lexer(fileName));
 	}
 
@@ -92,7 +96,7 @@ public class Parser {
 		List<Decl> decls = parseDeclList();
 
 		if (current.kind() != EOF) {
-			throw new RuntimeException(current.location() + "token remained.");
+			throw new RuntimeException(current.pos() + " token remained.");
 		}
 
 		return new Module(name, decls, fileName);
@@ -109,10 +113,10 @@ public class Parser {
 	public Decl parseDecl() {
 		if(current.column() != declColumn) {
 			throw new RuntimeException(
-					current.location() + " declaration must starts to the right column of the \"let\"");
+					current.pos() + " declaration must starts to the right column of the \"let\"");
 		}
 
-		Location location = current.location();
+		Position start = current.pos();
 		String name = parse(LCID);
 
 		List<String> args = new ArrayList<>();
@@ -121,40 +125,41 @@ public class Parser {
 		}
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing \":\" on \"" + name + "\"@" + location);
+			throw new RuntimeException(current.pos() + " missing \":\" on \"" + name + "\"@" + start);
 		}
 		consume(COLON);
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing type on \"" + name + "\"@" + location);
+			throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
 		}
 		Type type = parseType();
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing \"=\" on \"" + name + "\"@" + location);
+			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
 		}
 		consume(EQUAL);
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing body on \"" + name + "\"@" + location);
+			throw new RuntimeException(current.pos() + " missing body on \"" + name + "\"@" + start);
 		}
 		Exp body = parseExp();
 
-		return new Decl(name, args, type, body);
+		return new Decl(name, args, type, body, location(start, end));
 	}
 
 	public Exp parseExp() {
-
+		Position start = current.pos();
 		if(aExpStartToken(current)) {
 			Exp first = parseAExp();
 
 			if(aExpStartToken(current) && current.column() > declColumn) {
 				List<Exp> exps = new ArrayList<>();
 				exps.add(first);
+
 				while(aExpStartToken(current) && current.column() > declColumn) {
 					exps.add(parseAExp());
 				}
-				return new App(exps);
+				return new App(exps, location(start, end));
 			} else {
 				return first;
 			}
@@ -168,13 +173,13 @@ public class Parser {
 	}
 
 	private Exp parseLetExp() {
-		Location letLocation = current.location();
+		Position start = current.pos();
 		consume(LET);
 
 		List<Decl> declList;
 		if(current.kind() != IN) {
 			if(current.column() <= declColumn) {
-				throw new RuntimeException(current.location() + " declaration list must be indented");
+				throw new RuntimeException(current.pos() + " declaration list must be indented");
 			}
 
 			int oldDeclColumn = declColumn;
@@ -186,19 +191,20 @@ public class Parser {
 		}
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing \"in\" for \"let\"@" + letLocation);
+			throw new RuntimeException(current.pos() + " missing \"in\" for \"let\"@" + start);
 		}
 		consume(IN);
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.location() + " missing body for \"let\"@" + letLocation);
+			throw new RuntimeException(current.pos() + " missing body for \"let\"@" + start);
 		}
 		Exp body = parseExp();
 
-		return new Let(declList, body);
+		return new Let(declList, body, location(start, end));
 	}
 
 	private Exp parseIfExp() {
+		Position start = current.pos();
 		consume(IF);
 
 		Exp c = parseExp();
@@ -211,27 +217,28 @@ public class Parser {
 
 		Exp e = parseExp();
 
-		return new If(c, t, e);
+		return new If(c, t, e, location(start, end));
 	}
 
 	private Exp parseAExp() {
+		Position start = current.pos();
 		return switch(current.kind()) {
 
 		case LPAREN -> parseParenExp();
 
 		case TRUE -> {
 			nextToken();
-			yield Const.bool(true);
+			yield new Const(Bool.TRUE, location(start, end));
 		}
 
 		case FALSE -> {
 			nextToken();
-			yield Const.bool(false);
+			yield new Const(Bool.FALSE, location(start, end));
 		}
 
-		case DIGITS -> Const.i32(Integer.valueOf(parse(DIGITS)));
+		case DIGITS -> new Const(Integer.valueOf(parse(DIGITS)), location(start, end));
 
-		case LCID -> new Identifier(parse(LCID));
+		case LCID -> new Identifier(parse(LCID), location(start, end));
 
 		default -> throw new RuntimeException("not a exp");
 		};
@@ -299,6 +306,7 @@ public class Parser {
 	}
 
 	private void nextToken() {
+		end = current.endPos();
 		current = next;
 		next = lexer.nextToken();
 	}
@@ -310,7 +318,7 @@ public class Parser {
 			return ret;
 		} else {
 			throw new RuntimeException(
-					current.location() + " cannot parse. "
+					current.pos() + " cannot parse. "
 					+ ", expected: " + expected
 					+ ", actual: " + current.kind());
 		}
@@ -321,9 +329,13 @@ public class Parser {
 			nextToken();
 		} else {
 			throw new RuntimeException(
-					current.location() + " cannot consume. "
+					current.pos() + " cannot consume. "
 					+ "expected: " + expected
 					+ ", actual: " + current.kind());
 		}
+	}
+
+	private Location location(Position start, Position end) {
+		return new Location(lexer.getFileName(), start, end);
 	}
 }

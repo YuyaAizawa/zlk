@@ -1,8 +1,9 @@
 package zlk.idcalc;
 
-import zlk.common.Id;
-import zlk.common.IdList;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdList;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -10,7 +11,8 @@ public record IcDecl(
 		Id id,
 		IdList args,
 		Type type,
-		IcExp body)
+		IcExp body,
+		Location loc)
 implements PrettyPrintable {
 
 	public String name() {
@@ -18,7 +20,7 @@ implements PrettyPrintable {
 	}
 
 	public Type returnTy() {
-		return type.arg(args.size());
+		return type.apply(args.size());
 	}
 
 	@Override

@@ -1,6 +1,7 @@
 package zlk.bytecodegen;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 
 import org.objectweb.asm.ClassWriter;
@@ -9,15 +10,15 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.ast.Const;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
-import zlk.common.Id;
-import zlk.common.IdList;
-import zlk.common.IdMap;
-import zlk.common.TyArrow;
-import zlk.common.Type;
+import zlk.common.cnst.ConstValue;
+import zlk.common.id.Id;
+import zlk.common.id.IdList;
+import zlk.common.id.IdMap;
+import zlk.common.type.TyArrow;
+import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.util.Stack;
 
@@ -104,7 +105,7 @@ public final class BytecodeGenerator {
 	private void compile(CcExp exp) {
 		exp.match(
 				cnst -> {
-					loadCnst(cnst.cnst());
+					loadCnst(cnst.value());
 				},
 				var -> {
 					Id id = var.id();
@@ -148,7 +149,7 @@ public final class BytecodeGenerator {
 					Id impl = mkCls.clsFunc();
 					IdList caps = mkCls.caps();
 					List<Type> indyArgTys = caps.stream().map(Id::type).toList();
-					TyArrow indyReturnTy = impl.type().apply(indyArgTys.size()).asArrow();
+					TyArrow indyReturnTy = impl.type().apply(indyArgTys.size()).asArrow(); // TODO ここFunctionを返すのかBiFunctionなのか
 
 					if(indyReturnTy == null) {
 						throw new Error(impl.toString());
@@ -206,7 +207,7 @@ public final class BytecodeGenerator {
 				});
 	}
 
-	private void loadCnst(Const cnst) {
+	private void loadCnst(ConstValue cnst) {
 		cnst.match(
 				bool -> { mv.visitLdcInsn(bool.value() ? 1 : 0); },
 				i32  -> { mv.visitLdcInsn(i32.value());});
@@ -236,6 +237,7 @@ public final class BytecodeGenerator {
 				fun  -> mv.visitInsn(Opcodes.ARETURN));
 	}
 
+	// TODO 2個以上の引数への対応
 	private static Instructions invokeApplyWithBoxing(TyArrow ty) {
 		return mv -> {
 			Type argTy = ty.arg();
@@ -249,11 +251,12 @@ public final class BytecodeGenerator {
 						false);
 			}
 
+			// カリー化されている前提
 			mv.visitMethodInsn(
 					Opcodes.INVOKEINTERFACE,
-					toFunctionClassName(ty),
+					"java/util/function/Function",
 					"apply",
-					toFunctionApplyDescErased(ty),
+					"(Ljava/lang/Object;)Ljava/lang/Object;",
 					true);
 
 			Type retTy = ty.ret();
@@ -274,11 +277,16 @@ public final class BytecodeGenerator {
 	}
 
 	private static String toFunctionApplyDescErased(TyArrow ty) {
-		return toDesc(ty, any -> objectDesc);
+		return toDesc(ty.arg(), ty.ret(), any -> objectDesc);
 	}
 
+	/**
+	 * （カリー化された）関数オブジェクトに適用する際のディスクリプションを返す．
+	 * @param ty
+	 * @return ディスクリプション
+	 */
 	private static String toFunctionApplyDesc(TyArrow ty) {
-		return toDesc(ty, ty_ -> Boxing.of(ty_).boxedClassDesc);
+		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? "Ljava/util/function/Function;" : Boxing.of(ty_).boxedClassDesc);
 	}
 
 	private static String getDescription(CcDecl decl) {
@@ -286,6 +294,15 @@ public final class BytecodeGenerator {
 		List<Type> argTys = args.stream().map(Id::type).toList();
 		Type retTy = decl.type().apply(args.size());
 		return toDesc(argTys, retTy);
+	}
+
+	private static String toDesc(Type argTy, Type retTy, Function<Type, String> mapper) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("(");
+		sb.append(mapper.apply(argTy));
+		sb.append(")");
+		sb.append(mapper.apply(retTy));
+		return sb.toString();
 	}
 
 	private static String toDesc(List<Type> argTys, Type retTy) {
@@ -298,19 +315,6 @@ public final class BytecodeGenerator {
 		} else {
 			sb.append(toBinary(retTy));
 		}
-		return sb.toString();
-	}
-
-	private static String toDesc(Type ty, Function<Type, String> mapper) {
-		StringBuilder sb = new StringBuilder();
-		sb.append("(");
-		while(ty.isArrow()) {
-			TyArrow fun = ty.asArrow();
-			sb.append(mapper.apply(fun.arg()));
-			ty = fun.ret();
-		}
-		sb.append(")");
-		sb.append(mapper.apply(ty));
 		return sb.toString();
 	}
 
@@ -329,11 +333,9 @@ public final class BytecodeGenerator {
 		return "L"+toFunctionClassName(ty)+";";
 	}
 
-	private static String toFunctionClassName(TyArrow ty) {
-		if(ty.isArrow() && !ty.asArrow().ret().isArrow()) {
-			return "java/util/function/Function";
-		}
-		throw new Error(ty.toString());
+	private static String toFunctionClassName(TyArrow fun) {
+		Objects.requireNonNull(fun);
+		return "java/util/function/Function";
 	}
 
 	private static org.objectweb.asm.Type toMethodType(String descriptor) {

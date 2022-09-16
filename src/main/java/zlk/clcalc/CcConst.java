@@ -1,21 +1,23 @@
 package zlk.clcalc;
 
-import zlk.ast.Const;
-import zlk.common.Type;
+import zlk.common.cnst.ConstValue;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcConst(
-		Const cnst
+		ConstValue value,
+		Location loc
 ) implements CcExp {
 
 	public Type type() {
-		return cnst().fold(
+		return value().fold(
 				bool -> Type.bool,
 				i32  -> Type.i32);
 	}
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.field("const", cnst);
+		pp.field("const", value);
 	}
 }

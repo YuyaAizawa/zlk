@@ -17,16 +17,17 @@ import zlk.clcalc.CcLet;
 import zlk.clcalc.CcMkCls;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcVar;
-import zlk.common.Id;
-import zlk.common.IdGenerator;
-import zlk.common.IdList;
-import zlk.common.IdMap;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdGenerator;
+import zlk.common.id.IdList;
+import zlk.common.id.IdMap;
+import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.typecheck.TypeChecker;
+import zlk.util.Location;
 
 public final class ClosureConveter {
 
@@ -46,7 +47,7 @@ public final class ClosureConveter {
 	}
 
 	public CcModule convert() {
-		src.decls().forEach(this::compileFunc);
+		src.decls().forEach(decl -> compileFunc(decl));
 
 		return new CcModule(src.name(), toplevels, src.origin());
 	}
@@ -62,27 +63,27 @@ public final class ClosureConveter {
 
 		if(frees.isEmpty()) {
 			System.out.println(decl.name() + " is not cloeure.");
-			toplevels.add(new CcDecl(decl.id(), decl.args(), decl.type(), body));
+			toplevels.add(new CcDecl(decl.id(), decl.args(), decl.type(), body, decl.loc()));
 			toplevelIds.add(decl.id());
 			return Optional.empty();
 
 		} else if(frees.size() == 1 && frees.get(0).equals(decl.id())) {
 			System.out.println(decl.name() + " is self-recursive and not closure.");
-			toplevels.add(new CcDecl(decl.id(), decl.args(), decl.type(), body));
+			toplevels.add(new CcDecl(decl.id(), decl.args(), decl.type(), body, decl.loc()));
 			toplevelIds.add(decl.id());
 			return Optional.empty();
 
 		} else {
 			System.out.println(decl.name() + " is cloeure. frees: "+frees);
 			String clsName = decl.name(); // TODO ユニークな名前
-			CcDecl closureFunc = makeClosure(clsName, frees, decl.args(), body, decl.returnTy());
+			CcDecl closureFunc = makeClosure(clsName, frees, decl.args(), body, decl.returnTy(), decl.loc());
 			toplevels.add(closureFunc);
 			toplevelIds.add(closureFunc.id());
-			return Optional.of(new CcMkCls(closureFunc.id(), frees));
+			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
 		}
 	}
 
-	private CcDecl makeClosure(String clsName, IdList frees, IdList originalArgs, CcExp body, Type retTy) {
+	private CcDecl makeClosure(String clsName, IdList frees, IdList originalArgs, CcExp body, Type retTy, Location loc) {
 		Type[] types =
 				Stream.concat(Stream.concat(
 						frees.stream().map(Id::type),
@@ -103,37 +104,39 @@ public final class ClosureConveter {
 
 		CcExp clsBody = body.substId(idMap);
 
-		return new CcDecl(clsId, clsArgs, clsTy, clsBody);
+		return new CcDecl(clsId, clsArgs, clsTy, clsBody, loc);
 	}
 
 	private CcExp compile(IcExp body) {
 		return body.fold(
-				cnst -> new CcConst(cnst.cnst()),
-				var  -> new CcVar(var.idInfo()),
+				cnst -> new CcConst(cnst.value(), cnst.loc()),
+				var  -> new CcVar(var.idInfo(), var.loc()),
 				app  -> {
 					CcExp funExp = compile(app.fun());
 					List<CcExp> argExps =
 							app.args().stream()
 							.map(arg -> compile(arg)).toList();
 					Type type = TypeChecker.check(app);
-					return new CcCall(funExp, argExps, type);
+					return new CcCall(funExp, argExps, type, app.loc());
 				},
 				if_  -> new CcIf(
 						compile(if_.cond()),
 						compile(if_.exp1()),
-						compile(if_.exp2())),
+						compile(if_.exp2()),
+						if_.loc()),
 				let  -> {
 					if(let.decl().args().size() == 0) {
 						return new CcLet(
 								let.decl().id(),
 								compile(let.decl().body()),
 								compile(let.body()),
-								let.decl().type());
+								let.decl().type(),
+								let.loc());
 					}
 
 					CcExp bodyExp = compile(let.body());
 					return compileFunc(let.decl()).map(
-							mkCls -> (CcExp)new CcLet(let.decl().id(), mkCls, bodyExp, let.decl().type())
+							mkCls -> (CcExp)new CcLet(let.decl().id(), mkCls, bodyExp, let.decl().type(), let.loc())
 					).orElse(bodyExp);
 				});
 	}

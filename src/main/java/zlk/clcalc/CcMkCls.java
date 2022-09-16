@@ -1,12 +1,14 @@
 package zlk.clcalc;
 
-import zlk.common.Id;
-import zlk.common.IdList;
+import zlk.common.id.Id;
+import zlk.common.id.IdList;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcMkCls(
 		Id clsFunc, // メソッド定義
-		IdList caps) // キャプチャする変数
+		IdList caps,
+		Location loc) // キャプチャする変数
 implements CcExp {
 
 	@Override

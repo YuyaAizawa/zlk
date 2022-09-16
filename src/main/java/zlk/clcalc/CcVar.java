@@ -1,11 +1,13 @@
 package zlk.clcalc;
 
-import zlk.common.Id;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcVar(
-		Id id)
+		Id id,
+		Location loc)
 implements CcExp {
 
 	@Override

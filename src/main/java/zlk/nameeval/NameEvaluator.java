@@ -6,10 +6,9 @@ import java.util.List;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
-import zlk.common.Id;
-import zlk.common.IdGenerator;
-import zlk.common.IdList;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdGenerator;
+import zlk.common.id.IdList;
 import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcConst;
@@ -19,6 +18,8 @@ import zlk.idcalc.IcIf;
 import zlk.idcalc.IcLet;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
+import zlk.util.Location;
+import zlk.util.Position;
 
 public final class NameEvaluator {
 
@@ -58,62 +59,54 @@ public final class NameEvaluator {
 		List<String> args = decl.args();
 		for(int i = 0; i < args.size(); i++) {
 			String arg = args.get(i);
-			Id argInfo = env.registerArg(id, i, arg, getArgType(decl.type(), i));
+			Id argInfo = env.registerArg(id, i, arg, decl.type().apply(i).asArrow().arg());
 			idArgs.add(argInfo);
 		}
 
 		IcExp icBody = eval(decl.body());
 
 		env.pop();
-		return new IcDecl(id, idArgs, id.type(), icBody);
+		return new IcDecl(id, idArgs, id.type(), icBody, decl.loc());
 	}
 
 	public IcExp eval(Exp exp) {
 		return exp.fold(
-				cnst  -> new IcConst(cnst),
-				id    -> new IcVar(env.get(id.name())),
+				cnst  -> new IcConst(cnst.value(), cnst.loc()),
+				id    -> new IcVar(env.get(id.name()), id.loc()),
 				app   -> {
 					List<Exp> exps = app.exps();
 					IcExp icFun = eval(exps.get(0));
-					List<IcExp> icArgs = new ArrayList<>();
+					List<IcExp> icArgs = new ArrayList<>(exps.size()-1);
 					for(int i = 1; i < exps.size(); i++) {
 						icArgs.add(eval(exps.get(i)));
 					}
-					return new IcApp(icFun, icArgs);
+					return new IcApp(icFun, icArgs, app.loc());
 				},
 				ifExp -> new IcIf(
 						eval(ifExp.cond()),
 						eval(ifExp.exp1()),
-						eval(ifExp.exp2())),
+						eval(ifExp.exp2()),
+						ifExp.loc()),
 				let -> {
 					env.push();
-					IcExp result = eval(let.decls(), 0, let.body());
+					IcExp result = eval(let.decls(), let.body());
 					env.pop();
 					return result;
 				});
 	}
 
-	private IcExp eval(List<Decl> decls, int i, Exp body) {
-		if(i < decls.size()) {
-			Decl decl = decls.get(i);
-			env.registerVar(decl.name(), decl.type());
-			return new IcLet(eval(decl), eval(decls, i+1, body));
-		} else {
-			return eval(body);
-		}
-	}
+	private IcExp eval(List<Decl> decls, Exp body) {
+		decls.forEach(decl -> env.registerVar(decl.name(), decl.type()));
 
-	private Type getArgType(Type funType, int index) {
-		return funType.fold(
-				unit -> { throw new IllegalArgumentException(); },
-				bool -> { throw new IllegalArgumentException(); },
-				i32  -> { throw new IllegalArgumentException(); },
-				fun  -> {
-					if(index == 0) {
-						return fun.arg();
-					} else {
-						return getArgType(fun.ret(), index - 1);
-					}
-				});
+		IcExp retVal = eval(body);
+		String filename = body.loc().filename();
+		Position end = body.loc().end();
+
+		for(int i = decls.size()-1; i >= 0; i--) {
+			Decl decl = decls.get(i);
+			retVal = new IcLet(eval(decl), retVal,
+					new Location(filename, decl.loc().start(), end));
+		}
+		return retVal;
 	}
 }

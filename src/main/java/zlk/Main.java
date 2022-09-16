@@ -13,8 +13,8 @@ import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
-import zlk.common.IdGenerator;
-import zlk.common.IdMap;
+import zlk.common.id.IdGenerator;
+import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
@@ -51,9 +51,15 @@ public class Main {
 				    in
 				      mul n (fact nn)
 
-				make_adder x : I32 -> I32 -> I32 =
-				  let adder y : I32 -> I32 = add x y in
-				  adder
+				make_adder x : I32 -> I32 -> I32 -> I32 =
+				  let
+				    adder y : I32 -> I32 -> I32 =
+				      let
+				        adder2 z : I32 -> I32 = add (add x y) z
+				      in
+				        adder2
+				  in
+				    adder
 
 				ans1 : I32 =
 				  sq 42
@@ -62,7 +68,7 @@ public class Main {
 				  fact 10
 
 				ans3 : I32 =
-				  (make_adder 3) 7
+				  ((make_adder 3) 4) 5
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -106,13 +112,14 @@ public class Main {
 		clazz = Class.forName(name, true, new ClassLoader() {
 			@Override
 			protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
+				// 存在しないクラスは全部このバイナリとして扱う
 				return defineClass(name, bin, 0, bin.length);
 			}
 		});
 
 		invoke("ans1", "sq 42 = ");
 		invoke("ans2", "fact 10 = ");
-		invoke("ans3", "(make_adder 3) 7 = ");
+		invoke("ans3", "((make_adder 3) 4) 5 = ");
 	}
 
 	private static void invoke(String target, String description) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {

@@ -2,11 +2,13 @@ package zlk.ast;
 
 import java.util.List;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record Let(
 		List<Decl> decls,
-		Exp body)
+		Exp body,
+		Location loc)
 implements Exp {
 
 	@Override

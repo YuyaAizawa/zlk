@@ -1,11 +1,13 @@
 package zlk.clcalc;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcIf(
 		CcExp cond,
 		CcExp thenExp,
-		CcExp elseExp
+		CcExp elseExp,
+		Location loc
 ) implements CcExp {
 
 	@Override

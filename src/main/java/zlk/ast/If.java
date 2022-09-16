@@ -1,11 +1,13 @@
 package zlk.ast;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record If(
 		Exp cond,
 		Exp exp1,
-		Exp exp2)
+		Exp exp2,
+		Location loc)
 implements Exp {
 
 	@Override
