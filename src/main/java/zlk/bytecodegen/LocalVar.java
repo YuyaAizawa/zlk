@@ -1,6 +1,6 @@
 package zlk.bytecodegen;
 
-import zlk.common.Type;
+import zlk.common.type.Type;
 
 /**
  * バイトコード上で local variable として扱われる変数

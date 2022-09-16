@@ -3,6 +3,7 @@ package zlk.idcalc;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -51,6 +52,10 @@ permits IcConst, IcVar, IcApp, IcIf, IcLet {
 		}
 	}
 
+	static boolean isVar(IcExp exp) {
+		return exp instanceof IcVar;
+	}
+
 	static boolean isIf(IcExp exp) {
 		return exp instanceof IcIf;
 	}
@@ -59,6 +64,8 @@ permits IcConst, IcVar, IcApp, IcIf, IcLet {
 		return exp instanceof IcLet;
 	}
 
+	Location loc();
+
 	/**
 	 * Appends the string representation of this expression to specified printer.
 	 * It does not terminate the line.
@@ -66,4 +73,10 @@ permits IcConst, IcVar, IcApp, IcIf, IcLet {
 	 */
 	@Override
 	void mkString(PrettyPrinter pp);
+
+	public static String buildString(IcExp exp) {
+		StringBuilder sb = new StringBuilder();
+		exp.pp(sb);
+		return sb.toString();
+	}
 }

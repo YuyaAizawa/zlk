@@ -1,11 +1,14 @@
 package zlk.parser;
 
-import java.io.FileNotFoundException;
+import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+
+import zlk.util.Position;
 
 /**
  * コードポイントベースの字句解析器．
@@ -21,17 +24,17 @@ public class Lexer {
 	int buffer;
 	int count;
 
-	int currentLine;
-	int currentColumn;
+	int currentLine; // 行数
+	int currentColumn; // コードポイント数
 
 	int[] wordArray = new int[256];
 
 	private static final char CR = '\r';
 	private static final char LF = '\n';
 
-	public Lexer(String fileName) throws FileNotFoundException {
+	public Lexer(String fileName) throws IOException {
 		this.fileName = fileName;
-		this.reader = new FileReader(fileName);
+		this.reader = new BufferedReader(new FileReader(fileName, StandardCharsets.UTF_8));
 		next();
 		next();
 		currentColumn = 1;
@@ -54,37 +57,35 @@ public class Lexer {
 	public Token nextToken() {
 		skipWhitespace();
 
+		Position pos = new Position(currentLine, currentColumn);
 		Token token = switch(current) {
 
-		case ':' -> new Token(Token.Kind.COLON, currentLine, currentColumn);
-		case '=' -> new Token(Token.Kind.EQUAL, currentLine, currentColumn);
-		case '(' -> new Token(Token.Kind.LPAREN, currentLine, currentColumn);
-		case ')' -> new Token(Token.Kind.RPAREN, currentLine, currentColumn);
+		case ':' -> new Token(Token.Kind.COLON, pos);
+		case '=' -> new Token(Token.Kind.EQUAL, pos);
+		case '(' -> new Token(Token.Kind.LPAREN, pos);
+		case ')' -> new Token(Token.Kind.RPAREN, pos);
 
 		case '-' -> ifNext('>')
-				? new Token(Token.Kind.ARROW, currentLine, currentColumn)
-				: new Token(Token.Kind.ILL, '-' + codepointToString(current), currentLine, currentColumn);
+				? new Token(Token.Kind.ARROW, pos)
+				: new Token(Token.Kind.ILL, '-' + codepointToString(current), pos);
 
-		case  -1 -> new Token(Token.Kind.EOF, currentLine, currentColumn);
+		case  -1 -> new Token(Token.Kind.EOF, pos);
 
 		default -> {
 			if(isLower(current)) {
-				int startColumn = currentColumn;
 				String id = readWord();
 				Token.Kind kind = Token.Kind.lookupKeywordType(id);
 				if(kind == null) {
-					yield new Token(Token.Kind.LCID, id, currentLine, startColumn);
+					yield new Token(Token.Kind.LCID, id, pos);
 				} else {
-					yield new Token(kind, currentLine, startColumn);
+					yield new Token(kind, pos);
 				}
 			} else if(isUpper(current)) {
-				int startColumn = currentColumn;
-				yield new Token(Token.Kind.UCID, readWord(), currentLine, startColumn);
+				yield new Token(Token.Kind.UCID, readWord(), pos);
 			} else if(isDigit(current)) {
-				int startColumn = currentColumn;
-				yield new Token(Token.Kind.DIGITS, readWord(), currentLine, startColumn);
+				yield new Token(Token.Kind.DIGITS, readWord(), pos);
 			} else {
-				yield new Token(Token.Kind.ILL, new String(new int[] {current}, 0, 1), currentLine, currentColumn);
+				yield new Token(Token.Kind.ILL, new String(new int[] {current}, 0, 1), pos);
 			}
 		}};
 		next();

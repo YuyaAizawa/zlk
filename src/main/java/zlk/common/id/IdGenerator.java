@@ -1,4 +1,6 @@
-package zlk.common;
+package zlk.common.id;
+
+import zlk.common.type.Type;
 
 public class IdGenerator {
 	private int fresh;

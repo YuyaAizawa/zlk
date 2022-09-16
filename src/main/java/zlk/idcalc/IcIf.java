@@ -1,11 +1,13 @@
 package zlk.idcalc;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcIf(
 		IcExp cond,
 		IcExp exp1,
-		IcExp exp2)
+		IcExp exp2,
+		Location loc)
 implements IcExp {
 
 	@Override

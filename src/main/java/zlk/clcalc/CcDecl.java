@@ -1,8 +1,9 @@
 package zlk.clcalc;
 
-import zlk.common.Id;
-import zlk.common.IdList;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdList;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -15,7 +16,8 @@ public record CcDecl(
 		Id id,
 		IdList args,
 		Type type,
-		CcExp body)
+		CcExp body,
+		Location loc)
 implements PrettyPrintable {
 
 	@Override

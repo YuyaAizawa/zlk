@@ -1,10 +1,12 @@
 package zlk.idcalc;
 
-import zlk.common.Id;
+import zlk.common.id.Id;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcVar(
-		Id idInfo)
+		Id idInfo,
+		Location loc)
 implements IcExp {
 
 	@Override

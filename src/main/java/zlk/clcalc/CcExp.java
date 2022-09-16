@@ -3,12 +3,15 @@ package zlk.clcalc;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import zlk.common.Id;
-import zlk.common.IdMap;
+import zlk.common.id.Id;
+import zlk.common.id.IdMap;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable
 permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
+
+	Location loc();
 
 	default <R> R fold(
 			Function<CcConst, R> forConst,
@@ -61,23 +64,27 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 	default CcExp substId(IdMap<Id> map) {
 		return fold(
 				cnst  -> cnst,
-				var   -> new CcVar(map.getOrDefault(var.id(), var.id())),
+				var   -> new CcVar(map.getOrDefault(var.id(), var.id()), var.loc()),
 				call  -> new CcCall(
 						call.fun().substId(map),
 						call.args().stream().map(arg -> arg.substId(map)).toList(),
-						call.returnType()),
+						call.returnType(),
+						call.loc()),
 				mkCls -> new CcMkCls(
 						map.getOrDefault(mkCls.clsFunc(), mkCls.clsFunc()),
-						mkCls.caps().substId(map)),
+						mkCls.caps().substId(map),
+						mkCls.loc()),
 				if_   -> new CcIf(
 						if_.cond().substId(map),
 						if_.thenExp().substId(map),
-						if_.elseExp().substId(map)),
+						if_.elseExp().substId(map),
+						if_.loc()),
 				let   -> new CcLet(
 						let.boundVar(),
 						let.boundExp().substId(map),
 						let.mainExp().substId(map),
-						let.varType()));
+						let.varType(),
+						let.loc()));
 	}
 
 	static Function<Id, Id> forceVar(IdMap<CcExp> map) {

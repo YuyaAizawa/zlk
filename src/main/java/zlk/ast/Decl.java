@@ -2,7 +2,8 @@ package zlk.ast;
 
 import java.util.List;
 
-import zlk.common.Type;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -10,7 +11,8 @@ public record Decl(
 		String name,
 		List<String> args,
 		Type type,
-		Exp body)
+		Exp body,
+		Location loc)
 implements PrettyPrintable {
 
 	@Override

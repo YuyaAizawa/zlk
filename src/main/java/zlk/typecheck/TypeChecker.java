@@ -1,8 +1,8 @@
 package zlk.typecheck;
 
-import zlk.common.IdList;
-import zlk.common.TyArrow;
-import zlk.common.Type;
+import zlk.common.id.IdList;
+import zlk.common.type.TyArrow;
+import zlk.common.type.Type;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 
@@ -54,9 +54,6 @@ public final class TypeChecker {
 					return exp1Type;
 				},
 				let   -> {
-//					if(check(let.decl()).isArrow()) {
-//						throw new AssertionError(String.format("let only binds I32. %s : %s", let.decl().id(), let.decl().type()));
-//					}
 					return check(let.body());
 				});
 	}

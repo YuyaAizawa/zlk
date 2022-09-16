@@ -9,9 +9,9 @@ import java.util.function.Consumer;
 
 import org.objectweb.asm.MethodVisitor;
 
-import zlk.common.IdGenerator;
-import zlk.common.Id;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdGenerator;
+import zlk.common.type.Type;
 
 public final class Env {
 	IdGenerator fresh;

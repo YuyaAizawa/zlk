@@ -3,6 +3,7 @@ package zlk.ast;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -63,6 +64,8 @@ permits Const, Identifier, App, If, Let {
 	static boolean isLet(Exp exp) {
 		return exp instanceof Let;
 	}
+
+	public Location loc();
 
 	/**
 	 * Appends the string representation of this expression to specified printer.

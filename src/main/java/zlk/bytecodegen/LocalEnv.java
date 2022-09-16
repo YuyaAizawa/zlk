@@ -2,9 +2,9 @@ package zlk.bytecodegen;
 
 import java.util.NoSuchElementException;
 
-import zlk.common.Id;
-import zlk.common.IdMap;
-import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.common.id.IdMap;
+import zlk.common.type.Type;
 
 public class LocalEnv {
 	IdMap<LocalVar> impl = new IdMap<>();

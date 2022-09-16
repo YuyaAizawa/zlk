@@ -2,13 +2,15 @@ package zlk.clcalc;
 
 import java.util.List;
 
-import zlk.common.Type;
+import zlk.common.type.Type;
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcCall(
 		CcExp fun,
 		List<CcExp> args,
-		Type returnType)
+		Type returnType,
+		Location loc)
 implements CcExp {
 
 	@Override

@@ -6,7 +6,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import zlk.bytecodegen.Instructions;
-import zlk.common.Type;
+import zlk.common.type.Type;
 
 public record Builtin(
 		String name,

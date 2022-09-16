@@ -1,9 +1,11 @@
 package zlk.ast;
 
+import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record Identifier(
-		String name)
+		String name,
+		Location loc)
 implements Exp {
 
 	@Override

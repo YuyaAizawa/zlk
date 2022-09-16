@@ -1,11 +1,13 @@
-package zlk.common;
+package zlk.common.type;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.util.pp.PrettyPrinter;
 
-public record TyUnit()
+public record TyArrow(
+		Type arg,
+		Type ret)
 implements Type {
 
 	@Override
@@ -14,7 +16,7 @@ implements Type {
 			Function<TyBool, R> forBool,
 			Function<TyI32, R> forI32,
 			Function<TyArrow, R> forArrow) {
-		return forUnit.apply(this);
+		return forArrow.apply(this);
 	}
 
 	@Override
@@ -23,16 +25,23 @@ implements Type {
 			Consumer<TyBool> forBool,
 			Consumer<TyI32> forI32,
 			Consumer<TyArrow> forArrow) {
-		forUnit.accept(this);
+		forArrow.accept(this);
 	}
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("()");
+		arg.match(
+				unit  -> pp.append(unit),
+				bool  -> pp.append(bool),
+				i32   -> pp.append(i32),
+				arrow -> pp.append("(").append(arrow).append(")"));
+		pp.append(" -> ").append(ret);
 	}
 
 	@Override
 	public String toString() {
-		return "()";
+		StringBuilder sb = new StringBuilder();
+		pp(sb);
+		return sb.toString();
 	}
 }
