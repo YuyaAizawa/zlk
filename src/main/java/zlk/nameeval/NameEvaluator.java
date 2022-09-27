@@ -7,9 +7,7 @@ import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.common.id.Id;
-import zlk.common.id.IdGenerator;
 import zlk.common.id.IdList;
-import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcConst;
 import zlk.idcalc.IcDecl;
@@ -23,22 +21,23 @@ import zlk.util.Position;
 
 public final class NameEvaluator {
 
+	private final Module module;
 	private final Env env;
 
-	public NameEvaluator(IdGenerator generator) {
-		env = new Env(generator);
+	public NameEvaluator(Module module, IdList builtins) {
+		this.module = module;
+		env = new Env();
+		for(Id builtin : builtins) {
+			env.registerBuiltinVar(builtin);
+		}
 	}
 
-	public Id registerBuiltin(Builtin builtin) {
-		return env.registerBuiltinVar(builtin.name(), builtin.type(), builtin.insn());
-	}
-
-	public IcModule eval(Module module) {
-		env.push();
+	public IcModule eval() {
+		env.push(module.name());
 
 		// resister toplevels
 		module.decls().forEach(decl -> {
-			env.registerVar(decl.name(), decl.type());
+			env.registerVar(decl.name());
 		});
 
 		List<IcDecl> icDecls = module.decls()
@@ -47,26 +46,29 @@ public final class NameEvaluator {
 				.toList();
 
 		env.pop();
+		if(env.scopeStack.size() != 1) {
+			throw new AssertionError();
+		}
 		return new IcModule(module.name(), icDecls, module.origin());
 	}
 
 	public IcDecl eval(Decl decl) {
-		Id id = env.get(decl.name());
+		String declName = decl.name();
+		env.push(declName);
 
-		env.push();
+		Id id = env.get(declName);
 
 		IdList idArgs = new IdList();
 		List<String> args = decl.args();
-		for(int i = 0; i < args.size(); i++) {
-			String arg = args.get(i);
-			Id argInfo = env.registerArg(id, i, arg, decl.type().apply(i).asArrow().arg());
-			idArgs.add(argInfo);
+		for(String arg : args) {
+			Id argId = env.registerVar(arg);
+			idArgs.add(argId);
 		}
 
 		IcExp icBody = eval(decl.body());
 
 		env.pop();
-		return new IcDecl(id, idArgs, id.type(), icBody, decl.loc());
+		return new IcDecl(id, idArgs, decl.type(), icBody, decl.loc());
 	}
 
 	public IcExp eval(Exp exp) {
@@ -88,25 +90,21 @@ public final class NameEvaluator {
 						eval(ifExp.exp2()),
 						ifExp.loc()),
 				let -> {
-					env.push();
-					IcExp result = eval(let.decls(), let.body());
-					env.pop();
-					return result;
+					return eval(let.decls(), let.body());
 				});
 	}
 
 	private IcExp eval(List<Decl> decls, Exp body) {
-		decls.forEach(decl -> env.registerVar(decl.name(), decl.type()));
-
-		IcExp retVal = eval(body);
-		String filename = body.loc().filename();
-		Position end = body.loc().end();
-
-		for(int i = decls.size()-1; i >= 0; i--) {
-			Decl decl = decls.get(i);
-			retVal = new IcLet(eval(decl), retVal,
-					new Location(filename, decl.loc().start(), end));
+		if(decls.isEmpty()) {
+			return eval(body);
 		}
-		return retVal;
-	}
+
+		Decl decl = decls.get(0);
+
+		Position end = body.loc().end();
+		env.registerVar(decl.name());
+
+		return new IcLet(eval(decl), eval(decls.subList(1, decls.size()), body),
+				new Location(module.origin(), decl.loc().start(), end));
+		}
 }

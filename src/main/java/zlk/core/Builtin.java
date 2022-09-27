@@ -6,10 +6,11 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import zlk.bytecodegen.Instructions;
+import zlk.common.id.Id;
 import zlk.common.type.Type;
 
 public record Builtin(
-		String name,
+		Id id,
 		Type type,
 		Instructions insn)
 implements Instructions
@@ -19,7 +20,7 @@ implements Instructions
 		Type i32bool = Type.arrow(Type.i32, Type.bool);
 
 		return List.of(
-				new Builtin("isZero", i32bool, mv -> {
+				new Builtin("Basic.isZero", i32bool, mv -> {
 					mv.visitInsn(Opcodes.I2L);
 					mv.visitInsn(Opcodes.LCONST_0);
 					mv.visitInsn(Opcodes.LCMP);
@@ -28,10 +29,14 @@ implements Instructions
 					mv.visitInsn(Opcodes.ICONST_1);
 					mv.visitInsn(Opcodes.IXOR);
 				}),
-				new Builtin("add", i32i32i32, mv -> mv.visitInsn(Opcodes.IADD)),
-				new Builtin("sub", i32i32i32, mv -> mv.visitInsn(Opcodes.ISUB)),
-				new Builtin("mul", i32i32i32, mv -> mv.visitInsn(Opcodes.IMUL)),
-				new Builtin("div", i32i32i32, mv -> mv.visitInsn(Opcodes.IDIV)));
+				new Builtin("Basic.add", i32i32i32, mv -> mv.visitInsn(Opcodes.IADD)),
+				new Builtin("Basic.sub", i32i32i32, mv -> mv.visitInsn(Opcodes.ISUB)),
+				new Builtin("Basic.mul", i32i32i32, mv -> mv.visitInsn(Opcodes.IMUL)),
+				new Builtin("Basic.div", i32i32i32, mv -> mv.visitInsn(Opcodes.IDIV)));
+	}
+
+	public Builtin(String canonical, Type type, Instructions insn) {
+		this(Id.fromCanonicalName(canonical), type, insn);
 	}
 
 	@Override

@@ -1,7 +1,6 @@
 package zlk.clcalc;
 
 import zlk.common.id.Id;
-import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -10,7 +9,6 @@ public record CcLet(
 		Id boundVar,
 		CcExp boundExp,
 		CcExp mainExp,
-		Type varType,
 		Location loc)
 implements CcExp, PrettyPrintable {
 

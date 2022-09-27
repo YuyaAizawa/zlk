@@ -16,7 +16,7 @@ public record IcDecl(
 implements PrettyPrintable {
 
 	public String name() {
-		return id.name();
+		return id.canonicalName();
 	}
 
 	public Type returnTy() {

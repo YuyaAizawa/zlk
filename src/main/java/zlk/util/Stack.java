@@ -58,7 +58,7 @@ public class Stack<E> implements Iterable<E> {
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 
-			ListIterator<E> impl = Stack.this.impl.listIterator(size()-1);
+			ListIterator<E> impl = Stack.this.impl.listIterator(size());
 
 			@Override
 			public boolean hasNext() {

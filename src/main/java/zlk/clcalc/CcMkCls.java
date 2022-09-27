@@ -11,6 +11,10 @@ public record CcMkCls(
 		Location loc) // キャプチャする変数
 implements CcExp {
 
+	public Id id() {
+		return clsFunc;
+	}
+
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append("mkCls:").endl().inc();
