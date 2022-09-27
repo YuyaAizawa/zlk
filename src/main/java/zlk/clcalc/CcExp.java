@@ -14,12 +14,12 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 	Location loc();
 
 	default <R> R fold(
-			Function<CcConst, R> forConst,
-			Function<CcVar, R> forVar,
-			Function<CcCall, R> forCall,
-			Function<CcMkCls, R> forMkCls,
-			Function<CcIf, R> forIf,
-			Function<CcLet, R> forLet) {
+			Function<CcConst, ? extends R> forConst,
+			Function<CcVar, ? extends R> forVar,
+			Function<CcCall, ? extends R> forCall,
+			Function<CcMkCls, ? extends R> forMkCls,
+			Function<CcIf, ? extends R> forIf,
+			Function<CcLet, ? extends R> forLet) {
 		if(this instanceof CcConst cnst) {
 			return forConst.apply(cnst);
 		} else if(this instanceof CcVar var) {
@@ -68,7 +68,6 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 				call  -> new CcCall(
 						call.fun().substId(map),
 						call.args().stream().map(arg -> arg.substId(map)).toList(),
-						call.returnType(),
 						call.loc()),
 				mkCls -> new CcMkCls(
 						map.getOrDefault(mkCls.clsFunc(), mkCls.clsFunc()),
@@ -83,7 +82,6 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 						let.boundVar(),
 						let.boundExp().substId(map),
 						let.mainExp().substId(map),
-						let.varType(),
 						let.loc()));
 	}
 

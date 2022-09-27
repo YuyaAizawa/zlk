@@ -9,9 +9,8 @@ import zlk.common.type.Type;
 public class LocalEnv {
 	IdMap<LocalVar> impl = new IdMap<>();
 
-	public LocalVar bind(Id idInfo) {
+	public LocalVar bind(Id idInfo, Type type) {
 		int idx = impl.size();
-		Type type = idInfo.type();
 		LocalVar localVar = new LocalVar(idx, type);
 
 		if(type == Type.i32) {

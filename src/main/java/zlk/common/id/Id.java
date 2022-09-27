@@ -1,79 +1,82 @@
 package zlk.common.id;
 
-import zlk.common.type.Type;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 /**
- * 識別子情報．環境で利用して重複や未定義を防ぐ．
+ * 識別子情報．環境で利用して重複や未定義を防ぐ．名前空間にもなる．
  * @author YuyaAizawa
  *
  */
-public class Id implements PrettyPrintable {
+public final class Id implements PrettyPrintable {
 
-	private final int id;
-	private final String name;
-	private final Type type;
+	public static final String SEPARATOR = ".";
 
-	Id(int id, String name, Type type) {
-		this.id = id;
-		this.name = name;
-		this.type = type;
+	private final String parent;
+	private final String simpleName;
+
+	public static Id fromCanonicalName(String canonical) {
+		return new Id(canonical);
 	}
 
-	public Type type() {
-		return type;
+	public static Id fromPathAndSimpleName(String path, String simple) {
+		return new Id(path, simple);
 	}
 
-	public String name() {
-		return name;
+	public static Id fromParentAndSimpleName(Id parent, String simple) {
+		return new Id(parent.canonicalName(), simple);
+	}
+
+	private Id(String parent, String simpleName) {
+		this.parent = parent.intern();
+		this.simpleName = simpleName.intern();
+	}
+	private Id(String canonicalName) {
+		this(canonicalName, canonicalName.lastIndexOf(SEPARATOR));
+	}
+	private Id(String canonicalName, int lastDotIndex) {
+		this(
+				canonicalName.substring(0, Math.max(lastDotIndex, 0)),
+				canonicalName.substring(lastDotIndex+1));
+	}
+
+	public String simpleName() {
+		return simpleName;
+	}
+
+	public String canonicalName() {
+		return parent.isEmpty()
+				? simpleName
+				: parent + SEPARATOR + simpleName;
 	}
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(name).append("#");
-		appendId(pp);
-	}
-
-	public PrettyPrintable ppWithType() {
-		return pp -> {
-			pp.append(this).append(":").append(type);
-		};
-	}
-
-	private void appendId(PrettyPrinter pp) {
-		if(id < 10) {
-			pp.append("000");
-		} else if(id < 100) {
-			pp.append("00");
-		} else if(id < 1000) {
-			pp.append("0");
-		} else if(id < 10000){
-
+		if(parent.isEmpty()) {
+			pp.append(simpleName);
 		} else {
-			throw new RuntimeException("too big id: "+id);
+			pp.append(parent).append(SEPARATOR).append(simpleName);
 		}
-		pp.append(id);
+
 	}
 
 	@Override
 	public int hashCode() {
-		return Integer.hashCode(id);
+		return parent.hashCode() * 255 + simpleName.hashCode();
 	}
 
 	@Override
 	public boolean equals(Object obj) {
-		if(obj != null && obj instanceof Id target) {
-			return this.id == target.id;
-		} else {
+		if(obj == null || obj.getClass() != Id.class) {
 			return false;
 		}
+		Id other = (Id) obj;
+
+		return other.simpleName == this.simpleName && other.parent == this.parent;
 	}
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		ppWithType().pp(sb);
-		return sb.toString();
+		return canonicalName();
 	}
 }

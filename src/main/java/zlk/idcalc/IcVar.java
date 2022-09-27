@@ -5,12 +5,12 @@ import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcVar(
-		Id idInfo,
+		Id id,
 		Location loc)
 implements IcExp {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(idInfo);
+		pp.append(id);
 	}
 }

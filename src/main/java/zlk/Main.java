@@ -13,8 +13,9 @@ import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
-import zlk.common.id.IdGenerator;
+import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
@@ -81,25 +82,25 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- ID CALC --");
-		IdGenerator fresh = new IdGenerator();
-		NameEvaluator ne = new NameEvaluator(fresh);
-		IdMap<Builtin> builtins = Builtin.builtins().stream().collect(IdMap.collector(b -> ne.registerBuiltin(b), b -> b));
-		IcModule idcalc = ne.eval(ast);
+		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
+		NameEvaluator ne = new NameEvaluator(ast, builtinIds);
+		IcModule idcalc = ne.eval();
 		idcalc.pp(System.out);
 		System.out.println();
 
 		System.out.println("-- TYPE CHECK --");
-		idcalc.decls().forEach(
-				decl -> System.out.println(decl.id().name() + " : " + TypeChecker.check(decl).toString()));
+		TypeChecker typeChecker = new TypeChecker(Builtin.builtins().stream().collect(
+				IdMap.collector(b -> b.id(), b -> b.type())));
+		IdMap<Type> types = typeChecker.check(idcalc);
 		System.out.println();
 
 		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConveter(idcalc, builtins, fresh).convert();
+		CcModule clconv = new ClosureConveter(idcalc, types, builtinIds).convert();
 		clconv.pp(System.out);
 		System.out.println();
 
 		System.out.println("-- BYTECODE --");
-		byte[] bin = new BytecodeGenerator(clconv, builtins).compile();
+		byte[] bin = new BytecodeGenerator(clconv, types, Builtin.builtins()).compile();
 		new ClassReader(bin).accept(
 				new TraceClassVisitor(
 						new PrintWriter(System.out)), 0);

@@ -8,8 +8,8 @@ import zlk.util.pp.PrettyPrinter;
 public record Module(
 		String name,
 		List<Decl> decls,
-		String origin)
-implements PrettyPrintable {
+		String origin     // ファイル名
+) implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {

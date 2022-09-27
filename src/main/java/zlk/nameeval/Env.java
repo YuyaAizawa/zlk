@@ -1,77 +1,97 @@
 package zlk.nameeval;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.function.Consumer;
-
-import org.objectweb.asm.MethodVisitor;
 
 import zlk.common.id.Id;
-import zlk.common.id.IdGenerator;
-import zlk.common.type.Type;
+import zlk.util.Stack;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public final class Env {
-	IdGenerator fresh;
-	Deque<Map<String, Id>> envStack = new ArrayDeque<>();
+	Stack<Scope> scopeStack;
 
-	public Env(IdGenerator fresh) {
-		this.fresh = fresh;
-		push();
+	public Env() {
+		scopeStack = new Stack<>();
+		scopeStack.push(new Scope(""));
 	}
 
-	public void push() {
-		envStack.push(new HashMap<>());
+	public void push(String scopeSimpleName) {
+		String scopeCanonicalName = getCanonical(scopeSimpleName);
+		scopeStack.push(new Scope(scopeCanonicalName));
 	}
 
 	public void pop() {
-		envStack.pop();
-	}
-
-	public Id get(String name) {
-		Id info = getOrNull(name);
-		if(info == null) {
-			throw new NoSuchElementException(name);
-		} else {
-			return info;
-		}
+		scopeStack.pop();
 	}
 
 	public Id getOrNull(String name) {
-		for(var env : envStack) {
-			Id value = env.get(name);
-			if(value != null) {
-				return value;
+		for(var scope : scopeStack) {
+			Id id = scope.ids().get(name);
+			if(id != null) {
+				return id;
 			}
 		}
 		return null;
 	}
 
-	private void put(String name, Id info) {
+	public Id get(String name) {
+		Id id = getOrNull(name);
+		if(id == null) {
+			for(Scope scope: scopeStack) {
+				scope.pp(System.out);
+				System.out.println();
+			}
+			throw new NoSuchElementException(name);
+		} else {
+			return id;
+		}
+	}
+
+	private void put(String name, Id id) {
 		Id old = getOrNull(name);
 		if(old != null) {
 			throw new IllegalArgumentException("already exist: "+old);
 		}
-		envStack.peek().put(name, info);
+		scopeStack.peek().ids().put(name, id);
 	}
 
-	public Id registerVar(String name, Type ty) {
-		Id idFun = fresh.generate(name, ty);
-		put(name, idFun);
-		return idFun;
+	public Id registerVar(String simpleName) {
+		String canonical = getCanonical(simpleName);
+		Id id = Id.fromCanonicalName(canonical);
+		put(simpleName, id);
+		return id;
 	}
 
-	public Id registerArg(Id fun, int index, String name, Type ty) {
-		Id idArg = fresh.generate(name, ty);
-		put(name, idArg);
-		return idArg;
+	public Id registerBuiltinVar(Id id) {
+		put(id.simpleName(), id);
+		return id;
 	}
 
-	public Id registerBuiltinVar(String name, Type ty, Consumer<MethodVisitor> action) {
-		Id idBuiltin = fresh.generate(name, ty);
-		put(name, idBuiltin);
-		return idBuiltin;
+	private String getCanonical(String simple) {
+		return scopeStack.peek().name().canonicalName() + Id.SEPARATOR + simple;
+	}
+}
+
+record Scope(
+		Id name,
+		Map<String, Id> ids
+) implements PrettyPrintable {
+
+	Scope(String canonicalName) {
+		this(Id.fromCanonicalName(canonicalName), new HashMap<>());
+	}
+
+	@Override
+	public void mkString(PrettyPrinter pp) {
+		List<? extends PrettyPrintable> entryies = ids.entrySet().stream().map(e -> new PrettyPrintable() {
+			@Override
+			public void mkString(PrettyPrinter pp) {
+				pp.append(e.getKey()).append(": ").append(e.getValue().canonicalName());
+			}
+		}).toList();
+		pp.append("name: ").append(name).append(", entry: [").oneline(entryies, ", ").append("]");
 	}
 }

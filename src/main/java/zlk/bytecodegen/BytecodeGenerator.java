@@ -3,6 +3,7 @@ package zlk.bytecodegen;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -10,6 +11,7 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import zlk.clcalc.CcCall;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
@@ -25,6 +27,7 @@ import zlk.util.Stack;
 public final class BytecodeGenerator {
 
 	private final CcModule module;
+	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
 	private ClassWriter cw;
@@ -34,15 +37,16 @@ public final class BytecodeGenerator {
 	private Stack<Instructions> insnStack;
 	private MethodVisitor mv;
 
-	public BytecodeGenerator(CcModule module, IdMap<Builtin> builtins) {
+	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins) {
 		this.module = module;
-		this.builtins = builtins;
+		this.types = types;
+		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.toplevelDescs = new IdMap<>();
 	}
 
 	public byte[] compile() {
 		module.toplevels().forEach(decl -> {
-			toplevelDescs.put(decl.id(), getDescription(decl));
+			toplevelDescs.put(decl.id(), getDescription(decl, types));
 		});
 
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -90,14 +94,14 @@ public final class BytecodeGenerator {
 
 		mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-				decl.id().name(),
+				javaMethodName(decl.id()),
 				toplevelDescs.get(decl.id()),
 				null,
 				null);
 
 		mv.visitCode();
 		compile(decl.body());
-		genReturn(decl.type().apply(decl.args().size()));
+		genReturn(types.get(decl.id()).apply(decl.args().size()));
 		mv.visitMaxs(-1, -1); // compute all frames and localautomatically
 		mv.visitEnd();
 	}
@@ -109,8 +113,8 @@ public final class BytecodeGenerator {
 				},
 				var -> {
 					Id id = var.id();
-					String descriptor = toplevelDescs.get(id);
-					Builtin builtin = builtins.get(id);
+					String descriptor = toplevelDescs.getOrNull(id);
+					Builtin builtin = builtins.getOrNull(id);
 					int localIdx = locals.indexOf(id);
 
 					if(descriptor != null) {
@@ -119,7 +123,7 @@ public final class BytecodeGenerator {
 								mv.visitMethodInsn(
 									Opcodes.INVOKESTATIC,
 									module.name(),
-									id.name(),
+									javaMethodName(id),
 									descriptor,
 									false));
 
@@ -127,7 +131,7 @@ public final class BytecodeGenerator {
 						insnStack.push(builtin);
 
 					} else if(localIdx != -1){
-						loadLocal(localIdx, id.type());
+						loadLocal(localIdx, types.get(var.id()));
 
 					} else {
 						throw new Error("unkown id: "+id.toString());
@@ -140,7 +144,7 @@ public final class BytecodeGenerator {
 					insnStack.pop().insert(mv);
 
 					// 呼ばれないかもしれないがFunctionが戻り値のときは詰んでおく
-					TyArrow ty = call.returnType().asArrow();
+					TyArrow ty = returnType(call).asArrow();
 					if(ty != null) {
 						insnStack.push(invokeApplyWithBoxing(ty));
 					}
@@ -148,15 +152,15 @@ public final class BytecodeGenerator {
 				mkCls -> {
 					Id impl = mkCls.clsFunc();
 					IdList caps = mkCls.caps();
-					List<Type> indyArgTys = caps.stream().map(Id::type).toList();
-					TyArrow indyReturnTy = impl.type().apply(indyArgTys.size()).asArrow(); // TODO ここFunctionを返すのかBiFunctionなのか
+					List<Type> indyArgTys = caps.stream().map(types::get).toList();
+					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow(); // TODO ここFunctionを返すのかBiFunctionなのか
 
 					if(indyReturnTy == null) {
 						throw new Error(impl.toString());
 					}
 
 					caps.forEach(cap -> {
-						loadLocal(locals.indexOf(cap), cap.type());
+						loadLocal(locals.indexOf(cap), types.get(cap));
 					});
 
 					mv.visitInvokeDynamicInsn(
@@ -178,7 +182,7 @@ public final class BytecodeGenerator {
 							new Handle(
 									Opcodes.H_INVOKESTATIC,
 									module.name(),
-									impl.name(),
+									javaMethodName(impl),
 									toplevelDescs.get(impl),
 									false),
 							toMethodType(toFunctionApplyDesc(indyReturnTy)));
@@ -202,7 +206,7 @@ public final class BytecodeGenerator {
 					compile(let.boundExp());
 					Id var = let.boundVar();
 					locals.add(var);
-					storeLocal(locals.size()-1, var.type());
+					storeLocal(locals.size()-1, types.get(var));
 					compile(let.mainExp());
 				});
 	}
@@ -262,6 +266,7 @@ public final class BytecodeGenerator {
 			Type retTy = ty.ret();
 			if(retTy.isArrow()) {
 				mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
+
 			} else {
 				Boxing boxing = Boxing.of(retTy);
 				mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
@@ -289,10 +294,10 @@ public final class BytecodeGenerator {
 		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? "Ljava/util/function/Function;" : Boxing.of(ty_).boxedClassDesc);
 	}
 
-	private static String getDescription(CcDecl decl) {
+	private static String getDescription(CcDecl decl, IdMap<Type> types) {
 		IdList args = decl.args();
-		List<Type> argTys = args.stream().map(Id::type).toList();
-		Type retTy = decl.type().apply(args.size());
+		List<Type> argTys = args.stream().map(types::get).toList();
+		Type retTy = types.get(decl.id()).apply(args.size());
 		return toDesc(argTys, retTy);
 	}
 
@@ -340,6 +345,33 @@ public final class BytecodeGenerator {
 
 	private static org.objectweb.asm.Type toMethodType(String descriptor) {
 		return org.objectweb.asm.Type.getMethodType(descriptor);
+	}
+
+	private Type returnType(CcCall call) {
+		Type funTy = getType(call.fun());
+		return funTy.apply(call.args().size());
+	}
+
+	private Type getType(CcExp exp) {
+		return exp.fold(
+				cnst  -> cnst.type(),
+				var   -> types.get(var.id()),
+				call  -> returnType(call),
+				mkCls -> types.get(mkCls.id()),
+				if_   -> getType(if_.thenExp()),
+				let   -> getType(let.mainExp()));
+	}
+
+	private static Pattern separatorReplacer = Pattern.compile(Id.SEPARATOR, Pattern.LITERAL);
+	private String javaMethodName(Id id) {
+		String canonical = id.canonicalName();
+		String moduleName = module.name();
+		if(!canonical.startsWith(moduleName)) {
+			throw new IllegalArgumentException("illegal name: "+canonical+", module: "+moduleName);
+		}
+
+		return separatorReplacer.matcher(
+				canonical.subSequence(moduleName.length()+1, canonical.length())).replaceAll("\\$");
 	}
 }
 
