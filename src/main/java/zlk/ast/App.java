@@ -14,7 +14,7 @@ implements Exp {
 	public void mkString(PrettyPrinter pp) {
 		exps.get(0).match(
 				cnst  -> pp.append(cnst),
-				id    -> pp.append(id),
+				var   -> pp.append(var),
 				app   -> pp.append(app),
 				ifExp -> { pp
 					.append("(").endl()

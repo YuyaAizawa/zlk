@@ -1,14 +1,14 @@
-package zlk.clcalc;
+package zlk.idcalc;
 
 import zlk.common.cnst.ConstValue;
 import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
-public record CcConst(
+public record IcCnst(
 		ConstValue value,
-		Location loc
-) implements CcExp {
+		Location loc)
+implements IcExp {
 
 	public Type type() {
 		return value().fold(
@@ -18,6 +18,6 @@ public record CcConst(
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.field("const", value);
+		pp.append(value);
 	}
 }

@@ -6,16 +6,16 @@ import zlk.common.cnst.I32;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
-public record Const(
+public record Cnst(
 	ConstValue value,
 	Location loc
 ) implements Exp {
 
-	public Const(boolean value, Location loc) {
+	public Cnst(boolean value, Location loc) {
 		this(value ? Bool.TRUE : Bool.FALSE, loc);
 	}
 
-	public Const(int value, Location loc) {
+	public Cnst(int value, Location loc) {
 		this(new I32(value), loc);
 	}
 

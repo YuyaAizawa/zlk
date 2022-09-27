@@ -9,7 +9,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import zlk.clcalc.CcCall;
-import zlk.clcalc.CcConst;
+import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcIf;
@@ -109,7 +109,7 @@ public final class ClosureConveter {
 
 	private CcExp compile(IcExp body) {
 		return body.fold(
-				cnst -> new CcConst(cnst.value(), cnst.loc()),
+				cnst -> new CcCnst(cnst.value(), cnst.loc()),
 				var  -> new CcVar(var.id(), var.loc()),
 				app  -> {
 					CcExp funExp = compile(app.fun());

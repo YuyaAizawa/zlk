@@ -21,13 +21,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import zlk.ast.App;
-import zlk.ast.Const;
+import zlk.ast.Cnst;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
-import zlk.ast.Identifier;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
+import zlk.ast.Var;
 import zlk.common.cnst.Bool;
 import zlk.common.type.TyArrow;
 import zlk.common.type.Type;
@@ -35,31 +35,32 @@ import zlk.parser.Token.Kind;
 import zlk.util.Location;
 import zlk.util.Position;
 
-/*
- * 文法
- * <compileUnit> : <module>
+/**
+ * 構文解析器.
+ * <h2>文法</h2>
+ * <pre>{@code
+ * <module>   ::= module <ucid> <declList>
  *
- * <module> : module <ucid> <declList>
- *
- * <exp> : <aExp>+
- *       | let $<declList> in <exp>
- *       | if <exp> then <exp> else <exp>
+ * <exp>      ::= <aExp>+
+ *              | let $<declList> in <exp>
+ *              | if <exp> then <exp> else <exp>
  * $ The declList starts to the right column of the "let" keyword.
  *
- * <declList> : $(<decl>+)
+ * <declList> ::= $(<decl>+)
  * $ The all decls start in the same column. This column called decl column of the declList. The elements other than the
  *   declared identifiers appear to the right of the decl column.
  *
- * <decl> : <lcid>+ \: <type> = <exp> ;
+ * <decl>     ::= <lcid>+ : <type> = <exp> ;
  *
- * <aExp> : \( <exp> \)
- *        | <constant>
- *        | <lcid>
+ * <aExp>     ::= ( <exp> )
+ *              | <constant>
+ *              | <lcid>
  *
- * <type> : <aType> ( -> <type> )?
+ * <type>     ::= <aType> ( -> <type> )?
  *
- * <aType> : \( <type> \)
- *         | <ucid>
+ * <aType>    ::= ( <type> )
+ *              | <ucid>
+ * }</pre>
  */
 public class Parser {
 
@@ -228,17 +229,17 @@ public class Parser {
 
 		case TRUE -> {
 			nextToken();
-			yield new Const(Bool.TRUE, location(start, end));
+			yield new Cnst(Bool.TRUE, location(start, end));
 		}
 
 		case FALSE -> {
 			nextToken();
-			yield new Const(Bool.FALSE, location(start, end));
+			yield new Cnst(Bool.FALSE, location(start, end));
 		}
 
-		case DIGITS -> new Const(Integer.valueOf(parse(DIGITS)), location(start, end));
+		case DIGITS -> new Cnst(Integer.valueOf(parse(DIGITS)), location(start, end));
 
-		case LCID -> new Identifier(parse(LCID), location(start, end));
+		case LCID -> new Var(parse(LCID), location(start, end));
 
 		default -> throw new RuntimeException("not a exp");
 		};

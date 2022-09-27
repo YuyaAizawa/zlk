@@ -9,19 +9,19 @@ import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable
-permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
+permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 
 	Location loc();
 
 	default <R> R fold(
-			Function<CcConst, ? extends R> forConst,
+			Function<CcCnst, ? extends R> forCnst,
 			Function<CcVar, ? extends R> forVar,
 			Function<CcCall, ? extends R> forCall,
 			Function<CcMkCls, ? extends R> forMkCls,
 			Function<CcIf, ? extends R> forIf,
 			Function<CcLet, ? extends R> forLet) {
-		if(this instanceof CcConst cnst) {
-			return forConst.apply(cnst);
+		if(this instanceof CcCnst cnst) {
+			return forCnst.apply(cnst);
 		} else if(this instanceof CcVar var) {
 			return forVar.apply(var);
 		} else if(this instanceof CcCall call) {
@@ -38,14 +38,14 @@ permits CcConst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 	}
 
 	default void match(
-			Consumer<CcConst> forConst,
+			Consumer<CcCnst> forCnst,
 			Consumer<CcVar> forVar,
 			Consumer<CcCall> forCall,
 			Consumer<CcMkCls> forMkCls,
 			Consumer<CcIf> forIf,
 			Consumer<CcLet> forLet) {
-		if(this instanceof CcConst cnst) {
-			forConst.accept(cnst);
+		if(this instanceof CcCnst cnst) {
+			forCnst.accept(cnst);
 		} else if(this instanceof CcVar var) {
 			forVar.accept(var);
 		} else if(this instanceof CcCall call) {

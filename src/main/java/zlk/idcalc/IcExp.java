@@ -8,16 +8,16 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable
-permits IcConst, IcVar, IcApp, IcIf, IcLet {
+permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 
 	default <R> R fold(
-			Function<IcConst, R> forConst,
+			Function<IcCnst, R> forCnst,
 			Function<IcVar, R> forVar,
 			Function<IcApp, R> forApp,
 			Function<IcIf, R> forIf,
 			Function<IcLet, R> forLet) {
-		if(this instanceof IcConst cnst) {
-			return forConst.apply(cnst);
+		if(this instanceof IcCnst cnst) {
+			return forCnst.apply(cnst);
 		} else if(this instanceof IcVar id) {
 			return forVar.apply(id);
 		} else if(this instanceof IcApp app) {
@@ -32,13 +32,13 @@ permits IcConst, IcVar, IcApp, IcIf, IcLet {
 	}
 
 	default void match(
-			Consumer<IcConst> forConst,
+			Consumer<IcCnst> forCnst,
 			Consumer<IcVar> forVar,
 			Consumer<IcApp> forApp,
 			Consumer<IcIf> forIf,
 			Consumer<IcLet> forLet) {
-		if(this instanceof IcConst cnst) {
-			forConst.accept(cnst);
+		if(this instanceof IcCnst cnst) {
+			forCnst.accept(cnst);
 		} else if(this instanceof IcVar id) {
 			forVar.accept(id);
 		} else if(this instanceof IcApp app) {

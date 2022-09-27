@@ -9,7 +9,7 @@ import zlk.ast.Module;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.idcalc.IcApp;
-import zlk.idcalc.IcConst;
+import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcIf;
@@ -73,8 +73,8 @@ public final class NameEvaluator {
 
 	public IcExp eval(Exp exp) {
 		return exp.fold(
-				cnst  -> new IcConst(cnst.value(), cnst.loc()),
-				id    -> new IcVar(env.get(id.name()), id.loc()),
+				cnst  -> new IcCnst(cnst.value(), cnst.loc()),
+				var   -> new IcVar(env.get(var.name()), var.loc()),
 				app   -> {
 					List<Exp> exps = app.exps();
 					IcExp icFun = eval(exps.get(0));
