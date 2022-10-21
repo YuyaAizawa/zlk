@@ -4,18 +4,19 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcExp extends PrettyPrintable
+public sealed interface IcExp extends PrettyPrintable, LocationHolder
 permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 
 	default <R> R fold(
-			Function<IcCnst, R> forCnst,
-			Function<IcVar, R> forVar,
-			Function<IcApp, R> forApp,
-			Function<IcIf, R> forIf,
-			Function<IcLet, R> forLet) {
+			Function<? super IcCnst, R> forCnst,
+			Function<? super IcVar, R> forVar,
+			Function<? super IcApp, R> forApp,
+			Function<? super IcIf, R> forIf,
+			Function<? super IcLet, R> forLet) {
 		if(this instanceof IcCnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof IcVar id) {
@@ -32,11 +33,11 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 	}
 
 	default void match(
-			Consumer<IcCnst> forCnst,
-			Consumer<IcVar> forVar,
-			Consumer<IcApp> forApp,
-			Consumer<IcIf> forIf,
-			Consumer<IcLet> forLet) {
+			Consumer<? super IcCnst> forCnst,
+			Consumer<? super IcVar> forVar,
+			Consumer<? super IcApp> forApp,
+			Consumer<? super IcIf> forIf,
+			Consumer<? super IcLet> forLet) {
 		if(this instanceof IcCnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof IcVar id) {
@@ -64,6 +65,7 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 		return exp instanceof IcLet;
 	}
 
+	@Override
 	Location loc();
 
 	/**

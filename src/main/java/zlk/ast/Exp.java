@@ -4,6 +4,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -12,7 +13,7 @@ import zlk.util.pp.PrettyPrinter;
  * @author YuyaAizawa
  *
  */
-public sealed interface Exp extends PrettyPrintable
+public sealed interface Exp extends PrettyPrintable, LocationHolder
 permits Cnst, Var, App, If, Let {
 
 	default <R> R fold(
@@ -65,6 +66,7 @@ permits Cnst, Var, App, If, Let {
 		return exp instanceof Let;
 	}
 
+	@Override
 	public Location loc();
 
 	/**

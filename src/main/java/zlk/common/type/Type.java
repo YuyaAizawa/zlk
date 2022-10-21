@@ -5,12 +5,13 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface Type extends PrettyPrintable
 permits TyUnit, TyBool, TyI32, TyArrow {
 
-	public static final TyUnit unit = new TyUnit();
+	public static final TyUnit unit = TyUnit.SINGLETON;
 	public static final TyBool bool = new TyBool();
 	public static final TyI32 i32 = new TyI32();
 	public static Type arrow(Type... rest) {
@@ -97,5 +98,17 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 		}
 		flatten.add(ret);
 		return flatten;
+	}
+
+	default Type toTree(List<Type> tail) {
+		Stack<Type> stack = new Stack<>();
+		stack.push(this);
+		tail.forEach(stack::push);
+
+		Type result = stack.pop();
+		while(!stack.isEmpty()) {
+			result = new TyArrow(stack.pop(), result);
+		}
+		return result;
 	}
 }

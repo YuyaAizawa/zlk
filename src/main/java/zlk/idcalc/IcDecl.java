@@ -4,6 +4,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.type.Type;
 import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -13,7 +14,7 @@ public record IcDecl(
 		Type type,
 		IcExp body,
 		Location loc)
-implements PrettyPrintable {
+implements PrettyPrintable, LocationHolder {
 
 	public String name() {
 		return id.canonicalName();
