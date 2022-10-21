@@ -5,8 +5,8 @@ import java.util.function.Function;
 
 import zlk.util.pp.PrettyPrinter;
 
-public record TyUnit()
-implements Type {
+public enum TyUnit implements Type {
+	SINGLETON;
 
 	@Override
 	public 	<R> R fold(

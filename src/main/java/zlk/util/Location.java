@@ -14,6 +14,11 @@ public record Location(
 		Position end
 ) implements PrettyPrintable {
 
+	private static final Location NO_LOC = new Location(null, null, null);
+	public static final Location noLocation() {
+		return NO_LOC;
+	}
+
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(filename).append(":").append(start()).append("-");

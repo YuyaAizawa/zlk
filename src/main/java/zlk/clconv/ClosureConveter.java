@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -30,10 +31,11 @@ public final class ClosureConveter {
 
 	private final IcModule src;
 	private final IdList builtins;
-	private final IdMap<Type> type; // 変換後のIdの型を登録
+	private final IdMap<Type> type; // 変換後のIdの型を追加
 	private final IdList toplevelIds;
 
 	private final List<CcDecl> toplevels;
+	private final AtomicInteger closureCount;
 
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
@@ -41,10 +43,15 @@ public final class ClosureConveter {
 		this.builtins = builtins;
 		this.toplevelIds = new IdList(src.decls().stream().map(IcDecl::id).toList());
 		this.toplevels = new ArrayList<>();
+		this.closureCount = new AtomicInteger();
 	}
 
 	public CcModule convert() {
-		src.decls().forEach(decl -> compileFunc(decl));
+		src.decls()
+				.stream()
+				.map(this::compileFunc)
+				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
+					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
 
 		return new CcModule(src.name(), toplevels, src.origin());
 	}
@@ -72,22 +79,22 @@ public final class ClosureConveter {
 
 		} else {
 			System.out.println(decl.name() + " is cloeure. frees: "+frees);
-			CcDecl closureFunc = makeClosure(decl.name(), frees, decl.args(), body, decl.returnTy(), decl.loc());
+			CcDecl closureFunc = makeClosure(decl.id(), frees, decl.args(), body, decl.returnTy(), decl.loc());
 			toplevels.add(closureFunc);
 			toplevelIds.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
 		}
 	}
 
-	private CcDecl makeClosure(String clsName, IdList frees, IdList originalArgs, CcExp body, Type retTy, Location loc) {
-		Type[] types =
+	private CcDecl makeClosure(Id original, IdList frees, IdList originalArgs, CcExp body, Type retTy, Location loc) {
+		List<Type> types =
 				Stream.concat(Stream.concat(
 						frees.stream().map(type::get),
 						originalArgs.stream().map(type::get)),
 						Stream.of(retTy))
-						.toArray(Type[]::new);
-		Type clsTy = Type.arrow(types);
-		Id clsId = Id.fromPathAndSimpleName(src.name(), clsName);
+						.toList();
+		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
+		Id clsId = freshId(original);
 		type.put(clsId, clsTy);
 
 		IdMap<Id> idMap =
@@ -124,7 +131,13 @@ public final class ClosureConveter {
 						compile(if_.exp2()),
 						if_.loc()),
 				let  -> {
-					if(let.decl().args().size() == 0) {
+					IcDecl decl = let.decl();
+					Id id = decl.id();
+					IdList args = decl.args();
+
+					CcExp boundedExp = compile(decl.body());
+
+					if(let.decl().args().size() == 0 && (!fvFunc(boundedExp, args).contains(id))) {
 						return new CcLet(
 								let.decl().id(),
 								compile(let.decl().body()),
@@ -133,9 +146,9 @@ public final class ClosureConveter {
 					}
 
 					CcExp bodyExp = compile(let.body());
-					return compileFunc(let.decl()).map(
-							mkCls -> (CcExp)new CcLet(let.decl().id(), mkCls, bodyExp, let.loc())
-					).orElse(bodyExp);
+					return compileFunc(decl)
+							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, let.loc()))
+							.orElse(bodyExp);
 				});
 	}
 
@@ -153,8 +166,9 @@ public final class ClosureConveter {
 		exp.match(
 				cnst -> {},
 				var  -> {
-					if(!bounded.contains(var.id())) {
-						free.add(var.id());
+					Id id = var.id();
+					if(!bounded.contains(id) && !free.contains(id)) {
+						free.add(id);
 					}
 				},
 				call  -> {
@@ -166,7 +180,7 @@ public final class ClosureConveter {
 						throw new AssertionError();
 					}
 					mkCls.caps().stream()
-							.filter(id -> !bounded.contains(id))
+							.filter(id -> !bounded.contains(id) && !free.contains(id))
 							.forEach(free::add);
 				},
 				if_  -> {
@@ -175,9 +189,24 @@ public final class ClosureConveter {
 					fv(if_.elseExp(), bounded, free);
 				},
 				let  -> {
-					fv(let.boundExp(), bounded, free);
 					bounded.add(let.boundVar());
+					fv(let.boundExp(), bounded, free);
 					fv(let.mainExp(), bounded, free);
 				});
+	}
+
+	private Id freshId(Id original) {
+		String orgStr = original.canonicalName();
+
+		int idx = orgStr.indexOf('.');
+		if(idx == -1) {
+			throw new Error(orgStr);
+		}
+		String exceptModule = orgStr.substring(idx+1);
+
+		return Id.fromCanonicalName(
+				src.name()
+				+ Id.SEPARATOR + closureCount.getAndIncrement()
+				+ Id.SEPARATOR + exceptModule);
 	}
 }

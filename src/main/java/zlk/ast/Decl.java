@@ -4,6 +4,7 @@ import java.util.List;
 
 import zlk.common.type.Type;
 import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -13,7 +14,7 @@ public record Decl(
 		Type type,
 		Exp body,
 		Location loc)
-implements PrettyPrintable {
+implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {

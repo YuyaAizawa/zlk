@@ -3,6 +3,7 @@ package zlk.clcalc;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -16,7 +17,7 @@ public record CcDecl(
 		IdList args,
 		CcExp body,
 		Location loc)
-implements PrettyPrintable {
+implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {

@@ -5,21 +5,19 @@ import java.util.function.Function;
 
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.util.Location;
+import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 
-public sealed interface CcExp extends PrettyPrintable
+public sealed interface CcExp extends PrettyPrintable, LocationHolder
 permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 
-	Location loc();
-
 	default <R> R fold(
-			Function<CcCnst, ? extends R> forCnst,
-			Function<CcVar, ? extends R> forVar,
-			Function<CcCall, ? extends R> forCall,
-			Function<CcMkCls, ? extends R> forMkCls,
-			Function<CcIf, ? extends R> forIf,
-			Function<CcLet, ? extends R> forLet) {
+			Function<? super CcCnst, ? extends R> forCnst,
+			Function<? super CcVar, ? extends R> forVar,
+			Function<? super CcCall, ? extends R> forCall,
+			Function<? super CcMkCls, ? extends R> forMkCls,
+			Function<? super CcIf, ? extends R> forIf,
+			Function<? super CcLet, ? extends R> forLet) {
 		if(this instanceof CcCnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof CcVar var) {
@@ -38,12 +36,12 @@ permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 	}
 
 	default void match(
-			Consumer<CcCnst> forCnst,
-			Consumer<CcVar> forVar,
-			Consumer<CcCall> forCall,
-			Consumer<CcMkCls> forMkCls,
-			Consumer<CcIf> forIf,
-			Consumer<CcLet> forLet) {
+			Consumer<? super CcCnst> forCnst,
+			Consumer<? super CcVar> forVar,
+			Consumer<? super CcCall> forCall,
+			Consumer<? super CcMkCls> forMkCls,
+			Consumer<? super CcIf> forIf,
+			Consumer<? super CcLet> forLet) {
 		if(this instanceof CcCnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof CcVar var) {
