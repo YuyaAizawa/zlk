@@ -26,6 +26,11 @@ implements IcExp {
 					.append("(").endl()
 					.inc().append(let)
 					.dec().append(")");
+				},
+				lamb  -> { pp
+					.append("(").endl()
+					.inc().append(lamb)
+					.dec().append(")");
 				});
 		args.forEach(arg ->{
 			pp.append(" ");
@@ -42,7 +47,12 @@ implements IcExp {
 						.append("(").endl()
 						.inc().append(let)
 						.dec().append(")");
-				});
+					},
+					lamb  -> { pp
+						.append("(").endl()
+						.inc().append(lamb)
+						.dec().append(")");
+					});
 			});
 	}
 }

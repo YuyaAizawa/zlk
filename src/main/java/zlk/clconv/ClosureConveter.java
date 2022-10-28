@@ -59,6 +59,8 @@ public final class ClosureConveter {
 	/**
 	 * 関数をトップレベルに変換する．クロージャに変換された場合，その作成を返す．
 	 * @return クロージャの生成（クロージャが必要だったとき）
+	 *
+	 * TODO 自由変数から静的な関数呼び出しを除く
 	 */
 	private Optional<CcMkCls> compileFunc(IcDecl decl) {
 
@@ -100,7 +102,7 @@ public final class ClosureConveter {
 		IdMap<Id> idMap =
 				frees.stream().collect(IdMap.collector(
 						Function.identity(),
-						id -> Id.fromParentAndSimpleName(clsId, id.simpleName())));
+						id -> clsId.child(id.simpleName())));
 		IdList clsArgs = new IdList();
 		clsArgs.addAll(originalArgs);
 		for(Id free : frees) {
@@ -114,8 +116,8 @@ public final class ClosureConveter {
 		return new CcDecl(clsId, clsArgs, clsBody, loc);
 	}
 
-	private CcExp compile(IcExp body) {
-		return body.fold(
+	private CcExp compile(IcExp exp) {
+		return exp.fold(
 				cnst -> new CcCnst(cnst.value(), cnst.loc()),
 				var  -> new CcVar(var.id(), var.loc()),
 				app  -> {
@@ -149,6 +151,18 @@ public final class ClosureConveter {
 					return compileFunc(decl)
 							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, let.loc()))
 							.orElse(bodyExp);
+				},
+				lamb -> {
+					IcDecl dummy = new IcDecl(
+							lamb.lambId(),
+							IdList.of(lamb.varId()),
+							type.get(lamb.lambId()),
+							lamb.body(),
+							lamb.loc());
+					CcExp callsite = new CcVar(lamb.lambId(), lamb.loc());
+					return compileFunc(dummy)
+							.map(mkCls -> (CcExp) new CcLet(lamb.lambId(), mkCls, callsite, lamb.loc()))
+							.orElse(callsite);
 				});
 	}
 

@@ -88,6 +88,12 @@ public final class TypeChecker {
 					let   -> {
 						check(let.decl());
 						return check(let.body());
+					},
+					lamb  -> {
+						env.put(lamb.varId(), lamb.varType());
+						Type ty = new TyArrow(lamb.varType(), check(lamb.body()));
+						env.put(lamb.lambId(), ty);
+						return ty;
 					});
 		} catch(NullPointerException e) {
 			throw new RuntimeException("on "+exp.loc(), e);

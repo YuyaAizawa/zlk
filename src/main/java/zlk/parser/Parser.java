@@ -1,8 +1,10 @@
 package zlk.parser;
 
 import static zlk.parser.Token.Kind.ARROW;
+import static zlk.parser.Token.Kind.BACKSLASH;
 import static zlk.parser.Token.Kind.COLON;
 import static zlk.parser.Token.Kind.DIGITS;
+import static zlk.parser.Token.Kind.DOT;
 import static zlk.parser.Token.Kind.ELSE;
 import static zlk.parser.Token.Kind.EOF;
 import static zlk.parser.Token.Kind.EQUAL;
@@ -25,6 +27,7 @@ import zlk.ast.Cnst;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.If;
+import zlk.ast.Lamb;
 import zlk.ast.Let;
 import zlk.ast.Module;
 import zlk.ast.Var;
@@ -43,6 +46,7 @@ import zlk.util.Position;
  *
  * <exp>      ::= <aExp>+
  *              | let $<declList> in <exp>
+ *              | \ <lcid> : <type> . <exp>
  *              | if <exp> then <exp> else <exp>
  * $ The declList starts to the right column of the "let" keyword.
  *
@@ -168,8 +172,9 @@ public class Parser {
 
 		return switch(current.kind()) {
 		case LET -> parseLetExp();
+		case BACKSLASH -> parseLambExp();
 		case IF -> parseIfExp();
-		default -> throw new RuntimeException("not exp");
+		default -> throw new RuntimeException(start+"not exp");
 		};
 	}
 
@@ -202,6 +207,23 @@ public class Parser {
 		Exp body = parseExp();
 
 		return new Let(declList, body, location(start, end));
+	}
+
+	private Exp parseLambExp() {
+		Position start = current.pos();
+		consume(BACKSLASH);
+
+		String var = parse(LCID);
+
+		consume(COLON);
+
+		Type type = parseType();
+
+		consume(DOT);
+
+		Exp body = parseExp();
+
+		return new Lamb(var, type, body, location(start, end));
 	}
 
 	private Exp parseIfExp() {

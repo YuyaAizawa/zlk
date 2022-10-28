@@ -1,6 +1,7 @@
 package zlk.common.id;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -10,6 +11,10 @@ import zlk.util.pp.PrettyPrinter;
 
 @SuppressWarnings("serial")
 public class IdList extends ArrayList<Id> implements PrettyPrintable {
+
+	public static IdList of(Id... ids) {
+		return new IdList(Arrays.asList(ids));
+	}
 
 	public IdList() {}
 	public IdList(int initialSize) {

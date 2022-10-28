@@ -16,28 +16,19 @@ public final class Id implements PrettyPrintable {
 	private final String simpleName;
 
 	public static Id fromCanonicalName(String canonical) {
-		return new Id(canonical);
+		int lastSeparatorIndex = canonical.lastIndexOf(SEPARATOR);
+		return new Id(
+				canonical.substring(0, Math.max(lastSeparatorIndex, 0)),
+				canonical.substring(lastSeparatorIndex + 1));
 	}
 
 	public static Id fromPathAndSimpleName(String path, String simple) {
 		return new Id(path, simple);
 	}
 
-	public static Id fromParentAndSimpleName(Id parent, String simple) {
-		return new Id(parent.canonicalName(), simple);
-	}
-
 	private Id(String parent, String simpleName) {
 		this.parent = parent.intern();
 		this.simpleName = simpleName.intern();
-	}
-	private Id(String canonicalName) {
-		this(canonicalName, canonicalName.lastIndexOf(SEPARATOR));
-	}
-	private Id(String canonicalName, int lastDotIndex) {
-		this(
-				canonicalName.substring(0, Math.max(lastDotIndex, 0)),
-				canonicalName.substring(lastDotIndex+1));
 	}
 
 	public String simpleName() {
@@ -48,6 +39,10 @@ public final class Id implements PrettyPrintable {
 		return parent.isEmpty()
 				? simpleName
 				: parent + SEPARATOR + simpleName;
+	}
+
+	public Id child(String simple) {
+		return new Id(canonicalName(), simple);
 	}
 
 	@Override

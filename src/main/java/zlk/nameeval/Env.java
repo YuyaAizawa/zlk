@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import zlk.common.id.Id;
 import zlk.util.Stack;
@@ -15,16 +16,25 @@ public final class Env {
 
 	public Env() {
 		scopeStack = new Stack<>();
-		scopeStack.push(new Scope(""));
+		scopeStack.push(new Scope(Id.fromCanonicalName("")));
 	}
 
-	public void push(String scopeSimpleName) {
-		String scopeCanonicalName = getCanonical(scopeSimpleName);
-		scopeStack.push(new Scope(scopeCanonicalName));
+	public Id push() {
+		return push(String.valueOf(scope().lambdaCount().getAndIncrement()));
+	}
+
+	public Id push(String scopeSimpleName) {
+		Id scopeName = scope().name().child(scopeSimpleName);
+		scopeStack.push(new Scope(scopeName));
+		return scopeName;
 	}
 
 	public void pop() {
 		scopeStack.pop();
+	}
+
+	private Scope scope() {
+		return scopeStack.peek();
 	}
 
 	public Id getOrNull(String name) {
@@ -55,7 +65,7 @@ public final class Env {
 		if(old != null) {
 			throw new IllegalArgumentException("already exist: "+old);
 		}
-		scopeStack.peek().ids().put(name, id);
+		scope().ids().put(name, id);
 	}
 
 	public Id registerVar(String simpleName) {
@@ -71,17 +81,18 @@ public final class Env {
 	}
 
 	private String getCanonical(String simple) {
-		return scopeStack.peek().name().canonicalName() + Id.SEPARATOR + simple;
+		return scope().name().canonicalName() + Id.SEPARATOR + simple;
 	}
 }
 
 record Scope(
 		Id name,
-		Map<String, Id> ids
+		Map<String, Id> ids,
+		AtomicInteger lambdaCount
 ) implements PrettyPrintable {
 
-	Scope(String canonicalName) {
-		this(Id.fromCanonicalName(canonicalName), new HashMap<>());
+	Scope(Id id) {
+		this(id, new HashMap<>(), new AtomicInteger());
 	}
 
 	@Override

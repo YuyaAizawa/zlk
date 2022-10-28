@@ -63,7 +63,13 @@ public final class BytecodeGenerator {
 
 		genConstructor();
 
-		module.toplevels().forEach(decl -> compileDecl(decl));
+		for(CcDecl decl : module.toplevels()) {
+			try {
+				compileDecl(decl);
+			} catch(RuntimeException e) {
+				new RuntimeException("on "+decl.id(), e);
+			}
+		}
 
 		return cw.toByteArray();
 	}
@@ -153,7 +159,7 @@ public final class BytecodeGenerator {
 					Id impl = mkCls.clsFunc();
 					IdList caps = mkCls.caps();
 					List<Type> indyArgTys = caps.stream().map(types::get).toList();
-					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow(); // TODO ここFunctionを返すのかBiFunctionなのか
+					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
 
 					if(indyReturnTy == null) {
 						throw new Error(impl.toString());
@@ -291,14 +297,20 @@ public final class BytecodeGenerator {
 	 * @return ディスクリプション
 	 */
 	private static String toFunctionApplyDesc(TyArrow ty) {
-		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? "Ljava/util/function/Function;" : Boxing.of(ty_).boxedClassDesc);
+		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ?
+				"Ljava/util/function/Function;":
+					Boxing.of(ty_).boxedClassDesc);
 	}
 
 	private static String getDescription(CcDecl decl, IdMap<Type> types) {
-		IdList args = decl.args();
-		List<Type> argTys = args.stream().map(types::get).toList();
-		Type retTy = types.get(decl.id()).apply(args.size());
-		return toDesc(argTys, retTy);
+		try {
+			IdList args = decl.args();
+			List<Type> argTys = args.stream().map(types::get).toList();
+			Type retTy = types.get(decl.id()).apply(args.size());
+			return toDesc(argTys, retTy);
+		} catch(AssertionError e) {
+			throw new AssertionError("on "+decl.id(), e);
+		}
 	}
 
 	private static String toDesc(Type argTy, Type retTy, Function<Type, String> mapper) {
@@ -330,7 +342,7 @@ public final class BytecodeGenerator {
 				unit -> "V",
 				bool -> "Z",
 				i32  -> "I",
-				fun  -> { throw new Error(ty.toString()); }
+				fun  -> toFunctionClassDesc(fun)
 		);
 	}
 

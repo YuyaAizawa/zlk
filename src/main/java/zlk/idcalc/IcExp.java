@@ -9,14 +9,15 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVar, IcApp, IcIf, IcLet {
+permits IcCnst, IcVar, IcApp, IcIf, IcLet, IcLamb {
 
 	default <R> R fold(
-			Function<? super IcCnst, R> forCnst,
-			Function<? super IcVar, R> forVar,
-			Function<? super IcApp, R> forApp,
-			Function<? super IcIf, R> forIf,
-			Function<? super IcLet, R> forLet) {
+			Function<? super IcCnst, ? extends R> forCnst,
+			Function<? super IcVar, ? extends R> forVar,
+			Function<? super IcApp, ? extends R> forApp,
+			Function<? super IcIf, ? extends R> forIf,
+			Function<? super IcLet, ? extends R> forLet,
+			Function<? super IcLamb, ? extends R> forLamb) {
 		if(this instanceof IcCnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof IcVar id) {
@@ -27,6 +28,8 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 			return forIf.apply(ifExp);
 		} else if(this instanceof IcLet let) {
 			return forLet.apply(let);
+		} else if(this instanceof IcLamb lamb) {
+			return forLamb.apply(lamb);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -37,7 +40,8 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 			Consumer<? super IcVar> forVar,
 			Consumer<? super IcApp> forApp,
 			Consumer<? super IcIf> forIf,
-			Consumer<? super IcLet> forLet) {
+			Consumer<? super IcLet> forLet,
+			Consumer<? super IcLamb> forLamb) {
 		if(this instanceof IcCnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof IcVar id) {
@@ -48,6 +52,8 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 			forIf.accept(ifExp);
 		} else if(this instanceof IcLet let) {
 			forLet.accept(let);
+		} else if(this instanceof IcLamb lamb) {
+			forLamb.accept(lamb);
 		} else {
 			throw new Error(this.getClass().toString());
 		}

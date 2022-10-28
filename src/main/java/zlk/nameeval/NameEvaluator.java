@@ -13,6 +13,7 @@ import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcIf;
+import zlk.idcalc.IcLamb;
 import zlk.idcalc.IcLet;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcVar;
@@ -23,6 +24,8 @@ public final class NameEvaluator {
 
 	private final Module module;
 	private final Env env;
+
+
 
 	public NameEvaluator(Module module, IdList builtins) {
 		this.module = module;
@@ -91,6 +94,13 @@ public final class NameEvaluator {
 						ifExp.loc()),
 				let -> {
 					return eval(let.decls(), let.body());
+				},
+				lamb -> {
+					Id lambdaId = env.push();
+					Id varId = env.registerVar(lamb.var());
+					IcExp body = eval(lamb.body());
+					env.pop();
+					return new IcLamb(lambdaId, varId, lamb.type(), body, lamb.loc());
 				});
 	}
 

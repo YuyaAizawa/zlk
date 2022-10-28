@@ -14,14 +14,15 @@ import zlk.util.pp.PrettyPrinter;
  *
  */
 public sealed interface Exp extends PrettyPrintable, LocationHolder
-permits Cnst, Var, App, If, Let {
+permits Cnst, Var, App, If, Let, Lamb {
 
 	default <R> R fold(
 			Function<? super Cnst, ? extends R> forCnst,
 			Function<? super Var, ? extends R> forVar,
 			Function<? super App, ? extends R> forApp,
 			Function<? super If, ? extends R> forIf,
-			Function<? super Let, ? extends R> forLet) {
+			Function<? super Let, ? extends R> forLet,
+			Function<? super Lamb, ? extends R> forLamb) {
 		if(this instanceof Cnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof Var var) {
@@ -32,6 +33,8 @@ permits Cnst, Var, App, If, Let {
 			return forIf.apply(if_);
 		} else if(this instanceof Let let) {
 			return forLet.apply(let);
+		} else if(this instanceof Lamb lamb) {
+			return forLamb.apply(lamb);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -42,7 +45,8 @@ permits Cnst, Var, App, If, Let {
 			Consumer<? super Var> forVar,
 			Consumer<? super App> forApp,
 			Consumer<? super If> forIf,
-			Consumer<? super Let> forLet) {
+			Consumer<? super Let> forLet,
+			Consumer<? super Lamb> forLamb) {
 		if(this instanceof Cnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof Var var) {
@@ -53,6 +57,8 @@ permits Cnst, Var, App, If, Let {
 			forIf.accept(if_);
 		} else if(this instanceof Let let) {
 			forLet.accept(let);
+		} else if(this instanceof Lamb lamb) {
+			forLamb.accept(lamb);
 		} else {
 			throw new Error(this.getClass().toString());
 		}

@@ -32,16 +32,17 @@ public class Main {
 		String src =
 				"""
 				module HelloMyLang
-				
+
 				sq a : I32 -> I32 =
 				  let
-				    pow b c : I32 -> I32 -> I32 =
-				      if isZero c
-				      then 1
-				      else mul b (pow b (sub c 1))
+				    pow : I32 -> I32 -> I32 =
+				      \\b : I32. \\c : I32.
+				        if isZero c
+				        then 1
+				        else mul b (pow b (sub c 1))
 				  in
 				    pow a 2
-				
+
 				fact n : I32 -> I32 =
 				  if isZero n then
 				    1
@@ -51,7 +52,7 @@ public class Main {
 				      nn : I32 = sub n one
 				    in
 				      mul n (fact nn)
-				
+
 				make_adder x : I32 -> I32 -> I32 -> I32 =
 				  let
 				    adder y : I32 -> I32 -> I32 =
@@ -61,13 +62,13 @@ public class Main {
 				        adder2
 				  in
 				    adder
-				
+
 				ans1 : I32 =
 				  sq 42
-				
+
 				ans2 : I32 =
 				  fact 10
-				
+
 				ans3 : I32 =
 				  ((make_adder 3) 4) 5
 				""";

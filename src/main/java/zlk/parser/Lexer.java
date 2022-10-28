@@ -60,7 +60,9 @@ public class Lexer {
 		Position pos = new Position(currentLine, currentColumn);
 		Token token = switch(current) {
 
+		case '\\'-> new Token(Token.Kind.BACKSLASH, pos);
 		case ':' -> new Token(Token.Kind.COLON, pos);
+		case '.' -> new Token(Token.Kind.DOT, pos);
 		case '=' -> new Token(Token.Kind.EQUAL, pos);
 		case '(' -> new Token(Token.Kind.LPAREN, pos);
 		case ')' -> new Token(Token.Kind.RPAREN, pos);
