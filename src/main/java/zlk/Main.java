@@ -18,6 +18,7 @@ import zlk.common.id.IdMap;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
+import zlk.lambelim.LambdaEliminator;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
@@ -93,6 +94,12 @@ public class Main {
 		TypeChecker typeChecker = new TypeChecker(Builtin.builtins().stream().collect(
 				IdMap.collector(b -> b.id(), b -> b.type())));
 		IdMap<Type> types = typeChecker.check(idcalc);
+		System.out.println();
+
+		System.out.println("-- LAMB ELIM --");
+		LambdaEliminator le = new LambdaEliminator(types);
+		idcalc = le.compile(idcalc);
+		idcalc.pp(System.out);
 		System.out.println();
 
 		System.out.println("-- CL CONV --");

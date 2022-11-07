@@ -27,6 +27,17 @@ import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.util.Location;
 
+/**
+ * クロージャ変換器.
+ * <h2>主な機能</h2>
+ * <ul>
+ * <li>メソッドとなる部分をトップレベルに括りだす</li>
+ *   <ul>
+ *   <li>キャプチャ変数がある場合クロージャに</li>
+ *   <li>ラムダ抽象をメソッドに</li>
+ *   </ul>
+ * </ul>
+ */
 public final class ClosureConveter {
 
 	private final IcModule src;
@@ -36,6 +47,7 @@ public final class ClosureConveter {
 
 	private final List<CcDecl> toplevels;
 	private final AtomicInteger closureCount;
+	private final IdMap<Optional<CcMkCls>> compiledFuncs; // クロージャの複製防止
 
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
@@ -44,6 +56,7 @@ public final class ClosureConveter {
 		this.toplevelIds = new IdList(src.decls().stream().map(IcDecl::id).toList());
 		this.toplevels = new ArrayList<>();
 		this.closureCount = new AtomicInteger();
+		this.compiledFuncs = new IdMap<>();
 	}
 
 	public CcModule convert() {
@@ -63,7 +76,6 @@ public final class ClosureConveter {
 	 * TODO 自由変数から静的な関数呼び出しを除く
 	 */
 	private Optional<CcMkCls> compileFunc(IcDecl decl) {
-
 		CcExp body = compile(decl.body());
 		IdList frees = fvFunc(body, decl.args());
 
@@ -147,22 +159,19 @@ public final class ClosureConveter {
 								let.loc());
 					}
 
+					Optional<CcMkCls> maybeCls = compiledFuncs.getOrNull(id);
+					if(maybeCls == null) {
+						maybeCls = compileFunc(decl);
+						compiledFuncs.put(id, maybeCls);
+					}
+
 					CcExp bodyExp = compile(let.body());
-					return compileFunc(decl)
+					return maybeCls
 							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, let.loc()))
 							.orElse(bodyExp);
 				},
 				lamb -> {
-					IcDecl dummy = new IcDecl(
-							lamb.lambId(),
-							IdList.of(lamb.varId()),
-							type.get(lamb.lambId()),
-							lamb.body(),
-							lamb.loc());
-					CcExp callsite = new CcVar(lamb.lambId(), lamb.loc());
-					return compileFunc(dummy)
-							.map(mkCls -> (CcExp) new CcLet(lamb.lambId(), mkCls, callsite, lamb.loc()))
-							.orElse(callsite);
+					throw new IllegalArgumentException("lambda must be eliminated");
 				});
 	}
 
