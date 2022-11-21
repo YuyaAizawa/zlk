@@ -88,10 +88,13 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 	}
 
 	default List<Type> flatten() {
+		if(!isArrow()) {
+			return List.of(this);
+		}
 		List<Type> flatten = new ArrayList<>();
 
 		Type ret = this;
-		while(!ret.isArrow()) {
+		while(ret.isArrow()) {
 			TyArrow fun = ret.asArrow();
 			flatten.add(fun.arg());
 			ret = fun.ret();

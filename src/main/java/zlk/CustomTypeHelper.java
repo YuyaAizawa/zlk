@@ -55,6 +55,7 @@ public final class CustomTypeHelper {
 			pw.printf("\t\tConsumer<? super %s> %s,%n",
 					subtypes.get(i), forNames.get(i));
 		}
+
 		pw.printf("\t\tConsumer<? super %s> %s) {%n",
 				subtypes.get(size-1), forNames.get(size-1));
 		pw.print("\t");
@@ -183,7 +184,7 @@ public final class CustomTypeHelper {
 //
 //		new CustomTypeHelper(subtypes, forNames, locals).printAll(pw);
 
-		readAll(br).printAll(pw);
+		readAll(br).printAllNoInstanceof(pw);
 	}
 
 	public static CustomTypeHelper readAll(BufferedReader br) throws IOException {

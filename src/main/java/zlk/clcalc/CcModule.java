@@ -2,12 +2,15 @@ package zlk.clcalc;
 
 import java.util.List;
 
+import zlk.common.id.IdMap;
+import zlk.common.type.Type;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcModule(
 		String name,
 		List<CcDecl> toplevels,
+		IdMap<Type> type,
 		String origin)
 implements PrettyPrintable {
 

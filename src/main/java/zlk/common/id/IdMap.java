@@ -49,6 +49,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		}
 	}
 
+	public void putOrUpdate(Id id, V value) {
+		impl.put(id, value);
+	}
+
 	public void putOrConfirm(Id id, V value) {
 		V old = impl.put(id, value);
 		if(old != null && !old.equals(old)) {

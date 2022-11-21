@@ -22,6 +22,7 @@ import zlk.lambelim.LambdaEliminator;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
+import zlk.restoreargs.ArgumentsRestorer;
 import zlk.typecheck.TypeChecker;
 
 public class Main {
@@ -99,6 +100,12 @@ public class Main {
 		System.out.println("-- LAMB ELIM --");
 		LambdaEliminator le = new LambdaEliminator(types);
 		idcalc = le.compile(idcalc);
+		idcalc.pp(System.out);
+		System.out.println();
+
+		System.out.println("-- ARGS RESTORE --");
+		ArgumentsRestorer ar = new ArgumentsRestorer(types);
+		idcalc = ar.compile(idcalc);
 		idcalc.pp(System.out);
 		System.out.println();
 

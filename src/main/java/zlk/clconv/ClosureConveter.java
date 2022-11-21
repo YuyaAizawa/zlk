@@ -1,11 +1,12 @@
 package zlk.clconv;
 
+import static zlk.util.ErrorUtils.neverHappen;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -27,17 +28,6 @@ import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.util.Location;
 
-/**
- * クロージャ変換器.
- * <h2>主な機能</h2>
- * <ul>
- * <li>メソッドとなる部分をトップレベルに括りだす</li>
- *   <ul>
- *   <li>キャプチャ変数がある場合クロージャに</li>
- *   <li>ラムダ抽象をメソッドに</li>
- *   </ul>
- * </ul>
- */
 public final class ClosureConveter {
 
 	private final IcModule src;
@@ -46,8 +36,7 @@ public final class ClosureConveter {
 	private final IdList toplevelIds;
 
 	private final List<CcDecl> toplevels;
-	private final AtomicInteger closureCount;
-	private final IdMap<Optional<CcMkCls>> compiledFuncs; // クロージャの複製防止
+	private final IdMap<Optional<CcMkCls>> mkClss;
 
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
@@ -55,18 +44,48 @@ public final class ClosureConveter {
 		this.builtins = builtins;
 		this.toplevelIds = new IdList(src.decls().stream().map(IcDecl::id).toList());
 		this.toplevels = new ArrayList<>();
-		this.closureCount = new AtomicInteger();
-		this.compiledFuncs = new IdMap<>();
+		this.mkClss = new IdMap<>();
 	}
 
 	public CcModule convert() {
+		src.decls().forEach(this::checkToplevels);
 		src.decls()
 				.stream()
 				.map(this::compileFunc)
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
 
-		return new CcModule(src.name(), toplevels, src.origin());
+		return new CcModule(src.name(), toplevels, type, src.origin());
+	}
+
+	private void checkToplevels(IcDecl decl) {
+		Id id = decl.id();
+		if(!toplevelIds.contains(id)) {
+			toplevelIds.add(id);
+		}
+		checkToplevels(decl.body());
+	}
+
+	private void checkToplevels(IcExp exp) {
+		exp.match(
+				cnst -> {},
+				var  -> {},
+				app  -> {
+					checkToplevels(app.fun());
+					app.args().forEach(this::checkToplevels);
+				},
+				if_  -> {
+					checkToplevels(if_.cond());
+					checkToplevels(if_.exp1());
+					checkToplevels(if_.exp2());
+				},
+				let  -> {
+					if(let.decl().args().size() > 0) {
+						checkToplevels(let.decl());
+					}
+					checkToplevels(let.body());
+				},
+				lamb -> neverHappen());
 	}
 
 	/**
@@ -76,6 +95,7 @@ public final class ClosureConveter {
 	 * TODO 自由変数から静的な関数呼び出しを除く
 	 */
 	private Optional<CcMkCls> compileFunc(IcDecl decl) {
+
 		CcExp body = compile(decl.body());
 		IdList frees = fvFunc(body, decl.args());
 
@@ -108,7 +128,7 @@ public final class ClosureConveter {
 						Stream.of(retTy))
 						.toList();
 		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
-		Id clsId = freshId(original);
+		Id clsId = original.child("0cls");
 		type.put(clsId, clsTy);
 
 		IdMap<Id> idMap =
@@ -159,20 +179,17 @@ public final class ClosureConveter {
 								let.loc());
 					}
 
-					Optional<CcMkCls> maybeCls = compiledFuncs.getOrNull(id);
+					CcExp bodyExp = compile(let.body());
+					Optional<CcMkCls> maybeCls = mkClss.getOrNull(id);
 					if(maybeCls == null) {
 						maybeCls = compileFunc(decl);
-						compiledFuncs.put(id, maybeCls);
+						mkClss.put(id, maybeCls);
 					}
-
-					CcExp bodyExp = compile(let.body());
 					return maybeCls
 							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, let.loc()))
 							.orElse(bodyExp);
 				},
-				lamb -> {
-					throw new IllegalArgumentException("lambda must be eliminated");
-				});
+				lamb -> neverHappen());
 	}
 
 	private IdList fvFunc(CcExp body, IdList args) {
@@ -216,20 +233,5 @@ public final class ClosureConveter {
 					fv(let.boundExp(), bounded, free);
 					fv(let.mainExp(), bounded, free);
 				});
-	}
-
-	private Id freshId(Id original) {
-		String orgStr = original.canonicalName();
-
-		int idx = orgStr.indexOf('.');
-		if(idx == -1) {
-			throw new Error(orgStr);
-		}
-		String exceptModule = orgStr.substring(idx+1);
-
-		return Id.fromCanonicalName(
-				src.name()
-				+ Id.SEPARATOR + closureCount.getAndIncrement()
-				+ Id.SEPARATOR + exceptModule);
 	}
 }

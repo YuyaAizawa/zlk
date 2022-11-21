@@ -41,6 +41,10 @@ public final class Id implements PrettyPrintable {
 				: parent + SEPARATOR + simpleName;
 	}
 
+	public String path() {
+		return parent;
+	}
+
 	public Id child(String simple) {
 		return new Id(canonicalName(), simple);
 	}

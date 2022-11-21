@@ -69,8 +69,7 @@ public final class Env {
 	}
 
 	public Id registerVar(String simpleName) {
-		String canonical = getCanonical(simpleName);
-		Id id = Id.fromCanonicalName(canonical);
+		Id id = scope().name().child(simpleName);
 		put(simpleName, id);
 		return id;
 	}
@@ -78,10 +77,6 @@ public final class Env {
 	public Id registerBuiltinVar(Id id) {
 		put(id.simpleName(), id);
 		return id;
-	}
-
-	private String getCanonical(String simple) {
-		return scope().name().canonicalName() + Id.SEPARATOR + simple;
 	}
 }
 

@@ -29,7 +29,7 @@ public final class BytecodeGenerator {
 	private final CcModule module;
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
-	private final IdMap<Toplevel> toplevels;
+	private final IdMap<String> toplevelDescs;
 	private ClassWriter cw;
 
 	// for compileDecl
@@ -41,16 +41,13 @@ public final class BytecodeGenerator {
 		this.module = module;
 		this.types = types;
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
-		this.toplevels = new IdMap<>();
+		this.toplevelDescs = new IdMap<>();
 	}
 
 	public byte[] compile() {
-
-		for(CcDecl decl : module.toplevels()) {
-			List<Type> argTys = decl.args().stream().map(types::get).toList();
-			Type retTy = types.get(decl.id()).apply(decl.args().size());
-			toplevels.put(decl.id(), new Toplevel(decl, retTy, toDesc(argTys, retTy)));
-		}
+		module.toplevels().forEach(decl -> {
+			toplevelDescs.put(decl.id(), getDescription(decl, types));
+		});
 
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 
@@ -104,7 +101,7 @@ public final class BytecodeGenerator {
 		mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
 				javaMethodName(decl.id()),
-				toplevels.get(decl.id()).desc(),
+				toplevelDescs.get(decl.id()),
 				null,
 				null);
 
@@ -122,31 +119,19 @@ public final class BytecodeGenerator {
 				},
 				var -> {
 					Id id = var.id();
-					Toplevel toplevel = toplevels.getOrNull(id);
+					String descriptor = toplevelDescs.getOrNull(id);
 					Builtin builtin = builtins.getOrNull(id);
 					int localIdx = locals.indexOf(id);
 
-					if(toplevel != null) {
-						TyArrow retTyAsArrow = types.get(id).asArrow().ret().asArrow();
-						if(retTyAsArrow != null) {
-							// 関数オブジェクトを返すメソッドの対応
-							// TODO 前のレイヤーで処理する
-							mv.visitMethodInsn(
+					if(descriptor != null) {
+
+						insnStack.push(mv ->
+								mv.visitMethodInsn(
 									Opcodes.INVOKESTATIC,
 									module.name(),
 									javaMethodName(id),
-									toplevel.desc(),
-									false);
-							insnStack.push(invokeApplyWithBoxing(retTyAsArrow));
-						} else {
-							insnStack.push(mv ->
-									mv.visitMethodInsn(
-										Opcodes.INVOKESTATIC,
-										module.name(),
-										javaMethodName(id),
-										toplevel.desc(),
-										false));
-						}
+									descriptor,
+									false));
 
 					} else if(builtin != null) {
 						insnStack.push(builtin);
@@ -160,8 +145,7 @@ public final class BytecodeGenerator {
 				},
 				call  -> {
 					// <funExpObject?, Args... funExpInvoke> を生成する
-					CcExp fun = call.fun();
-					compile(fun);
+					compile(call.fun());
 					call.args().forEach(arg -> compile(arg));
 					insnStack.pop().insert(mv);
 
@@ -205,7 +189,7 @@ public final class BytecodeGenerator {
 									Opcodes.H_INVOKESTATIC,
 									module.name(),
 									javaMethodName(impl),
-									toplevels.get(impl).desc(),
+									toplevelDescs.get(impl),
 									false),
 							toMethodType(toFunctionApplyDesc(indyReturnTy)));
 
@@ -263,6 +247,7 @@ public final class BytecodeGenerator {
 				fun  -> mv.visitInsn(Opcodes.ARETURN));
 	}
 
+	// TODO 2個以上の引数への対応
 	private static Instructions invokeApplyWithBoxing(TyArrow ty) {
 		return mv -> {
 			Type argTy = ty.arg();
@@ -401,12 +386,6 @@ public final class BytecodeGenerator {
 				canonical.subSequence(moduleName.length()+1, canonical.length())).replaceAll("\\$");
 	}
 }
-
-record Toplevel(
-		CcDecl decl,
-		Type retTy,
-		String desc
-) {}
 
 enum Boxing {
 	BOOL ("java/lang/Boolean", "booleanValue", "()Z", "(Z)Ljava/lang/Boolean;"),
