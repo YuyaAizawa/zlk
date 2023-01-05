@@ -1,5 +1,8 @@
 package zlk.bytecodegen;
 
+import static zlk.util.ErrorUtils.neverHappen;
+import static zlk.util.ErrorUtils.todo;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -30,6 +33,7 @@ public final class BytecodeGenerator {
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
+	private final IdMap<Integer> arities;
 	private ClassWriter cw;
 
 	// for compileDecl
@@ -42,11 +46,13 @@ public final class BytecodeGenerator {
 		this.types = types;
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.toplevelDescs = new IdMap<>();
+		this.arities = new IdMap<>();
 	}
 
 	public byte[] compile() {
 		module.toplevels().forEach(decl -> {
 			toplevelDescs.put(decl.id(), getDescription(decl, types));
+			arities.put(decl.id(), decl.args().size());
 		});
 
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -67,7 +73,7 @@ public final class BytecodeGenerator {
 			try {
 				compileDecl(decl);
 			} catch(RuntimeException e) {
-				new RuntimeException("on "+decl.id(), e);
+				throw new RuntimeException("on "+decl.id(), e);
 			}
 		}
 
@@ -95,6 +101,7 @@ public final class BytecodeGenerator {
 	}
 
 	private void compileDecl(CcDecl decl) {
+		System.out.println("in method "+decl.id().canonicalName());
 		insnStack = new Stack<>();
 		locals = new IdList(decl.args());
 
@@ -108,10 +115,15 @@ public final class BytecodeGenerator {
 		mv.visitCode();
 		compile(decl.body());
 		genReturn(types.get(decl.id()).apply(decl.args().size()));
-		mv.visitMaxs(-1, -1); // compute all frames and localautomatically
+		mv.visitMaxs(-1, -1); // compute all frames and local automatically
 		mv.visitEnd();
 	}
 
+	/**
+	 * 式をコンパイルする.
+	 *
+	 * @param exp
+	 */
 	private void compile(CcExp exp) {
 		exp.match(
 				cnst -> {
@@ -124,17 +136,10 @@ public final class BytecodeGenerator {
 					int localIdx = locals.indexOf(id);
 
 					if(descriptor != null) {
-
-						insnStack.push(mv ->
-								mv.visitMethodInsn(
-									Opcodes.INVOKESTATIC,
-									module.name(),
-									javaMethodName(id),
-									descriptor,
-									false));
+						neverHappen();
 
 					} else if(builtin != null) {
-						insnStack.push(builtin);
+						neverHappen();
 
 					} else if(localIdx != -1){
 						loadLocal(localIdx, types.get(var.id()));
@@ -144,16 +149,77 @@ public final class BytecodeGenerator {
 					}
 				},
 				call  -> {
-					// <funExpObject?, Args... funExpInvoke> を生成する
-					compile(call.fun());
-					call.args().forEach(arg -> compile(arg));
-					insnStack.pop().insert(mv);
 
-					// 呼ばれないかもしれないがFunctionが戻り値のときは詰んでおく
-					TyArrow ty = returnType(call).asArrow();
-					if(ty != null) {
-						insnStack.push(invokeApplyWithBoxing(ty));
-					}
+					// <funExpObject?, Args... funExpInvoke> を生成する
+					// TODO IDからメソッドの宣言か組み込みか局所変数か返すやつあると良さそう．
+
+					List<CcExp> args = call.args();
+					call.fun().match(
+							cnst -> neverHappen(),
+							var -> {
+								Id id = var.id();
+								String descriptor = toplevelDescs.getOrNull(id);
+								Builtin builtin = builtins.getOrNull(id);
+								int localIdx = locals.indexOf(id);
+								System.out.println("call var "+id.canonicalName());
+								if(descriptor != null) {
+									// トップレベルメソッドの場合
+									System.out.println("toplevel!");
+									if(arities.get(id) == args.size()) {
+										// 静的メソッド呼び出し
+										args.forEach(arg -> compile(arg));
+										System.out.println("invoke static!!");
+										mv.visitMethodInsn(
+												Opcodes.INVOKESTATIC,
+												module.name(),
+												javaMethodName(id),
+												descriptor,
+												false);
+									} else {
+										if(arities.get(id) < args.size()) {
+											// 多段invoke
+
+										} else {
+											// TODO 部分適用
+											todo();
+										}
+									}
+								} else if(builtin != null) {
+									// 組み込みの場合
+									if(builtin.arity() == args.size()) {
+										args.forEach(arg -> compile(arg));
+										builtin.accept(mv);
+									} else {
+										// TODO 部分適用
+										todo();
+									}
+								} else if(localIdx != -1) {
+									// 局所変数の場合 TODO 部分適用
+									loadLocal(localIdx, types.get(var.id()));
+									args.forEach(arg -> compile(arg));
+									mv.visitMethodInsn(
+											Opcodes.INVOKEINTERFACE,
+											"java/util/function/Function",
+											"apply",
+											"(Ljava/lang/Object;)Ljava/lang/Object;",
+											true);
+
+								} else {
+									throw new Error("unknown id: "+id.toString());
+								}
+							},
+							call_ -> {
+								compileFuncObjCall(call_, args);
+							},
+							mkCls -> {
+								compileFuncObjCall(mkCls, args);
+							},
+							if_ -> {
+								compileFuncObjCall(if_, args);
+							},
+							let -> {
+								compileFuncObjCall(let, args);
+							});
 				},
 				mkCls -> {
 					Id impl = mkCls.clsFunc();
@@ -215,6 +281,17 @@ public final class BytecodeGenerator {
 					storeLocal(locals.size()-1, types.get(var));
 					compile(let.mainExp());
 				});
+	}
+
+	private void compileFuncObjCall(CcExp expReturningFun, List<CcExp> args) {
+		compile(expReturningFun);
+		args.forEach(arg -> compile(arg));
+		mv.visitMethodInsn(
+				Opcodes.INVOKEINTERFACE,
+				"java/util/function/Function",
+				"apply",
+				"(Ljava/lang/Object;)Ljava/lang/Object;",
+				true);
 	}
 
 	private void loadCnst(ConstValue cnst) {
@@ -283,7 +360,7 @@ public final class BytecodeGenerator {
 						boxing.unboxMethodName,
 						boxing.unboxMethodDesc,
 						false);
-			};
+			}
 		};
 	}
 
