@@ -30,9 +30,8 @@ import zlk.util.Location;
 public final class ClosureConveter {
 
 	private final IcModule src;
-	private final IdList builtins;
 	private final IdMap<Type> type; // 変換後のIdの型を追加
-	private final IdList toplevelIds;
+	private final Set<Id> knowns;
 
 	private final List<CcDecl> toplevels;
 	private final AtomicInteger closureCount;
@@ -40,8 +39,9 @@ public final class ClosureConveter {
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
 		this.type = type;
-		this.builtins = builtins;
-		this.toplevelIds = new IdList(src.decls().stream().map(IcDecl::id).toList());
+		this.knowns = new HashSet<>();
+		src.decls().forEach(decl -> knowns.add(decl.id()));
+		knowns.addAll(builtins);
 		this.toplevels = new ArrayList<>();
 		this.closureCount = new AtomicInteger();
 	}
@@ -62,26 +62,20 @@ public final class ClosureConveter {
 	 */
 	private Optional<CcMkCls> compileFunc(IcDecl decl) {
 
+		knowns.add(decl.id());
 		CcExp body = compile(decl.body());
 		IdList frees = fvFunc(body, decl.args());
 
 		if(frees.isEmpty()) {
 			System.out.println(decl.name() + " is not cloeure.");
 			toplevels.add(new CcDecl(decl.id(), decl.args(), body, decl.loc()));
-			toplevelIds.add(decl.id());
-			return Optional.empty();
-
-		} else if(frees.size() == 1 && frees.get(0).equals(decl.id())) {
-			System.out.println(decl.name() + " is self-recursive and not closure.");
-			toplevels.add(new CcDecl(decl.id(), decl.args(), body, decl.loc()));
-			toplevelIds.add(decl.id());
 			return Optional.empty();
 
 		} else {
 			System.out.println(decl.name() + " is cloeure. frees: "+frees);
 			CcDecl closureFunc = makeClosure(decl.id(), frees, decl.args(), body, decl.returnTy(), decl.loc());
 			toplevels.add(closureFunc);
-			toplevelIds.add(closureFunc.id());
+			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
 		}
 	}
@@ -133,30 +127,24 @@ public final class ClosureConveter {
 				let  -> {
 					IcDecl decl = let.decl();
 					Id id = decl.id();
-					IdList args = decl.args();
-
-					CcExp boundedExp = compile(decl.body());
-
-					if(let.decl().args().size() == 0 && (!fvFunc(boundedExp, args).contains(id))) {
-						return new CcLet(
-								let.decl().id(),
-								compile(let.decl().body()),
-								compile(let.body()),
-								let.loc());
-					}
+					Location loc = decl.loc();
 
 					CcExp bodyExp = compile(let.body());
+					if(decl.args().size() == 0) {
+						// 関数でなければクロージャは不要
+						return new CcLet(id, compile(decl.body()), bodyExp, loc);
+					}
+
+					// 関数だった場合クロージャが必要か判定
 					return compileFunc(decl)
-							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, let.loc()))
+							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, loc))
 							.orElse(bodyExp);
 				});
 	}
 
 	private IdList fvFunc(CcExp body, IdList args) {
 		IdList free = new IdList();
-		Set<Id> bounded = new HashSet<>((builtins.size() + toplevelIds.size() + args.size()) * 2);
-		bounded.addAll(builtins);
-		bounded.addAll(toplevelIds);
+		Set<Id> bounded = new HashSet<>(knowns);
 		bounded.addAll(args);
 		fv(body, bounded, free);
 		return free;
