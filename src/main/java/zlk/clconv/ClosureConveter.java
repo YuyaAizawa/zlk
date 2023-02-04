@@ -1,5 +1,7 @@
 package zlk.clconv;
 
+import static zlk.util.ErrorUtils.neverHappen;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -22,7 +24,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.Type;
-import zlk.idcalc.IcDecl;
+import zlk.idcalc.IcAbs;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.util.Location;
@@ -49,7 +51,7 @@ public final class ClosureConveter {
 	public CcModule convert() {
 		src.decls()
 				.stream()
-				.map(this::compileFunc)
+				.map(decl -> compileFunc(decl.id(), decl.body()))
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
 
@@ -57,28 +59,43 @@ public final class ClosureConveter {
 	}
 
 	/**
-	 * 関数をトップレベルに変換する．クロージャに変換された場合，その作成を返す．
+	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
 	 * @return クロージャの生成（クロージャが必要だったとき）
 	 */
-	private Optional<CcMkCls> compileFunc(IcDecl decl) {
+	private Optional<CcMkCls> compileFunc(Id id, IcExp body) {
 
-		knowns.add(decl.id());
-		CcExp body = compile(decl.body());
-		IdList frees = fvFunc(body, decl.args());
+		ExpWithArgs rolled = rollUpArgs(body);
+		IdList args = rolled.args;
+		IcExp newBody = rolled.exp;
+
+		knowns.add(id);
+		CcExp ccBody = compile(newBody);
+		IdList frees = fvFunc(ccBody, args);
 
 		if(frees.isEmpty()) {
-			System.out.println(decl.name() + " is not cloeure.");
-			toplevels.add(new CcDecl(decl.id(), decl.args(), body, decl.loc()));
+			System.out.println(id + " is not cloeure.");
+			toplevels.add(new CcDecl(id, args, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
-			System.out.println(decl.name() + " is cloeure. frees: "+frees);
-			CcDecl closureFunc = makeClosure(decl.id(), frees, decl.args(), body, decl.returnTy(), decl.loc());
+			System.out.println(id + " is cloeure. frees: "+frees);
+			CcDecl closureFunc = makeClosure(id, frees, args, ccBody, type.get(id).apply(args.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
 		}
 	}
+
+	private ExpWithArgs rollUpArgs(IcExp target) {
+		IcExp body = target;
+		IdList args = new IdList();
+		while(body instanceof IcAbs abs) {
+			args.add(abs.id());
+			body = abs.body();
+		}
+		return new ExpWithArgs(body, args);
+	}
+	private record ExpWithArgs(IcExp exp, IdList args) {}
 
 	private CcDecl makeClosure(Id original, IdList frees, IdList originalArgs, CcExp body, Type retTy, Location loc) {
 		List<Type> types =
@@ -112,6 +129,7 @@ public final class ClosureConveter {
 		return body.fold(
 				cnst -> new CcCnst(cnst.value(), cnst.loc()),
 				var  -> new CcVar(var.id(), var.loc()),
+				abs  -> { return neverHappen("there must not be anonymous abs in this version.", body.loc()); },
 				app  -> {
 					CcExp funExp = compile(app.fun());
 					List<CcExp> argExps =
@@ -125,20 +143,18 @@ public final class ClosureConveter {
 						compile(if_.exp2()),
 						if_.loc()),
 				let  -> {
-					IcDecl decl = let.decl();
-					Id id = decl.id();
-					Location loc = decl.loc();
+					Id id = let.decl().id();
+					IcExp bounded = let.decl().body();
+					CcExp letBody = compile(let.body());
+					Location loc = let.loc();
 
-					CcExp bodyExp = compile(let.body());
-					if(decl.args().size() == 0) {
-						// 関数でなければクロージャは不要
-						return new CcLet(id, compile(decl.body()), bodyExp, loc);
+					if(bounded instanceof IcAbs) {
+						return compileFunc(id, bounded)
+								.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
+								.orElse(letBody); // トップレベルで定義されているのでletは要らない
+					} else {
+						return new CcLet(id, compile(bounded), letBody, loc);
 					}
-
-					// 関数だった場合クロージャが必要か判定
-					return compileFunc(decl)
-							.map(mkCls -> (CcExp)new CcLet(id, mkCls, bodyExp, loc))
-							.orElse(bodyExp);
 				});
 	}
 
