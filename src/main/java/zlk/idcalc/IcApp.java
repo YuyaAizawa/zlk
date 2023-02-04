@@ -15,7 +15,8 @@ implements IcExp {
 	public void mkString(PrettyPrinter pp) {
 		fun.match(
 				cnst  -> pp.append(cnst),
-				id    -> pp.append(id),
+				var   -> pp.append(var),
+				abs   -> pp.append("(").append(abs).append(")"),
 				app   -> pp.append("(").append(app).append(")"),
 				ifExp -> { pp
 					.append("(").endl()
@@ -31,7 +32,8 @@ implements IcExp {
 			pp.append(" ");
 			arg.match(
 					cnst  -> pp.append(cnst),
-					id    -> pp.append(id),
+					var   -> pp.append(var),
+					abs   -> pp.append("(").append(abs).append(")"),
 					app   -> pp.append("(").append(app).append(")"),
 					ifExp -> { pp
 						.append("(").endl()

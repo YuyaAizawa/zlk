@@ -8,6 +8,9 @@ import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
+import zlk.common.type.TyArrow;
+import zlk.common.type.Type;
+import zlk.idcalc.IcAbs;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcDecl;
@@ -58,17 +61,22 @@ public final class NameEvaluator {
 
 		Id id = env.get(declName);
 
-		IdList idArgs = new IdList();
-		List<String> args = decl.args();
-		for(String arg : args) {
-			Id argId = env.registerVar(arg);
-			idArgs.add(argId);
-		}
-
-		IcExp icBody = eval(decl.body());
+		IcExp icBody = argHelp(decl.args(), decl.type(), decl.body(), decl.loc());
 
 		env.pop();
-		return new IcDecl(id, idArgs, decl.type(), icBody, decl.loc());
+		return new IcDecl(id, decl.type(), icBody, decl.loc());
+	}
+	private IcExp argHelp(List<String> args, Type type, Exp body, Location loc) {
+		if(args.isEmpty()) {
+			return eval(body);
+		} else {
+			TyArrow arrow = type.asArrow();
+			return new IcAbs(
+					env.registerVar(args.get(0)),
+					arrow.arg(),
+					argHelp(args.subList(1, args.size()), arrow.ret(), body, loc),
+					loc);
+		}
 	}
 
 	public IcExp eval(Exp exp) {

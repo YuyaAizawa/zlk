@@ -28,4 +28,11 @@ public record Location(
 			pp.append(end());
 		}
 	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		pp(sb);
+		return sb.toString();
+	}
 }

@@ -1,6 +1,5 @@
 package zlk.typecheck;
 
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
 import zlk.common.type.Type;
@@ -37,12 +36,7 @@ public final class TypeChecker {
 		System.out.println(decl.id()+": "+decl.type());
 
 		try {
-			IdList args = decl.args();
-			for (int i = 0; i < args.size(); i++) {
-				env.put(args.get(i), decl.type().arg(i));
-			}
-
-			assertEqual(check(decl.body()), decl.type().apply(args.size()));
+			assertEqual(check(decl.body()), decl.type());
 
 			return decl.type();
 		} catch (AssertionError e) {
@@ -60,6 +54,10 @@ public final class TypeChecker {
 							throw new NullPointerException(""+var);
 						}
 						return ty;
+					},
+					abs   -> {
+						env.put(abs.id(), abs.type());
+						return Type.arrow(abs.type(), check(abs.body()));
 					},
 					app   -> {
 						Type funType = check(app.fun());

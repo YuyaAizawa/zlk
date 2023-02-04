@@ -9,11 +9,12 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVar, IcApp, IcIf, IcLet {
+permits IcCnst, IcVar, IcAbs, IcApp, IcIf, IcLet {
 
 	default <R> R fold(
 			Function<? super IcCnst, R> forCnst,
 			Function<? super IcVar, R> forVar,
+			Function<? super IcAbs, R> forAbs,
 			Function<? super IcApp, R> forApp,
 			Function<? super IcIf, R> forIf,
 			Function<? super IcLet, R> forLet) {
@@ -21,6 +22,8 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 			return forCnst.apply(cnst);
 		} else if(this instanceof IcVar id) {
 			return forVar.apply(id);
+		} else if(this instanceof IcAbs abs) {
+			return forAbs.apply(abs);
 		} else if(this instanceof IcApp app) {
 			return forApp.apply(app);
 		} else if(this instanceof IcIf ifExp) {
@@ -35,6 +38,7 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 	default void match(
 			Consumer<? super IcCnst> forCnst,
 			Consumer<? super IcVar> forVar,
+			Consumer<? super IcAbs> forAbs,
 			Consumer<? super IcApp> forApp,
 			Consumer<? super IcIf> forIf,
 			Consumer<? super IcLet> forLet) {
@@ -42,6 +46,8 @@ permits IcCnst, IcVar, IcApp, IcIf, IcLet {
 			forCnst.accept(cnst);
 		} else if(this instanceof IcVar id) {
 			forVar.accept(id);
+		} else if(this instanceof IcAbs abs) {
+			forAbs.accept(abs);
 		} else if(this instanceof IcApp app) {
 			forApp.accept(app);
 		} else if(this instanceof IcIf ifExp) {
