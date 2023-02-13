@@ -19,6 +19,10 @@ public record CcDecl(
 		Location loc)
 implements PrettyPrintable, LocationHolder {
 
+	public int arity() {
+		return args.size();
+	}
+
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append("decl:").endl().inc();

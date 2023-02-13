@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import zlk.clcalc.CcCall;
+import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
@@ -25,9 +25,11 @@ import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.Type;
 import zlk.idcalc.IcAbs;
+import zlk.idcalc.IcApp;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.util.Location;
+import zlk.util.Stack;
 
 public final class ClosureConveter {
 
@@ -129,13 +131,26 @@ public final class ClosureConveter {
 		return body.fold(
 				cnst -> new CcCnst(cnst.value(), cnst.loc()),
 				var  -> new CcVar(var.id(), var.loc()),
-				abs  -> { return neverHappen("there must not be anonymous abs in this version.", body.loc()); },
+				abs  -> {
+					return neverHappen(
+							"there must not be anonymous abs in this version.", body.loc());
+				},
 				app  -> {
-					CcExp funExp = compile(app.fun());
-					List<CcExp> argExps =
-							app.args().stream()
-							.map(arg -> compile(arg)).toList();
-					return new CcCall(funExp, argExps, app.loc());
+					IcExp left = app;
+					Stack<IcExp> rights = new Stack<>();
+					while(left instanceof IcApp app_) {
+						left = app_.fun();
+						rights.push(app_.arg());
+					}
+
+					List<CcExp> args = new ArrayList<>();
+					rights.forEach(e -> args.add(compile(e)));
+					return new CcApp(compile(left), args, app.loc());
+//					CcExp funExp = compile(app.fun());
+//					List<CcExp> argExps =
+//							app.args().stream()
+//							.map(arg -> compile(arg)).toList();
+//					return new CcCall(funExp, argExps, app.loc());
 				},
 				if_  -> new CcIf(
 						compile(if_.cond()),

@@ -1,6 +1,5 @@
 package zlk.nameeval;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import zlk.ast.Decl;
@@ -85,12 +84,18 @@ public final class NameEvaluator {
 				var   -> new IcVar(env.get(var.name()), var.loc()),
 				app   -> {
 					List<Exp> exps = app.exps();
-					IcExp icFun = eval(exps.get(0));
-					List<IcExp> icArgs = new ArrayList<>(exps.size()-1);
+
+					IcExp result = eval(exps.get(0));
 					for(int i = 1; i < exps.size(); i++) {
-						icArgs.add(eval(exps.get(i)));
+						IcExp left = result;
+						IcExp right = eval(exps.get(i));
+						result = new IcApp(left, right,
+								new Location(
+										left.loc().filename(),
+										left.loc().start(),
+										right.loc().end()));
 					}
-					return new IcApp(icFun, icArgs, app.loc());
+					return result;
 				},
 				ifExp -> new IcIf(
 						eval(ifExp.cond()),
