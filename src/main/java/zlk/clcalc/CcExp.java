@@ -9,12 +9,12 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable, LocationHolder
-permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
+permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 
 	default <R> R fold(
 			Function<? super CcCnst, ? extends R> forCnst,
 			Function<? super CcVar, ? extends R> forVar,
-			Function<? super CcCall, ? extends R> forCall,
+			Function<? super CcApp, ? extends R> forCall,
 			Function<? super CcMkCls, ? extends R> forMkCls,
 			Function<? super CcIf, ? extends R> forIf,
 			Function<? super CcLet, ? extends R> forLet) {
@@ -22,7 +22,7 @@ permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 			return forCnst.apply(cnst);
 		} else if(this instanceof CcVar var) {
 			return forVar.apply(var);
-		} else if(this instanceof CcCall call) {
+		} else if(this instanceof CcApp call) {
 			return forCall.apply(call);
 		} else if(this instanceof CcMkCls mkCls) {
 			return forMkCls.apply(mkCls);
@@ -38,7 +38,7 @@ permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 	default void match(
 			Consumer<? super CcCnst> forCnst,
 			Consumer<? super CcVar> forVar,
-			Consumer<? super CcCall> forCall,
+			Consumer<? super CcApp> forCall,
 			Consumer<? super CcMkCls> forMkCls,
 			Consumer<? super CcIf> forIf,
 			Consumer<? super CcLet> forLet) {
@@ -46,7 +46,7 @@ permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 			forCnst.accept(cnst);
 		} else if(this instanceof CcVar var) {
 			forVar.accept(var);
-		} else if(this instanceof CcCall call) {
+		} else if(this instanceof CcApp call) {
 			forCall.accept(call);
 		} else if(this instanceof CcMkCls mkCls) {
 			forMkCls.accept(mkCls);
@@ -63,7 +63,7 @@ permits CcCnst, CcVar, CcCall, CcMkCls, CcIf, CcLet {
 		return fold(
 				cnst  -> cnst,
 				var   -> new CcVar(map.getOrDefault(var.id(), var.id()), var.loc()),
-				call  -> new CcCall(
+				call  -> new CcApp(
 						call.fun().substId(map),
 						call.args().stream().map(arg -> arg.substId(map)).toList(),
 						call.loc()),

@@ -1,7 +1,11 @@
 package zlk.bytecodegen;
 
+import static zlk.util.ErrorUtils.neverHappen;
+import static zlk.util.ErrorUtils.todo;
+
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -11,10 +15,11 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.clcalc.CcCall;
+import zlk.clcalc.CcApp;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
+import zlk.clcalc.CcVar;
 import zlk.common.cnst.ConstValue;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -30,23 +35,27 @@ public final class BytecodeGenerator {
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
+	private final IdMap<CcDecl> toplevelDecls;
 	private ClassWriter cw;
 
 	// for compileDecl
 	private IdList locals;
-	private Stack<Instructions> insnStack;
 	private MethodVisitor mv;
+	private Stack<Runnable> pendings;
 
 	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins) {
 		this.module = module;
 		this.types = types;
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.toplevelDescs = new IdMap<>();
+		this.toplevelDecls = new IdMap<>();
+		this.pendings = new Stack<>();
 	}
 
 	public byte[] compile() {
 		module.toplevels().forEach(decl -> {
 			toplevelDescs.put(decl.id(), getDescription(decl, types));
+			toplevelDecls.put(decl.id(), decl);
 		});
 
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -88,22 +97,32 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
+	boolean dbg;
 	private void compileDecl(CcDecl decl) {
-		insnStack = new Stack<>();
-		locals = new IdList(decl.args());
+		try {
+			locals = new IdList(decl.args());
 
-		mv = cw.visitMethod(
-				Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-				javaMethodName(decl.id()),
-				toplevelDescs.get(decl.id()),
-				null,
-				null);
+			mv = cw.visitMethod(
+					Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
+					javaMethodName(decl.id()),
+					toplevelDescs.get(decl.id()),
+					null,
+					null);
 
-		mv.visitCode();
-		compile(decl.body());
-		genReturn(types.get(decl.id()).apply(decl.args().size()));
-		mv.visitMaxs(-1, -1); // compute all frames and localautomatically
-		mv.visitEnd();
+			mv.visitCode();
+			dbg = false;
+			compile(decl.body());
+			genReturn(types.get(decl.id()).apply(decl.arity()));
+			dbg = true;
+			mv.visitMaxs(-1, -1); // compute all frames and local automatically
+			mv.visitEnd();
+
+			while(!pendings.isEmpty()) {
+				pendings.pop().run();
+			}
+		} catch(RuntimeException e) {
+			throw new RuntimeException("on method "+decl.id(), e);
+		}
 	}
 
 	private void compile(CcExp exp) {
@@ -112,48 +131,141 @@ public final class BytecodeGenerator {
 					loadCnst(cnst.value());
 				},
 				var -> {
+					// note: It cannot decide with only appearance of 'var' whether the invocation
+					//       static or not, so invokestatic places in app case.
+
 					Id id = var.id();
-					String descriptor = toplevelDescs.getOrNull(id);
-					Builtin builtin = builtins.getOrNull(id);
-					int localIdx = locals.indexOf(id);
+					switchByDecl(id,
+							descriptor -> {
+								Type funType = types.get(id);
+								if(funType instanceof TyArrow arrow) {
+									List<Type> type = arrow.flatten();
+									Id nextId = null;
+									for (int i = type.size()-1; i >= 0; i--) {
+										List<Type> args = type.subList(0, i);
+										List<Type> ret  = type.subList(i, type.size());
 
-					if(descriptor != null) {
+										Id lambdaId = Id.fromParentAndSimpleName(Id.fromParentAndSimpleName(id, ""), i + "");
 
-						insnStack.push(mv ->
-								mv.visitMethodInsn(
-									Opcodes.INVOKESTATIC,
-									module.name(),
-									javaMethodName(id),
-									descriptor,
-									false));
+										if(args.size() == type.size()-1) {
+											genBoxedMethod(lambdaId, args, id, ret.get(0));
+										} else {
+											genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
+										}
+										nextId = lambdaId;
+									}
 
-					} else if(builtin != null) {
-						insnStack.push(builtin);
-
-					} else if(localIdx != -1){
-						loadLocal(localIdx, types.get(var.id()));
-
-					} else {
-						throw new Error("unkown id: "+id.toString());
-					}
+									mv.visitMethodInsn(
+											Opcodes.INVOKESTATIC,
+											module.name(),
+											javaMethodName(nextId),
+											"()"+functionDesc,
+											false);
+								} else {
+									mv.visitMethodInsn(
+											Opcodes.INVOKESTATIC,
+											module.name(),
+											javaMethodName(id),
+											descriptor,
+											false);
+								}
+							},
+							builtin -> {
+								todo("make method and currying");
+							},
+							localIdx -> {
+								loadLocal(localIdx, types.get(id));
+							});
+//							descriptor -> {
+//
+//
+//								insnStack.push(mv ->
+//										mv.visitMethodInsn(
+//											Opcodes.INVOKESTATIC,
+//											module.name(),
+//											javaMethodName(id),
+//											descriptor,
+//											false));
+//							},
+//							builtin -> {
+//								insnStack.push(builtin);
+//							},
+//							localIdx -> {
+//								loadLocal(localIdx, types.get(id));
+//							});
 				},
-				call  -> {
-					// <funExpObject?, Args... funExpInvoke> を生成する
-					compile(call.fun());
-					call.args().forEach(arg -> compile(arg));
-					insnStack.pop().insert(mv);
+				app  -> {
+					List<CcExp> args = app.args();
+					Type funType = getType(app.fun());
+					if(app.fun() instanceof CcVar var) {
+						Id funId = var.id();
 
-					// 呼ばれないかもしれないがFunctionが戻り値のときは詰んでおく
-					TyArrow ty = returnType(call).asArrow();
-					if(ty != null) {
-						insnStack.push(invokeApplyWithBoxing(ty));
+						switchByDecl(funId,
+								descriptor -> {
+									int arity = toplevelDecls.get(funId).arity();
+									if(args.size() >= arity) {
+										for (int i = 0; i < arity; i++) {
+											compile(args.get(i));
+										}
+
+										mv.visitMethodInsn(
+												Opcodes.INVOKESTATIC,
+												module.name(),
+												javaMethodName(funId),
+												descriptor,
+												false);
+
+										for (int i = arity; i < args.size(); i++) {
+											compile(args.get(i));
+											invokeApplyWithBoxing(funType.apply(i).asArrow());
+										}
+									} else {
+										// TODO opt by indy
+										compile(var);
+										for (int i = 0; i < args.size(); i++) {
+											compile(args.get(i));
+											invokeApplyWithBoxing(funType.apply(i).asArrow());
+										}
+
+										todo("partial application");
+									}
+								},
+								builtin -> {
+									int arity = types.get(funId).flatten().size() - 1;
+									if(args.size() == arity) {
+										for (int i = 0; i < arity; i++) {
+											compile(args.get(i));
+										}
+
+										builtin.accept(mv);
+									} else if (args.size() < arity) {
+										todo("partial application");
+									} else {
+										neverHappen("builtins never return function object", app.loc());
+									}
+								},
+								localIndex -> {
+									compile(var);
+									for (int i = 0; i < args.size(); i++) {
+										compile(args.get(i));
+										invokeApplyWithBoxing(funType.apply(i).asArrow());
+									}
+								});
+					} else {
+						compile(app.fun());
+
+						// function object remains on stack top
+						for (int i = 0; i < args.size(); i++) {
+							compile(args.get(i));
+							invokeApplyWithBoxing(funType.apply(i).asArrow());
+						}
 					}
 				},
 				mkCls -> {
 					Id impl = mkCls.clsFunc();
 					IdList caps = mkCls.caps();
 					List<Type> indyArgTys = caps.stream().map(types::get).toList();
-					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow(); // TODO ここFunctionを返すのかBiFunctionなのか
+					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
 
 					if(indyReturnTy == null) {
 						throw new Error(impl.toString());
@@ -185,9 +297,7 @@ public final class BytecodeGenerator {
 									javaMethodName(impl),
 									toplevelDescs.get(impl),
 									false),
-							toMethodType(toFunctionApplyDesc(indyReturnTy)));
-
-					insnStack.push(invokeApplyWithBoxing(indyReturnTy));
+							toMethodType(toBoxedDesc(indyReturnTy)));
 				},
 				ifExp -> {
 					Label l1 = new Label();
@@ -209,6 +319,121 @@ public final class BytecodeGenerator {
 					storeLocal(locals.size()-1, types.get(var));
 					compile(let.mainExp());
 				});
+	}
+
+	private void switchByDecl(Id id,
+			Consumer<String> forTopLevelDescriptor,
+			Consumer<Builtin> forBuiltin,
+			Consumer<Integer> forLocalIdx) {
+
+		String descriptor = toplevelDescs.getOrNull(id);
+		if(descriptor != null) {
+			forTopLevelDescriptor.accept(descriptor);
+			return;
+		}
+
+		Builtin builtin = builtins.getOrNull(id);
+		if(builtin != null) {
+			forBuiltin.accept(builtin);
+			return;
+		}
+
+		int localIdx = locals.indexOf(id);
+		if(localIdx != -1) {
+			forLocalIdx.accept(localIdx);
+			return;
+		}
+
+		neverHappen("id must be found:"+id);
+	}
+
+	// TODO 名前に「計画に追加する」ニュアンスを
+	// TODO retTyからSignatureTypeを書く
+	private void genBoxedMethod(Id name, List<Type> argTys, Id original, Type retTy) {
+		String desc = toBoxedDesc(argTys, retTy);
+		toplevelDescs.put(name, desc);
+		pendings.push(() -> {
+			mv = cw.visitMethod(
+					Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_SYNTHETIC,
+					javaMethodName(name),
+					desc,
+					null,
+					null);
+
+			mv.visitCode();
+			dbg = false;
+			// unboxing
+			for (int i = 0; i < argTys.size(); i++) {
+				mv.visitIntInsn(Opcodes.ALOAD, i);
+				genUnboxing(argTys.get(i));
+			}
+
+			// call original
+			mv.visitMethodInsn(
+					Opcodes.INVOKESTATIC,
+					module.name(),
+					javaMethodName(original),
+					toplevelDescs.get(original),
+					false);
+
+			// boxing
+			genBoxing(retTy);
+
+			// return
+			mv.visitInsn(Opcodes.ARETURN);
+			dbg = true;
+			mv.visitMaxs(-1, -1); // compute all frames and local automatically
+			mv.visitEnd();
+		});
+	}
+
+	private void genCurryingStep(Id name, List<Type> argTys, Id target, Type retTy) {
+		String desc = toBoxedDesc(argTys, retTy);
+		String sign = toBoxedSignature(argTys, retTy);
+		toplevelDescs.put(name, desc);
+		pendings.push(() -> {
+			mv = cw.visitMethod(
+					Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_SYNTHETIC,
+					javaMethodName(name),
+					desc,
+					sign,
+					null);
+
+			mv.visitCode();
+
+			for (int i = 0; i < argTys.size(); i++) {
+				mv.visitIntInsn(Opcodes.ALOAD, i);
+			}
+
+			mv.visitInvokeDynamicInsn(
+					"apply",
+					desc,
+					new Handle(
+							Opcodes.H_INVOKESTATIC,
+							"java/lang/invoke/LambdaMetafactory",
+							"metafactory",
+							"(Ljava/lang/invoke/MethodHandles$Lookup;"
+							+ "Ljava/lang/String;"
+							+ "Ljava/lang/invoke/MethodType;"
+							+ "Ljava/lang/invoke/MethodType;"
+							+ "Ljava/lang/invoke/MethodHandle;"
+							+ "Ljava/lang/invoke/MethodType;"
+							+ ")Ljava/lang/invoke/CallSite;",
+							false),
+					"("+objectDesc+")"+objectDesc,
+					new Handle(
+							Opcodes.H_INVOKESTATIC,
+							module.name(),
+							javaMethodName(target),
+							toplevelDescs.get(target),
+							false),
+					toMethodType(toBoxedDesc(retTy.asArrow())));
+
+			mv.visitInsn(Opcodes.ARETURN);
+
+			mv.visitMaxs(-1, -1); // compute all frames and local automatically
+			mv.visitEnd();
+		});
 	}
 
 	private void loadCnst(ConstValue cnst) {
@@ -233,6 +458,29 @@ public final class BytecodeGenerator {
 				fun  -> { mv.visitVarInsn(Opcodes.ASTORE, idx); });
 	}
 
+	private void genBoxing(Type type) {
+		Boxing boxing = Boxing.of(type);
+		mv.visitMethodInsn(
+				Opcodes.INVOKESTATIC,
+				boxing.boxedClassName,
+				"valueOf",
+				boxing.boxMethodDesc,
+				false);
+	}
+
+	private void genUnboxing(Type type) {
+		if(dbg) {
+			throw new RuntimeException();
+		}
+		Boxing boxing = Boxing.of(type);
+		mv.visitMethodInsn(
+				Opcodes.INVOKEVIRTUAL,
+				boxing.boxedClassName,
+				boxing.unboxMethodName,
+				boxing.unboxMethodDesc,
+				false);
+	}
+
 	private void genReturn(Type type) {
 		type.match(
 				unit -> mv.visitInsn(Opcodes.RETURN),
@@ -241,43 +489,40 @@ public final class BytecodeGenerator {
 				fun  -> mv.visitInsn(Opcodes.ARETURN));
 	}
 
-	// TODO 2個以上の引数への対応
-	private static Instructions invokeApplyWithBoxing(TyArrow ty) {
-		return mv -> {
-			Type argTy = ty.arg();
-			if(!argTy.isArrow()) {
-				Boxing boxing = Boxing.of(argTy);
-				mv.visitMethodInsn(
-						Opcodes.INVOKESTATIC,
-						boxing.boxedClassName,
-						"valueOf",
-						boxing.boxMethodDesc,
-						false);
-			}
-
-			// カリー化されている前提
+	private void invokeApplyWithBoxing(TyArrow ty) {
+		Type argTy = ty.arg();
+		if(!argTy.isArrow()) {
+			Boxing boxing = Boxing.of(argTy);
 			mv.visitMethodInsn(
-					Opcodes.INVOKEINTERFACE,
-					"java/util/function/Function",
-					"apply",
-					"(Ljava/lang/Object;)Ljava/lang/Object;",
-					true);
+					Opcodes.INVOKESTATIC,
+					boxing.boxedClassName,
+					"valueOf",
+					boxing.boxMethodDesc,
+					false);
+		}
 
-			Type retTy = ty.ret();
-			if(retTy.isArrow()) {
-				mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
+		// カリー化されている前提
+		mv.visitMethodInsn(
+				Opcodes.INVOKEINTERFACE,
+				"java/util/function/Function",
+				"apply",
+				"(Ljava/lang/Object;)Ljava/lang/Object;",
+				true);
 
-			} else {
-				Boxing boxing = Boxing.of(retTy);
-				mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
+		Type retTy = ty.ret();
+		if(retTy.isArrow()) {
+			mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
 
-				mv.visitMethodInsn(
-						Opcodes.INVOKEVIRTUAL,
-						boxing.boxedClassName,
-						boxing.unboxMethodName,
-						boxing.unboxMethodDesc,
-						false);
-			};
+		} else {
+			Boxing boxing = Boxing.of(retTy);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
+
+			mv.visitMethodInsn(
+					Opcodes.INVOKEVIRTUAL,
+					boxing.boxedClassName,
+					boxing.unboxMethodName,
+					boxing.unboxMethodDesc,
+					false);
 		};
 	}
 
@@ -290,8 +535,8 @@ public final class BytecodeGenerator {
 	 * @param ty
 	 * @return ディスクリプション
 	 */
-	private static String toFunctionApplyDesc(TyArrow ty) {
-		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? "Ljava/util/function/Function;" : Boxing.of(ty_).boxedClassDesc);
+	private static String toBoxedDesc(TyArrow ty) {
+		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_).boxedClassDesc);
 	}
 
 	private static String getDescription(CcDecl decl, IdMap<Type> types) {
@@ -323,7 +568,26 @@ public final class BytecodeGenerator {
 		return sb.toString();
 	}
 
-	static final String objectDesc = "Ljava/lang/Object;";
+	private static String toBoxedDesc(List<Type> argTys, Type retTy) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("(");
+		argTys.forEach(ty -> sb.append(toBoxed(ty)));
+		sb.append(")");
+		sb.append(toBoxed(retTy));
+		return sb.toString();
+	}
+
+	private static String toBoxedSignature(List<Type> argTys, Type retTy) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("(");
+		argTys.forEach(ty -> sb.append(toBoxedSignature(ty)));
+		sb.append(")");
+		sb.append(toBoxedSignature(retTy));
+		return sb.toString();
+	}
+
+	private static final String objectDesc = "Ljava/lang/Object;";
+	private static final String functionDesc = "Ljava/util/function/Function;";
 
 	private static String toBinary(Type ty) {
 		return ty.fold(
@@ -331,6 +595,24 @@ public final class BytecodeGenerator {
 				bool -> "Z",
 				i32  -> "I",
 				fun  -> { throw new Error(ty.toString()); }
+		);
+	}
+
+	private static String toBoxed(Type ty) {
+		return ty.fold(
+				unit -> todo(),
+				bool -> "Ljava/lang/Boolean;",
+				i32  -> "Ljava/lang/Integer;",
+				fun  -> functionDesc
+		);
+	}
+
+	private static String toBoxedSignature(Type ty) {
+		return ty.fold(
+				unit -> todo(),
+				bool -> "Ljava/lang/Boolean;",
+				i32  -> "Ljava/lang/Integer;",
+				fun  -> "Ljava/util/function/Function<"+toBoxedSignature(fun.arg())+toBoxedSignature(fun.ret())+">;"
 		);
 	}
 
@@ -347,7 +629,7 @@ public final class BytecodeGenerator {
 		return org.objectweb.asm.Type.getMethodType(descriptor);
 	}
 
-	private Type returnType(CcCall call) {
+	private Type returnType(CcApp call) {
 		Type funTy = getType(call.fun());
 		return funTy.apply(call.args().size());
 	}
@@ -399,10 +681,10 @@ enum Boxing {
 
 	public static Boxing of(Type ty) {
 		return ty.fold(
-				unit -> { throw new Error(ty.toString()); },
+				unit -> { throw new IllegalArgumentException(ty.toString()); },
 				bool -> BOOL,
 				i32  -> INT,
-				fun  -> { throw new Error(ty.toString()); }
+				fun  -> { throw new IllegalArgumentException(ty.toString()); }
 		);
 	}
 }

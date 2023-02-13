@@ -25,6 +25,9 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 		}
 		return new TyArrow(rest[0], tail);
 	}
+	public static Type arrow(List<Type> types) {
+		return arrow(types.toArray(Type[]::new));
+	}
 
 	<R> R fold(
 			Function<TyUnit, R> forUnit,
@@ -91,7 +94,7 @@ permits TyUnit, TyBool, TyI32, TyArrow {
 		List<Type> flatten = new ArrayList<>();
 
 		Type ret = this;
-		while(!ret.isArrow()) {
+		while(ret.isArrow()) {
 			TyArrow fun = ret.asArrow();
 			flatten.add(fun.arg());
 			ret = fun.ret();

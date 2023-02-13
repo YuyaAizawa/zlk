@@ -62,6 +62,17 @@ public class Main {
 				  in
 				    adder
 
+				inc i : I32 -> I32 =
+				  let
+				    f : I32 -> I32 =
+				      let
+				        g x : I32 -> I32 =
+				          add x 1
+				      in
+				        g
+				  in
+				    f i
+
 				ans1 : I32 =
 				  sq 42
 
@@ -69,7 +80,10 @@ public class Main {
 				  fact 10
 
 				ans3 : I32 =
-				  ((make_adder 3) 4) 5
+				  make_adder 3 4 5
+
+				ans4 : I32 =
+				  inc 42
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -101,11 +115,11 @@ public class Main {
 
 		System.out.println("-- BYTECODE --");
 		byte[] bin = new BytecodeGenerator(clconv, types, Builtin.builtins()).compile();
+		Files.write(Paths.get(name + ".class"), bin);
 		new ClassReader(bin).accept(
 				new TraceClassVisitor(
 						new PrintWriter(System.out)), 0);
 
-		Files.write(Paths.get(name + ".class"), bin);
 		System.out.println();
 
 		System.out.println("-- EXECUTE --");
@@ -120,7 +134,7 @@ public class Main {
 
 		invoke("ans1", "sq 42 = ");
 		invoke("ans2", "fact 10 = ");
-		invoke("ans3", "((make_adder 3) 4) 5 = ");
+		invoke("ans3", "make_adder 3 4 5 = ");
 	}
 
 	private static void invoke(String target, String description) throws IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {

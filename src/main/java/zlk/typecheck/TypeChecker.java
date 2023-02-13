@@ -7,6 +7,7 @@ import zlk.idcalc.IcApp;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.util.Location;
 
 public final class TypeChecker {
 	private IdMap<Type> env;
@@ -26,7 +27,7 @@ public final class TypeChecker {
 		}
 
 		for(IcDecl decl : module.decls()) {
-			assertEqual(check(decl), decl.type());
+			assertEqual(check(decl), decl.type(), decl.loc());
 		}
 		return env;
 	}
@@ -36,7 +37,7 @@ public final class TypeChecker {
 		System.out.println(decl.id()+": "+decl.type());
 
 		try {
-			assertEqual(check(decl.body()), decl.type());
+			assertEqual(check(decl.body()), decl.type(), decl.body().loc());
 
 			return decl.type();
 		} catch (AssertionError e) {
@@ -60,27 +61,20 @@ public final class TypeChecker {
 						return Type.arrow(abs.type(), check(abs.body()));
 					},
 					app   -> {
-						Type funType = check(app.fun());
-						Type restType = funType;
-						for(IcExp arg : app.args()) {
-
-							TyArrow arrow = restType.asArrow();
-							if(arrow == null) {
-								throw new AssertionError(String.format(
-										"too many arguments. fun: %s, type: %s, args: %s",
-										app.fun().toString(),
-										funType.toString(),
-										app.args().size()));
-							}
-							assertEqual(check(arg), arrow.arg());
-							restType = arrow.ret();
+						TyArrow arrow = check(app.fun()).asArrow();
+						if(arrow == null) {
+							throw new AssertionError(String.format(
+									"%s takes no more arguments but applied %s.",
+									app.fun().loc(),
+									app.arg().loc()));
 						}
-						return restType;
+						typeAssertion(app.arg(), arrow.arg());
+						return arrow.ret();
 					},
 					ifExp -> {
-						assertEqual(check(ifExp.cond()), Type.bool);
+						typeAssertion(ifExp.cond(), Type.bool);
 						Type exp1Type = check(ifExp.exp1());
-						assertEqual(check(ifExp.exp2()), exp1Type);
+						typeAssertion(ifExp.exp2(), exp1Type);
 						return exp1Type;
 					},
 					let   -> {
@@ -92,9 +86,13 @@ public final class TypeChecker {
 		}
 	}
 
-	private static void assertEqual(Type actual, Type expected) {
+	private void typeAssertion(IcExp exp, Type expected) {
+		assertEqual(check(exp), expected, exp.loc());
+	}
+
+	private static void assertEqual(Type actual, Type expected, Location loc) {
 		if(!actual.equals(expected)) {
-			throw new AssertionError(String.format("expect: %s, actual: %s", expected, actual));
+			throw new AssertionError(String.format("expect: %s, actual: %s @%s", expected, actual, loc));
 		}
 	}
 }

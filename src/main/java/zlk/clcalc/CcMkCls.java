@@ -7,8 +7,8 @@ import zlk.util.pp.PrettyPrinter;
 
 public record CcMkCls(
 		Id clsFunc, // メソッド定義
-		IdList caps,
-		Location loc) // キャプチャする変数
+		IdList caps, // キャプチャする変数
+		Location loc)
 implements CcExp {
 
 	public Id id() {
