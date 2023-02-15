@@ -2,6 +2,7 @@ package zlk.nameeval;
 
 import java.util.List;
 
+import zlk.ast.AType;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
@@ -25,13 +26,18 @@ public final class NameEvaluator {
 
 	private final Module module;
 	private final Env env;
+	private final TyEnv tyEnv;
 
-	public NameEvaluator(Module module, IdList builtins) {
+	public NameEvaluator(Module module, IdList builtinFuncs) {
 		this.module = module;
 		env = new Env();
-		for(Id builtin : builtins) {
+		for(Id builtin : builtinFuncs) {
 			env.registerBuiltinVar(builtin);
 		}
+
+		tyEnv = new TyEnv();
+		tyEnv.put("Bool", Type.bool);
+		tyEnv.put("I32" , Type.i32);
 	}
 
 	public IcModule eval() {
@@ -55,15 +61,20 @@ public final class NameEvaluator {
 	}
 
 	public IcDecl eval(Decl decl) {
-		String declName = decl.name();
-		env.push(declName);
+		try {
+			String declName = decl.name();
+			env.push(declName);
 
-		Id id = env.get(declName);
+			Id id = env.get(declName);
 
-		IcExp icBody = argHelp(decl.args(), decl.type(), decl.body(), decl.loc());
+			Type type = eval(decl.anno());
+			IcExp icBody = argHelp(decl.args(), type, decl.body(), decl.loc());
 
-		env.pop();
-		return new IcDecl(id, decl.type(), icBody, decl.loc());
+			env.pop();
+			return new IcDecl(id, type, icBody, decl.loc());
+		} catch(RuntimeException e) {
+			throw new RuntimeException("in "+decl.name(), e);
+		}
 	}
 	private IcExp argHelp(List<String> args, Type type, Exp body, Location loc) {
 		if(args.isEmpty()) {
@@ -119,5 +130,11 @@ public final class NameEvaluator {
 
 		return new IcLet(eval(decl), eval(decls.subList(1, decls.size()), body),
 				new Location(module.origin(), decl.loc().start(), end));
-		}
+	}
+
+	private Type eval(AType aTy) {
+		return aTy.fold(
+				base -> tyEnv.get(base.name()),
+				arrow -> new TyArrow(eval(arrow.arg()), eval(arrow.ret())));
+	}
 }

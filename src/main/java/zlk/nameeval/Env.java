@@ -53,7 +53,7 @@ public final class Env {
 	private void put(String name, Id id) {
 		Id old = getOrNull(name);
 		if(old != null) {
-			throw new IllegalArgumentException("already exist: "+old);
+			throw new RuntimeException("already exist: "+old);
 		}
 		scopeStack.peek().ids().put(name, id);
 	}

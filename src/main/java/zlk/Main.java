@@ -33,57 +33,54 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				sq a : I32 -> I32 =
+				sq : I32 -> I32
+				sq a  =
 				  let
-				    pow b c : I32 -> I32 -> I32 =
+				    pow : I32 -> I32 -> I32
+				    pow b c =
 				      if isZero c
 				      then 1
 				      else mul b (pow b (sub c 1))
 				  in
 				    pow a 2
 
-				fact n : I32 -> I32 =
+				fact : I32 -> I32
+				fact n =
 				  if isZero n then
 				    1
 				  else
 				    let
-				      one : I32 = 1
-				      nn : I32 = sub n one
+				      one : I32
+				      one = 1
+				      nn : I32
+				      nn = sub n one
 				    in
 				      mul n (fact nn)
 
-				make_adder x : I32 -> I32 -> I32 -> I32 =
+				make_adder : I32 -> I32 -> I32 -> I32
+				make_adder x =
 				  let
-				    adder y : I32 -> I32 -> I32 =
+				    adder : I32 -> I32 -> I32
+				    adder y =
 				      let
-				        adder2 z : I32 -> I32 = add (add x y) z
+				        adder2 : I32 -> I32
+				        adder2 z = add (add x y) z
 				      in
 				        adder2
 				  in
 				    adder
 
-				inc i : I32 -> I32 =
-				  let
-				    f : I32 -> I32 =
-				      let
-				        g x : I32 -> I32 =
-				          add x 1
-				      in
-				        g
-				  in
-				    f i
-
-				ans1 : I32 =
+				ans1 : I32
+				ans1 =
 				  sq 42
 
-				ans2 : I32 =
+				ans2 : I32
+				ans2 =
 				  fact 10
 
-				ans3 : I32 =
+				ans3 : I32
+				ans3 =
 				  make_adder 3 4 5
-
-				ans4 : I32 =
-				  inc 42
 				""";
 
 		System.out.println("-- SOURCE --");

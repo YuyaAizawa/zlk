@@ -20,6 +20,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import zlk.ast.ATyArrow;
+import zlk.ast.ATyBase;
+import zlk.ast.AType;
 import zlk.ast.App;
 import zlk.ast.Cnst;
 import zlk.ast.Decl;
@@ -29,8 +32,6 @@ import zlk.ast.Let;
 import zlk.ast.Module;
 import zlk.ast.Var;
 import zlk.common.cnst.Bool;
-import zlk.common.type.TyArrow;
-import zlk.common.type.Type;
 import zlk.parser.Token.Kind;
 import zlk.util.Location;
 import zlk.util.Position;
@@ -50,7 +51,8 @@ import zlk.util.Position;
  * $ The all decls start in the same column. This column called decl column of the declList. The elements other than the
  *   declared identifiers appear to the right of the decl column.
  *
- * <decl>     ::= <lcid>+ : <type> = <exp> ;
+ * <decl>     ::= $<anno> <lcid> : <type> $<lcid>+ = <exp> ;
+ * $ type annotation and decl pair starts in the same column.
  *
  * <aExp>     ::= ( <exp> )
  *              | <constant>
@@ -112,18 +114,15 @@ public class Parser {
 	}
 
 	public Decl parseDecl() {
+
 		if(current.column() != declColumn) {
 			throw new RuntimeException(
-					current.pos() + " declaration must starts to the right column of the \"let\"");
+					current.pos() + " type annotation must starts to the right column of the \"let\"");
 		}
 
 		Position start = current.pos();
-		String name = parse(LCID);
 
-		List<String> args = new ArrayList<>();
-		while(current.kind() == LCID && current.column() > declColumn) {
-			args.add(parse(LCID));
-		}
+		String name = parse(LCID);
 
 		if(current.column() <= declColumn) {
 			throw new RuntimeException(current.pos() + " missing \":\" on \"" + name + "\"@" + start);
@@ -133,7 +132,21 @@ public class Parser {
 		if(current.column() <= declColumn) {
 			throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
 		}
-		Type type = parseType();
+		AType type = parseType();
+
+		if(current.column() != declColumn) {
+			throw new RuntimeException(
+					current.pos() + " declaration must starts to the right column of the \"let\"");
+		}
+		if(!parse(LCID).equals(name)) {
+			throw new RuntimeException(
+					current.pos() + " declatarion must have the same name with annotation");
+		}
+
+		List<String> args = new ArrayList<>();
+		while(current.kind() == LCID && current.column() > declColumn) {
+			args.add(parse(LCID));
+		}
 
 		if(current.column() <= declColumn) {
 			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
@@ -145,7 +158,7 @@ public class Parser {
 		}
 		Exp body = parseExp();
 
-		return new Decl(name, args, type, body, location(start, end));
+		return new Decl(name, type, args, body, location(start, end));
 	}
 
 	public Exp parseExp() {
@@ -268,27 +281,25 @@ public class Parser {
 		return exp;
 	}
 
-	private Type parseType() {
-		Type ty = parseAType();
+	private AType parseType() {
+		Position start = current.pos();
+
+		AType ty = parseAType();
 
 		if(current.kind() == ARROW) {
 			nextToken();
-			return new TyArrow(ty, parseType());
+			return new ATyArrow(ty, parseType(), location(start, end));
 		} else {
 			return ty;
 		}
 	}
 
-	private Type parseAType() {
+	private AType parseAType() {
+		Position start = current.pos();
 		return switch(current.kind()) {
 		case LPAREN -> parseParenType();
 		case UCID -> {
-			Type type = switch(current.value()) {
-			case "Bool" -> Type.bool;
-			case "I32"  -> Type.i32;
-			default -> throw new RuntimeException(
-					"cannot accept as type: \""+current.value()+"\"");
-			};
+			AType type = new ATyBase(current.value(), location(start, end));
 			nextToken();
 			yield type;
 		}
@@ -296,10 +307,10 @@ public class Parser {
 		};
 	}
 
-	private Type parseParenType() {
+	private AType parseParenType() {
 		consume(LPAREN);
 
-		Type type = parseAType();
+		AType type = parseAType();
 
 		consume(RPAREN);
 
