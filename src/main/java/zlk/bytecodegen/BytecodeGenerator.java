@@ -97,8 +97,7 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	boolean dbg;
-	private void compileDecl(CcDecl decl) {
+	private void compileDecl(CcDecl decl) { // TODO トップレベルは全て非カリー化する
 		try {
 			locals = new IdList(decl.args());
 
@@ -110,10 +109,8 @@ public final class BytecodeGenerator {
 					null);
 
 			mv.visitCode();
-			dbg = false;
 			compile(decl.body());
 			genReturn(types.get(decl.id()).apply(decl.arity()));
-			dbg = true;
 			mv.visitMaxs(-1, -1); // compute all frames and local automatically
 			mv.visitEnd();
 
@@ -361,7 +358,6 @@ public final class BytecodeGenerator {
 					null);
 
 			mv.visitCode();
-			dbg = false;
 			// unboxing
 			for (int i = 0; i < argTys.size(); i++) {
 				mv.visitIntInsn(Opcodes.ALOAD, i);
@@ -381,7 +377,6 @@ public final class BytecodeGenerator {
 
 			// return
 			mv.visitInsn(Opcodes.ARETURN);
-			dbg = true;
 			mv.visitMaxs(-1, -1); // compute all frames and local automatically
 			mv.visitEnd();
 		});
@@ -469,9 +464,6 @@ public final class BytecodeGenerator {
 	}
 
 	private void genUnboxing(Type type) {
-		if(dbg) {
-			throw new RuntimeException();
-		}
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
