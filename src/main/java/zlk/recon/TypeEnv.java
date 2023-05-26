@@ -5,7 +5,7 @@ import java.util.List;
 import zlk.common.id.Id;
 import zlk.util.AssocList;
 
-public class TypeEnvironment extends AssocList<Id, TypeSchema> {
+public class TypeEnv extends AssocList<Id, TypeSchema> {
 
 	public boolean containsVar(Id id) {
 		return containsKey(id);

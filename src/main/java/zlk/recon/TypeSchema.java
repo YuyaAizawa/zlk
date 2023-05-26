@@ -43,4 +43,15 @@ permits TsVar, TsBase, TsArrow {
 				base  -> false,
 				arrow -> arrow.arg().contains(alpha) || arrow.ret().contains(alpha));
 	}
+
+	default TypeSchema apply(int size) {
+		if(size == 0) {
+			return this;
+		} else {
+			return fold(
+					var   -> {throw new IllegalArgumentException();},
+					base  -> {throw new IllegalArgumentException();},
+					arrow -> arrow.ret().apply(size - 1));
+		}
+	}
 }

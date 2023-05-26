@@ -1,9 +1,10 @@
 package zlk.common.type;
 
-import java.util.function.Consumer;
-import java.util.function.Function;
-
-import zlk.util.pp.PrettyPrinter;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 public record TyArrow(
 		Type arg,
@@ -12,30 +13,20 @@ implements Type {
 
 	@Override
 	public 	<R> R fold(
-			Function<TyUnit, R> forUnit,
-			Function<TyBool, R> forBool,
-			Function<TyI32, R> forI32,
-			Function<TyArrow, R> forArrow) {
-		return forArrow.apply(this);
+			IntFunction<R> forVar,
+			Supplier<R> forBool,
+			Supplier<R> forI32,
+			BiFunction<Type, Type, R> forArrow) {
+		return forArrow.apply(arg, ret);
 	}
 
 	@Override
 	public void match(
-			Consumer<TyUnit> forUnit,
-			Consumer<TyBool> forBool,
-			Consumer<TyI32> forI32,
-			Consumer<TyArrow> forArrow) {
-		forArrow.accept(this);
-	}
-
-	@Override
-	public void mkString(PrettyPrinter pp) {
-		arg.match(
-				unit  -> pp.append(unit),
-				bool  -> pp.append(bool),
-				i32   -> pp.append(i32),
-				arrow -> pp.append("(").append(arrow).append(")"));
-		pp.append(" -> ").append(ret);
+			IntConsumer forVar,
+			Runnable forBool,
+			Runnable forI32,
+			BiConsumer<Type, Type> forArrow) {
+		forArrow.accept(arg, ret);
 	}
 
 	@Override

@@ -21,7 +21,6 @@ import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
-import zlk.recon.TypeReconstructor;
 import zlk.typecheck.TypeChecker;
 
 public class Main {
@@ -100,10 +99,11 @@ public class Main {
 		idcalc.pp(System.out);
 		System.out.println();
 
-		System.out.println("-- TYPE RECON --");
-		TypeReconstructor tr = new TypeReconstructor();
-		Builtin.builtins().forEach(b -> tr.addBuiltin(b.id(), b.type()));
-		idcalc.decls().forEach(decl -> tr.recon(decl));
+//		System.out.println("-- TYPE RECON --");
+//		TypeReconstructor tr = new TypeReconstructor();
+//		Builtin.builtins().forEach(b -> tr.addBuiltin(b.id(), b.type()));
+//		idcalc.decls().forEach(decl -> tr.recon(decl));
+//		System.out.println();
 
 		System.out.println("-- TYPE CHECK --");
 		TypeChecker typeChecker = new TypeChecker(Builtin.builtins().stream().collect(

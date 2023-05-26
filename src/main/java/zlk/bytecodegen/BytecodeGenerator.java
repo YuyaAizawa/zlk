@@ -439,18 +439,18 @@ public final class BytecodeGenerator {
 
 	private void loadLocal(int idx, Type ty) {
 		ty.match(
-				unit -> { new Error("no local var for type Unit"); },
-				bool -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
-				i32  -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
-				fun  -> { mv.visitVarInsn(Opcodes.ALOAD, idx); });
+				varId      -> { new Error("typevar"); },
+				()         -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
+				()         -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
+				(arg, ret) -> { mv.visitVarInsn(Opcodes.ALOAD, idx); });
 	}
 
 	private void storeLocal(int idx, Type ty) {
 		ty.match(
-				unit -> { new Error("no local var for type Unit"); },
-				bool -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
-				i32  -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
-				fun  -> { mv.visitVarInsn(Opcodes.ASTORE, idx); });
+				varId      -> { new Error("typevar"); },
+				()         -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
+				()         -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
+				(arg, ret) -> { mv.visitVarInsn(Opcodes.ASTORE, idx); });
 	}
 
 	private void genBoxing(Type type) {
@@ -475,10 +475,10 @@ public final class BytecodeGenerator {
 
 	private void genReturn(Type type) {
 		type.match(
-				unit -> mv.visitInsn(Opcodes.RETURN),
-				bool -> mv.visitInsn(Opcodes.IRETURN),
-				i32  -> mv.visitInsn(Opcodes.IRETURN),
-				fun  -> mv.visitInsn(Opcodes.ARETURN));
+				varId      -> { new Error("typevar"); },
+				()         -> mv.visitInsn(Opcodes.IRETURN),
+				()         -> mv.visitInsn(Opcodes.IRETURN),
+				(arg, ret) -> mv.visitInsn(Opcodes.ARETURN));
 	}
 
 	private void invokeApplyWithBoxing(TyArrow ty) {
@@ -583,28 +583,27 @@ public final class BytecodeGenerator {
 
 	private static String toBinary(Type ty) {
 		return ty.fold(
-				unit -> "V",
-				bool -> "Z",
-				i32  -> "I",
-				fun  -> { throw new Error(ty.toString()); }
-		);
+				varId      -> { throw new Error("typevar"); },
+				()         -> "Z",
+				()         -> "I",
+				(arg, ret) -> { throw new Error(ty.toString()); });
 	}
 
 	private static String toBoxed(Type ty) {
 		return ty.fold(
-				unit -> todo(),
-				bool -> "Ljava/lang/Boolean;",
-				i32  -> "Ljava/lang/Integer;",
-				fun  -> functionDesc
+				varId      -> { throw new Error("typevar"); },
+				()         -> "Ljava/lang/Boolean;",
+				()         -> "Ljava/lang/Integer;",
+				(arg, ret) -> functionDesc
 		);
 	}
 
 	private static String toBoxedSignature(Type ty) {
 		return ty.fold(
-				unit -> todo(),
-				bool -> "Ljava/lang/Boolean;",
-				i32  -> "Ljava/lang/Integer;",
-				fun  -> "Ljava/util/function/Function<"+toBoxedSignature(fun.arg())+toBoxedSignature(fun.ret())+">;"
+				varId      -> { throw new Error("typevar"); },
+				()         -> "Ljava/lang/Boolean;",
+				()         -> "Ljava/lang/Integer;",
+				(arg, ret) -> "Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;"
 		);
 	}
 
@@ -673,10 +672,10 @@ enum Boxing {
 
 	public static Boxing of(Type ty) {
 		return ty.fold(
-				unit -> { throw new IllegalArgumentException(ty.toString()); },
-				bool -> BOOL,
-				i32  -> INT,
-				fun  -> { throw new IllegalArgumentException(ty.toString()); }
+				varId      -> { throw new Error("typevar"); },
+				()         -> BOOL,
+				()         -> INT,
+				(arg, ret) -> { throw new IllegalArgumentException(ty.toString()); }
 		);
 	}
 }

@@ -1,8 +1,15 @@
 package zlk.idcalc;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import zlk.common.id.Id;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
@@ -57,6 +64,40 @@ permits IcCnst, IcVar, IcAbs, IcApp, IcIf, IcLet {
 		} else {
 			throw new Error(this.getClass().toString());
 		}
+	}
+
+	default List<IcVar> fv(Collection<Id> known) {
+		List<IcVar> acc = new ArrayList<>();
+		Set<Id> knownSet = new HashSet<>(known);
+		fv(acc, knownSet);
+		return Collections.unmodifiableList(acc);
+	}
+
+	private void fv(List<IcVar> acc, Set<Id> known) {
+		match(
+				cnst -> {},
+				var -> {
+					if(!known.contains(var.id())) {
+						acc.add(var);
+					}},
+				abs -> {
+					known.add(abs.id());
+					abs.body().fv(acc, known);
+				},
+				app -> {
+					app.fun().fv(acc, known);
+					app.arg().fv(acc, known);
+				},
+				if_ -> {
+					if_.cond().fv(acc, known);
+					if_.exp1().fv(acc, known);
+					if_.exp2().fv(acc, known);
+				},
+				let -> {
+					known.add(let.decl().id());
+					let.decl().body().fv(acc, known);
+					let.body().fv(acc, known);
+				});
 	}
 
 	static boolean isVar(IcExp exp) {
