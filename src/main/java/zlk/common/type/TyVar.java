@@ -1,13 +1,19 @@
 package zlk.common.type;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public record TyBool ()
-implements Type {
+public final class TyVar implements Type {
+	private static final AtomicInteger fresh = new AtomicInteger();
+	private final int varId;
+
+	public TyVar() {
+		this.varId = fresh.getAndIncrement();
+	}
 
 	@Override
 	public 	<R> R fold(
@@ -15,7 +21,7 @@ implements Type {
 			Supplier<R> forBool,
 			Supplier<R> forI32,
 			BiFunction<Type, Type, R> forArrow) {
-		return forBool.get();
+		return forVar.apply(varId);
 	}
 
 	@Override
@@ -24,11 +30,13 @@ implements Type {
 			Runnable forBool,
 			Runnable forI32,
 			BiConsumer<Type, Type> forArrow) {
-		forBool.run();
+		forVar.accept(varId);
 	}
 
 	@Override
 	public String toString() {
-		return "Bool";
+		StringBuilder sb = new StringBuilder();
+		pp(sb);
+		return sb.toString();
 	}
 }

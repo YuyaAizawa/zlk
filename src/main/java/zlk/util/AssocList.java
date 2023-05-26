@@ -16,6 +16,11 @@ public class AssocList<K, V> {
 		values = new ArrayList<>();
 	}
 
+	public  AssocList(AssocList<K, V> origin) {
+		keys = new ArrayList<>(origin.keys);
+		values = new ArrayList<>(origin.values);
+	}
+
 	public boolean isEmpty() {
 		return keys.isEmpty();
 	}
