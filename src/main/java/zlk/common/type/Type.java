@@ -4,19 +4,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 
 import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Type extends PrettyPrintable
-permits TyVar, TyBool, TyI32, TyArrow {
+permits TyBase, TyArrow, TyVar {
 
-	public static final TyBool bool = new TyBool();
-	public static final TyI32 i32 = new TyI32();
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
 			throw new IllegalArgumentException("length: "+rest.length);
@@ -33,24 +32,27 @@ permits TyVar, TyBool, TyI32, TyArrow {
 	}
 
 	<R> R fold(
-			IntFunction<R> forVar,
-			Supplier<R> forBool,
-			Supplier<R> forI32,
-			BiFunction<Type, Type, R> forArrow);
+			Function<TyBase, R> forBase,
+			BiFunction<Type, Type, R> forArrow,
+			IntFunction<R> forVar);
 
 	void match(
-			IntConsumer forVar,
-			Runnable forBool,
-			Runnable forI32,
-			BiConsumer<Type, Type> forArrow);
+			Consumer<TyBase> forBase,
+			BiConsumer<Type, Type> forArrow,
+			IntConsumer forVar);
+
+	default TyBase asBase() {
+		return fold(
+				base       -> (TyBase)this,
+				(arg, ret) -> null,
+				varId      -> null);
+	}
 
 	default TyArrow asArrow() {
 		return fold(
-				varId      -> null,
-				()         -> null,
-				()         -> null,
-				(arg, ret) -> (TyArrow)this // TODO なんとか
-		);
+				base       -> null,
+				(arg, ret) -> (TyArrow)this,
+				varId      -> null);
 	}
 
 	default boolean isArrow() {
@@ -67,10 +69,9 @@ permits TyVar, TyBool, TyI32, TyArrow {
 		Type type = this;
 		for(int i = 0; i < cnt ; i++) {
 			type = type.fold(
-					varId      -> { throw tooManyApplies(this, cnt); },
-					()         -> { throw tooManyApplies(this, cnt); },
-					()         -> { throw tooManyApplies(this, cnt); },
-					(arg, ret) -> ret);
+					base       -> { throw tooManyApplies(this, cnt); },
+					(arg, ret) -> ret,
+					varId      -> { throw tooManyApplies(this, cnt); });
 		}
 		return type;
 	}
@@ -87,10 +88,9 @@ permits TyVar, TyBool, TyI32, TyArrow {
 	default Type arg(int idx) {
 		try {
 			return apply(idx).fold(
-					varId      -> { throw new IndexOutOfBoundsException(); },
-					()         -> { throw new IndexOutOfBoundsException(); },
-					()         -> { throw new IndexOutOfBoundsException(); },
-					(arg, ret) -> arg
+					base       -> { throw new IndexOutOfBoundsException(); },
+					(arg, ret) -> arg,
+					varId      -> { throw new IndexOutOfBoundsException(); }
 			);
 		} catch(IndexOutOfBoundsException e) {
 			throw new IndexOutOfBoundsException(String.format(
@@ -126,9 +126,7 @@ permits TyVar, TyBool, TyI32, TyArrow {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		match(
-				varId      -> pp.append("[").append(varId).append("]"),
-				()         -> pp.append("Bool"),
-				()         -> pp.append("I32"),
+				base         -> pp.append(base),
 				(arg, ret) -> {
 					if(arg.isArrow()) {
 						pp.append("(").append(arg).append(")");
@@ -136,6 +134,7 @@ permits TyVar, TyBool, TyI32, TyArrow {
 						pp.append(arg);
 					}
 					pp.append(" -> ").append(ret);
-				});
+				},
+				varId      -> pp.append("[").append(varId).append("]"));
 	}
 }

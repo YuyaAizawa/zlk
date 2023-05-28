@@ -25,6 +25,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
+import zlk.common.type.TyBase;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.util.Stack;
@@ -361,7 +362,7 @@ public final class BytecodeGenerator {
 			// unboxing
 			for (int i = 0; i < argTys.size(); i++) {
 				mv.visitIntInsn(Opcodes.ALOAD, i);
-				genUnboxing(argTys.get(i));
+				genUnboxing(argTys.get(i).asBase());
 			}
 
 			// call original
@@ -373,7 +374,7 @@ public final class BytecodeGenerator {
 					false);
 
 			// boxing
-			genBoxing(retTy);
+			genBoxing(retTy.asBase());
 
 			// return
 			mv.visitInsn(Opcodes.ARETURN);
@@ -439,21 +440,19 @@ public final class BytecodeGenerator {
 
 	private void loadLocal(int idx, Type ty) {
 		ty.match(
-				varId      -> { new Error("typevar"); },
-				()         -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
-				()         -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
-				(arg, ret) -> { mv.visitVarInsn(Opcodes.ALOAD, idx); });
+				base       -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
+				(arg, ret) -> { mv.visitVarInsn(Opcodes.ALOAD, idx); },
+				varId      -> { new Error("typevar"); });
 	}
 
 	private void storeLocal(int idx, Type ty) {
 		ty.match(
-				varId      -> { new Error("typevar"); },
-				()         -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
-				()         -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
-				(arg, ret) -> { mv.visitVarInsn(Opcodes.ASTORE, idx); });
+				base       -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
+				(arg, ret) -> { mv.visitVarInsn(Opcodes.ASTORE, idx); },
+				varId      -> { new Error("typevar"); });
 	}
 
-	private void genBoxing(Type type) {
+	private void genBoxing(TyBase type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKESTATIC,
@@ -463,7 +462,7 @@ public final class BytecodeGenerator {
 				false);
 	}
 
-	private void genUnboxing(Type type) {
+	private void genUnboxing(TyBase type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
@@ -475,16 +474,15 @@ public final class BytecodeGenerator {
 
 	private void genReturn(Type type) {
 		type.match(
-				varId      -> { new Error("typevar"); },
-				()         -> mv.visitInsn(Opcodes.IRETURN),
-				()         -> mv.visitInsn(Opcodes.IRETURN),
-				(arg, ret) -> mv.visitInsn(Opcodes.ARETURN));
+				base       -> mv.visitInsn(Opcodes.IRETURN),
+				(arg, ret) -> mv.visitInsn(Opcodes.ARETURN),
+				varId      -> { new Error("typevar"); });
 	}
 
 	private void invokeApplyWithBoxing(TyArrow ty) {
 		Type argTy = ty.arg();
 		if(!argTy.isArrow()) {
-			Boxing boxing = Boxing.of(argTy);
+			Boxing boxing = Boxing.of(argTy.asBase());
 			mv.visitMethodInsn(
 					Opcodes.INVOKESTATIC,
 					boxing.boxedClassName,
@@ -506,7 +504,7 @@ public final class BytecodeGenerator {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
 
 		} else {
-			Boxing boxing = Boxing.of(retTy);
+			Boxing boxing = Boxing.of(retTy.asBase());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
 
 			mv.visitMethodInsn(
@@ -528,7 +526,7 @@ public final class BytecodeGenerator {
 	 * @return ディスクリプション
 	 */
 	private static String toBoxedDesc(TyArrow ty) {
-		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_).boxedClassDesc);
+		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asBase()).boxedClassDesc);
 	}
 
 	private static String getDescription(CcDecl decl, IdMap<Type> types) {
@@ -550,12 +548,12 @@ public final class BytecodeGenerator {
 	private static String toDesc(List<Type> argTys, Type retTy) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
-		argTys.forEach(ty -> sb.append(toBinary(ty)));
+		argTys.forEach(ty -> sb.append(toBinary(ty.asBase())));
 		sb.append(")");
 		if(retTy.isArrow()) {
 			sb.append(toFunctionClassDesc(retTy.asArrow()));
 		} else {
-			sb.append(toBinary(retTy));
+			sb.append(toBinary(retTy.asBase()));
 		}
 		return sb.toString();
 	}
@@ -581,29 +579,28 @@ public final class BytecodeGenerator {
 	private static final String objectDesc = "Ljava/lang/Object;";
 	private static final String functionDesc = "Ljava/util/function/Function;";
 
-	private static String toBinary(Type ty) {
-		return ty.fold(
-				varId      -> { throw new Error("typevar"); },
-				()         -> "Z",
-				()         -> "I",
-				(arg, ret) -> { throw new Error(ty.toString()); });
+	private static String toBinary(TyBase ty) {
+		return switch (ty) {
+		case BOOL: { yield "Z"; }
+		case I32:  { yield "I"; }
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + ty);
+		};
 	}
 
 	private static String toBoxed(Type ty) {
 		return ty.fold(
-				varId      -> { throw new Error("typevar"); },
-				()         -> "Ljava/lang/Boolean;",
-				()         -> "Ljava/lang/Integer;",
-				(arg, ret) -> functionDesc
+				base       -> Boxing.of(base).boxedClassDesc,
+				(arg, ret) -> functionDesc,
+				varId      -> { throw new Error("typevar"); }
 		);
 	}
 
 	private static String toBoxedSignature(Type ty) {
 		return ty.fold(
-				varId      -> { throw new Error("typevar"); },
-				()         -> "Ljava/lang/Boolean;",
-				()         -> "Ljava/lang/Integer;",
-				(arg, ret) -> "Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;"
+				base       -> Boxing.of(base).boxedClassDesc,
+				(arg, ret) -> "Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;",
+				varId      -> { throw new Error("typevar"); }
 		);
 	}
 
@@ -670,12 +667,12 @@ enum Boxing {
 		this.boxMethodDesc = boxMethodDecs;
 	}
 
-	public static Boxing of(Type ty) {
-		return ty.fold(
-				varId      -> { throw new Error("typevar"); },
-				()         -> BOOL,
-				()         -> INT,
-				(arg, ret) -> { throw new IllegalArgumentException(ty.toString()); }
-		);
+	public static Boxing of(TyBase ty) {
+		return switch (ty) {
+		case BOOL: { yield BOOL; }
+		case I32:  { yield INT; }
+		default:
+			throw new IllegalArgumentException("Unexpected value: " + ty);
+		};
 	}
 }

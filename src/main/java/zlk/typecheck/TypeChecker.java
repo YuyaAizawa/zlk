@@ -2,6 +2,7 @@ package zlk.typecheck;
 
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
+import zlk.common.type.TyBase;
 import zlk.common.type.Type;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcDecl;
@@ -72,7 +73,7 @@ public final class TypeChecker {
 						return arrow.ret();
 					},
 					ifExp -> {
-						typeAssertion(ifExp.cond(), Type.bool);
+						typeAssertion(ifExp.cond(), TyBase.BOOL);
 						Type exp1Type = check(ifExp.exp1());
 						typeAssertion(ifExp.exp2(), exp1Type);
 						return exp1Type;

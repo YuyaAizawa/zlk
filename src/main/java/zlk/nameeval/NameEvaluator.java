@@ -9,6 +9,7 @@ import zlk.ast.Module;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.type.TyArrow;
+import zlk.common.type.TyBase;
 import zlk.common.type.Type;
 import zlk.idcalc.IcAbs;
 import zlk.idcalc.IcApp;
@@ -36,8 +37,8 @@ public final class NameEvaluator {
 		}
 
 		tyEnv = new TyEnv();
-		tyEnv.put("Bool", Type.bool);
-		tyEnv.put("I32" , Type.i32);
+		tyEnv.put("Bool", TyBase.BOOL);
+		tyEnv.put("I32" , TyBase.I32);
 	}
 
 	public IcModule eval() {
