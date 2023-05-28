@@ -1,5 +1,7 @@
 package zlk.bytecodegen;
 
+import static zlk.util.ErrorUtils.todo;
+
 import java.util.NoSuchElementException;
 
 import zlk.common.id.Id;
@@ -13,12 +15,13 @@ public class LocalEnv {
 		int idx = impl.size();
 		LocalVar localVar = new LocalVar(idx, type);
 
-		if(type == Type.i32) {
-			impl.put(idInfo, localVar);
-		} else {
-			throw new IllegalArgumentException(idInfo.toString());
-		}
-		return localVar;
+		return type.fold(
+				forBase -> {
+					impl.put(idInfo, localVar);
+					return localVar;
+				},
+				todo(),
+				todo());
 	}
 
 	public LocalVar find(Id idInfo) {

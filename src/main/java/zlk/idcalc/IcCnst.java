@@ -1,6 +1,7 @@
 package zlk.idcalc;
 
 import zlk.common.cnst.ConstValue;
+import zlk.common.type.TyBase;
 import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
@@ -12,8 +13,8 @@ implements IcExp {
 
 	public Type type() {
 		return value().fold(
-				bool -> Type.bool,
-				i32  -> Type.i32);
+				bool -> TyBase.BOOL,
+				i32  -> TyBase.I32);
 	}
 
 	@Override
