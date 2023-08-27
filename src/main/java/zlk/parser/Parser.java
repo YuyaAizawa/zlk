@@ -19,9 +19,10 @@ import static zlk.parser.Token.Kind.UCID;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import zlk.ast.ATyArrow;
-import zlk.ast.ATyBase;
+import zlk.ast.ATyAtom;
 import zlk.ast.AType;
 import zlk.ast.App;
 import zlk.ast.Cnst;
@@ -42,23 +43,23 @@ import zlk.util.Position;
  * <pre>{@code
  * <module>   ::= module <ucid> <declList>
  *
+ * <declList> ::= $(<decl>+)
+ * $ The all decls start in the same column. This column called decl column of the declList.
+ *   The elements other than the declared identifiers appear to the right of the decl column.
+ *
+ * <decl>     ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
+ * $ type annotation and decl pair starts in the same column.
+ *
  * <exp>      ::= <aExp>+
  *              | let $<declList> in <exp>
  *              | if <exp> then <exp> else <exp>
  * $ The declList starts to the right column of the "let" keyword.
  *
- * <declList> ::= $(<decl>+)
- * $ The all decls start in the same column. This column called decl column of the declList. The elements other than the
- *   declared identifiers appear to the right of the decl column.
- *
- * <decl>     ::= $<anno> <lcid> : <type> $<lcid>+ = <exp> ;
- * $ type annotation and decl pair starts in the same column.
- *
  * <aExp>     ::= ( <exp> )
  *              | <constant>
  *              | <lcid>
  *
- * <type>     ::= <aType> ( -> <type> )?
+ * <type>     ::= <aType> (-> <type>)?
  *
  * <aType>    ::= ( <type> )
  *              | <ucid>
@@ -117,7 +118,7 @@ public class Parser {
 
 		if(current.column() != declColumn) {
 			throw new RuntimeException(
-					current.pos() + " type annotation must starts to the right column of the \"let\"");
+					current.pos() + " declaration must starts to the right column of the \"let\"");
 		}
 
 		Position start = current.pos();
@@ -125,27 +126,32 @@ public class Parser {
 		String name = parse(LCID);
 
 		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.pos() + " missing \":\" on \"" + name + "\"@" + start);
-		}
-		consume(COLON);
-
-		if(current.column() <= declColumn) {
-			throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
-		}
-		AType type = parseType();
-
-		if(current.column() != declColumn) {
-			throw new RuntimeException(
-					current.pos() + " declaration must starts to the right column of the \"let\"");
-		}
-		if(!parse(LCID).equals(name)) {
-			throw new RuntimeException(
-					current.pos() + " declatarion must have the same name with annotation");
+			throw new RuntimeException(current.pos() + " missing \":\" or \"=\" on \"" + name + "\"@" + start);
 		}
 
-		List<String> args = new ArrayList<>();
+		Optional<AType> anno;
+		if(current.kind() == COLON) {
+			nextToken();
+			if(current.column() <= declColumn) {
+				throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
+			}
+			anno = Optional.of(parseType());
+			if(current.column() != declColumn) {
+				throw new RuntimeException(
+						current.pos() + " declaration must starts to the right column of the \"let\"");
+			}
+			if(!parse(LCID).equals(name)) {
+				throw new RuntimeException(
+						current.pos() + " declatarion must have the same name with annotation");
+			}
+		} else {
+			anno = Optional.empty();
+		}
+
+		// TODO parse pattern
+		List<Var> args = new ArrayList<>();
 		while(current.kind() == LCID && current.column() > declColumn) {
-			args.add(parse(LCID));
+			args.add(new Var(parse(LCID), location(start, end)));
 		}
 
 		if(current.column() <= declColumn) {
@@ -158,7 +164,7 @@ public class Parser {
 		}
 		Exp body = parseExp();
 
-		return new Decl(name, type, args, body, location(start, end));
+		return new Decl(name, anno, args, body, location(start, end));
 	}
 
 	public Exp parseExp() {
@@ -299,7 +305,7 @@ public class Parser {
 		return switch(current.kind()) {
 		case LPAREN -> parseParenType();
 		case UCID -> {
-			AType type = new ATyBase(current.value(), location(start, end));
+			AType type = new ATyAtom(current.value(), location(start, end));
 			nextToken();
 			yield type;
 		}

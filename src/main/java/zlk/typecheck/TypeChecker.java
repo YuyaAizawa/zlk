@@ -1,13 +1,16 @@
 package zlk.typecheck;
 
+import java.util.List;
+
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
-import zlk.common.type.TyBase;
+import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcPattern;
 import zlk.util.Location;
 
 public final class TypeChecker {
@@ -24,23 +27,34 @@ public final class TypeChecker {
 
 	public IdMap<Type> check(IcModule module) {
 		for(IcDecl decl : module.decls()) {
-			env.put(decl.id(), decl.type());
+			decl.anno().ifPresent(
+					anno -> env.put(decl.id(), anno));
 		}
 
 		for(IcDecl decl : module.decls()) {
-			assertEqual(check(decl), decl.type(), decl.loc());
+			decl.anno().ifPresent(
+					anno -> assertEqual(check(decl), anno, decl.loc()));
 		}
 		return env;
 	}
 
 	public Type check(IcDecl decl) {
-		env.putOrConfirm(decl.id(), decl.type());
-		System.out.println(decl.id()+": "+decl.type());
+		Type anno = decl.anno().get(); // TODO 注釈が無いとき
+		System.out.println(decl.id()+": "+anno);
+
+		env.putOrConfirm(decl.id(), anno);
+
+		// TODO パターンのチェック
+		Type ret = anno;
+		for(IcPattern arg : decl.args()) {
+			TyArrow arrow = ret.asArrow();
+			env.put(arg.fold(var -> var.id()), arrow.arg());
+			ret = arrow.ret();
+		}
 
 		try {
-			assertEqual(check(decl.body()), decl.type(), decl.body().loc());
-
-			return decl.type();
+			typeAssertion(decl.body(), ret);
+			return anno;
 		} catch (AssertionError e) {
 			throw new AssertionError("in " + decl.id().canonicalName(), e);
 		}
@@ -49,38 +63,50 @@ public final class TypeChecker {
 	public Type check(IcExp exp) {
 		try {
 			return exp.fold(
-					cnst  -> cnst.type(),
-					var   -> {
+					cnst    -> cnst.type(),
+					var     -> {
 						Type ty = env.get(var.id());
 						if(ty == null) {
 							throw new NullPointerException(""+var);
 						}
 						return ty;
 					},
-					abs   -> {
+					foreign -> foreign.type(),
+					abs     -> {
 						env.put(abs.id(), abs.type());
 						return Type.arrow(abs.type(), check(abs.body()));
 					},
-					app   -> {
-						TyArrow arrow = check(app.fun()).asArrow();
-						if(arrow == null) {
+					app     -> {
+						List<Type> funTy = check(app.fun()).flatten();
+						List<IcExp> args = app.args();
+
+						if(args.size() != funTy.size()-1) {
 							throw new AssertionError(String.format(
-									"%s takes no more arguments but applied %s.",
-									app.fun().loc(),
-									app.arg().loc()));
+								"%s takes %d arguments but applied %d.",
+								app.fun().loc(),
+								funTy.size()-1,
+								args.size()));
 						}
-						typeAssertion(app.arg(), arrow.arg());
-						return arrow.ret();
+
+						for(int i = 0; i < args.size(); i++) {
+							typeAssertion(args.get(i), funTy.get(i));
+						}
+
+						return funTy.get(funTy.size()-1);
 					},
-					ifExp -> {
-						typeAssertion(ifExp.cond(), TyBase.BOOL);
+					ifExp   -> {
+						typeAssertion(ifExp.cond(), TyAtom.BOOL);
 						Type exp1Type = check(ifExp.exp1());
 						typeAssertion(ifExp.exp2(), exp1Type);
 						return exp1Type;
 					},
-					let   -> {
+					let     -> {
 						check(let.decl());
 						return check(let.body());
+					},
+					letrec  -> {
+						letrec.decls().forEach(this::check);
+						return check(letrec.body());
 					});
 		} catch(NullPointerException e) {
 			throw new RuntimeException("on "+exp.loc(), e);

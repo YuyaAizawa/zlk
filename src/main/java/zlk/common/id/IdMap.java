@@ -4,6 +4,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
@@ -18,8 +19,22 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public Map<Id, V> impl;
 
+	private IdMap(Map<Id, V> impl) {
+		this.impl = impl;
+	}
+
 	public IdMap() {
-		impl = new HashMap<>();
+		this(new HashMap<>());
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <V> IdMap<V> of() {
+		return (IdMap<V>) EMPTY;
+	}
+	private static final IdMap<?> EMPTY = new IdMap<>(Map.of());
+
+	public static <V> IdMap<V> of(Id id, V value) {
+		return new IdMap<>(Map.of(id, value));
 	}
 
 	public int size() {
@@ -33,6 +48,7 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 	public V get(Id id) {
 		V result = getOrNull(id);
 		if(result == null) {
+			System.out.println(this);
 			throw new NoSuchElementException("id: "+id);
 		}
 		return result;
@@ -43,7 +59,7 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 	}
 
 	public void put(Id id, V value) {
-		V old = impl.put(id, value);
+		V old = impl.put(Objects.requireNonNull(id), Objects.requireNonNull(value));
 		if(old != null) {
 			throw new IllegalArgumentException("already exist. id: "+id+", old: "+old+", new: "+value);
 		}
@@ -69,6 +85,19 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public void forEach(BiConsumer<? super Id, ? super V> action) {
 		impl.forEach(action);
+	}
+
+	public <R> IdMap<R> traverse(Function<? super V, ? extends R> mapper) {
+		IdMap<R> result = new IdMap<>();
+		forEach((id, v) -> result.put(id, mapper.apply(v)));
+		return result;
+	}
+
+	public static <V> IdMap<V> union(IdMap<? extends V> primary, IdMap<? extends V> secondery) {
+		IdMap<V> result = new IdMap<>();
+		secondery.forEach(result::put);
+		primary.forEach(result::put);
+		return result;
 	}
 
 	public static <E, V> Collector<E, ?, IdMap<V>> collector(Function<? super E, ? extends Id> idExtractor, Function<? super E, ? extends V> valueExtractor) {
@@ -105,12 +134,13 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
+		pp.append("[");
 		boolean first = true;
 		for(Map.Entry<Id, V> e : impl.entrySet()) {
 			if(!first) {
 				pp.append(", ");
 			} else {
-				pp.append("[ ");
+				pp.append(" ");
 				first = false;
 			}
 			pp.append(e.getKey()).append(":");
@@ -121,7 +151,7 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 			}
 			pp.endl();
 		}
-		pp.append("]").endl();
+		pp.append("]");
 	}
 
 	@Override

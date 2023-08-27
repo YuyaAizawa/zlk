@@ -25,7 +25,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
-import zlk.common.type.TyBase;
+import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.util.Stack;
@@ -362,7 +362,7 @@ public final class BytecodeGenerator {
 			// unboxing
 			for (int i = 0; i < argTys.size(); i++) {
 				mv.visitIntInsn(Opcodes.ALOAD, i);
-				genUnboxing(argTys.get(i).asBase());
+				genUnboxing(argTys.get(i).asAtom());
 			}
 
 			// call original
@@ -374,7 +374,7 @@ public final class BytecodeGenerator {
 					false);
 
 			// boxing
-			genBoxing(retTy.asBase());
+			genBoxing(retTy.asAtom());
 
 			// return
 			mv.visitInsn(Opcodes.ARETURN);
@@ -452,7 +452,7 @@ public final class BytecodeGenerator {
 				varId      -> { new Error("typevar"); });
 	}
 
-	private void genBoxing(TyBase type) {
+	private void genBoxing(TyAtom type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKESTATIC,
@@ -462,7 +462,7 @@ public final class BytecodeGenerator {
 				false);
 	}
 
-	private void genUnboxing(TyBase type) {
+	private void genUnboxing(TyAtom type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
@@ -482,7 +482,7 @@ public final class BytecodeGenerator {
 	private void invokeApplyWithBoxing(TyArrow ty) {
 		Type argTy = ty.arg();
 		if(!argTy.isArrow()) {
-			Boxing boxing = Boxing.of(argTy.asBase());
+			Boxing boxing = Boxing.of(argTy.asAtom());
 			mv.visitMethodInsn(
 					Opcodes.INVOKESTATIC,
 					boxing.boxedClassName,
@@ -504,7 +504,7 @@ public final class BytecodeGenerator {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
 
 		} else {
-			Boxing boxing = Boxing.of(retTy.asBase());
+			Boxing boxing = Boxing.of(retTy.asAtom());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
 
 			mv.visitMethodInsn(
@@ -526,7 +526,7 @@ public final class BytecodeGenerator {
 	 * @return ディスクリプション
 	 */
 	private static String toBoxedDesc(TyArrow ty) {
-		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asBase()).boxedClassDesc);
+		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asAtom()).boxedClassDesc);
 	}
 
 	private static String getDescription(CcDecl decl, IdMap<Type> types) {
@@ -548,12 +548,12 @@ public final class BytecodeGenerator {
 	private static String toDesc(List<Type> argTys, Type retTy) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
-		argTys.forEach(ty -> sb.append(toBinary(ty.asBase())));
+		argTys.forEach(ty -> sb.append(toBinary(ty.asAtom())));
 		sb.append(")");
 		if(retTy.isArrow()) {
 			sb.append(toFunctionClassDesc(retTy.asArrow()));
 		} else {
-			sb.append(toBinary(retTy.asBase()));
+			sb.append(toBinary(retTy.asAtom()));
 		}
 		return sb.toString();
 	}
@@ -579,13 +579,10 @@ public final class BytecodeGenerator {
 	private static final String objectDesc = "Ljava/lang/Object;";
 	private static final String functionDesc = "Ljava/util/function/Function;";
 
-	private static String toBinary(TyBase ty) {
-		return switch (ty) {
-		case BOOL: { yield "Z"; }
-		case I32:  { yield "I"; }
-		default:
-			throw new IllegalArgumentException("Unexpected value: " + ty);
-		};
+	private static String toBinary(TyAtom ty) {
+		if(ty == Type.BOOL) { return "Z";}
+		if(ty == Type.I32)  { return "I";}
+		throw new IllegalArgumentException("Unexpected value: " + ty);
 	}
 
 	private static String toBoxed(Type ty) {
@@ -667,12 +664,9 @@ enum Boxing {
 		this.boxMethodDesc = boxMethodDecs;
 	}
 
-	public static Boxing of(TyBase ty) {
-		return switch (ty) {
-		case BOOL: { yield BOOL; }
-		case I32:  { yield INT; }
-		default:
-			throw new IllegalArgumentException("Unexpected value: " + ty);
-		};
+	public static Boxing of(TyAtom ty) {
+		if(ty == Type.BOOL) { return BOOL;}
+		if(ty == Type.I32)  { return INT;}
+		throw new IllegalArgumentException("Unexpected value: " + ty);
 	}
 }

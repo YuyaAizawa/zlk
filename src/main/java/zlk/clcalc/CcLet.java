@@ -5,6 +5,11 @@ import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * ローカル変数になる部分
+ *
+ * @author YuyaAizawa
+ */
 public record CcLet(
 		Id boundVar,
 		CcExp boundExp,

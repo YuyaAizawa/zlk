@@ -21,6 +21,9 @@ import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
+import zlk.recon.ConstraintExtractor;
+import zlk.recon.TypeReconstructor;
+import zlk.recon.constraint.Constraint;
 import zlk.typecheck.TypeChecker;
 
 public class Main {
@@ -94,16 +97,22 @@ public class Main {
 
 		System.out.println("-- ID CALC --");
 		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
-		NameEvaluator ne = new NameEvaluator(ast, builtinIds);
+		NameEvaluator ne = new NameEvaluator(ast, Builtin.builtins());
 		IcModule idcalc = ne.eval();
 		idcalc.pp(System.out);
 		System.out.println();
 
-//		System.out.println("-- TYPE RECON --");
-//		TypeReconstructor tr = new TypeReconstructor();
-//		Builtin.builtins().forEach(b -> tr.addBuiltin(b.id(), b.type()));
-//		idcalc.decls().forEach(decl -> tr.recon(decl));
-//		System.out.println();
+
+		System.out.println("-- EXTRACT CONSTRAINS --");
+		Constraint cons = ConstraintExtractor.extract(idcalc);
+		System.out.println(cons);
+		System.out.println();
+
+		System.out.println("-- TYPE RECONSTRUCTION --");
+		TypeReconstructor tr = new TypeReconstructor();
+		IdMap<Type> reconstructeds = tr.run(cons);
+		System.out.println(reconstructeds);
+		System.out.println();
 
 		System.out.println("-- TYPE CHECK --");
 		TypeChecker typeChecker = new TypeChecker(Builtin.builtins().stream().collect(

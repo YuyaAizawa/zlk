@@ -1,6 +1,7 @@
 package zlk.ast;
 
 import java.util.List;
+import java.util.Optional;
 
 import zlk.util.Location;
 import zlk.util.LocationHolder;
@@ -9,15 +10,15 @@ import zlk.util.pp.PrettyPrinter;
 
 public record Decl(
 		String name,
-		AType anno,
-		List<String> args,
+		Optional<AType> anno,
+		List<Var> args,
 		Exp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(name).append(" : ").append(anno).endl();
+		anno.ifPresent(ty -> pp.append(name).append(" : ").append(ty).endl());
 		pp.append(name);
 		args.forEach(arg -> {
 			pp.append(" ").append(arg);

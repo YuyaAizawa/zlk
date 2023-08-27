@@ -1,0 +1,50 @@
+module HelloMyLang
+
+sq : I32 -> I32
+sq a  =
+  let
+    pow : I32 -> I32 -> I32
+    pow b c =
+      if isZero c
+      then 1
+      else mul b (pow b (sub c 1))
+  in
+    pow a 2
+
+fact : I32 -> I32
+fact n =
+  if isZero n then
+    1
+  else
+    let
+      one : I32
+      one = 1
+      nn : I32
+      nn = sub n one
+    in
+      mul n (fact nn)
+
+make_adder : I32 -> I32 -> I32 -> I32
+make_adder x =
+  let
+    adder : I32 -> I32 -> I32
+    adder y =
+      let
+        adder2 : I32 -> I32
+        adder2 z = add (add x y) z
+      in
+        adder2
+  in
+    adder
+
+ans1 : I32
+ans1 =
+  sq 42
+
+ans2 : I32
+ans2 =
+  fact 10
+
+ans3 : I32
+ans3 =
+  make_adder 3 4 5

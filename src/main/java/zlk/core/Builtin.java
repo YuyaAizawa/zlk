@@ -7,7 +7,7 @@ import org.objectweb.asm.Opcodes;
 
 import zlk.bytecodegen.Instructions;
 import zlk.common.id.Id;
-import zlk.common.type.TyBase;
+import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 
 public record Builtin(
@@ -17,8 +17,8 @@ public record Builtin(
 implements Instructions
 {
 	public static List<Builtin> builtins(){
-		Type i32i32i32 = Type.arrow(TyBase.I32, Type.arrow(TyBase.I32, TyBase.I32));
-		Type i32bool = Type.arrow(TyBase.I32, TyBase.BOOL);
+		Type i32i32i32 = Type.arrow(TyAtom.I32, Type.arrow(TyAtom.I32, TyAtom.I32));
+		Type i32bool = Type.arrow(TyAtom.I32, TyAtom.BOOL);
 
 		return List.of(
 				new Builtin("Basic.isZero", i32bool, mv -> {

@@ -3,7 +3,7 @@ package zlk.ast;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
-public record ATyBase(
+public record ATyAtom(
 		String name,
 		Location loc
 ) implements AType {
@@ -15,7 +15,6 @@ public record ATyBase(
 
 	@Override
 	public String toString() {
-		// TODO Auto-generated method stub
 		return name;
 	}
 }
