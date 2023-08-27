@@ -6,15 +6,16 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntConsumer;
-import java.util.function.IntFunction;
 
 import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Type extends PrettyPrintable
-permits TyBase, TyArrow, TyVar {
+permits TyAtom, TyArrow, TyVar {
+
+	public static final TyAtom BOOL = new TyAtom("Bool");
+	public static final TyAtom I32  = new TyAtom("I32");
 
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -32,18 +33,18 @@ permits TyBase, TyArrow, TyVar {
 	}
 
 	<R> R fold(
-			Function<TyBase, R> forBase,
+			Function<TyAtom, R> forBase,
 			BiFunction<Type, Type, R> forArrow,
-			IntFunction<R> forVar);
+			Function<String, R> forVar);
 
 	void match(
-			Consumer<TyBase> forBase,
+			Consumer<TyAtom> forBase,
 			BiConsumer<Type, Type> forArrow,
-			IntConsumer forVar);
+			Consumer<String> forVar);
 
-	default TyBase asBase() {
+	default TyAtom asAtom() {
 		return fold(
-				base       -> (TyBase)this,
+				base       -> (TyAtom)this,
 				(arg, ret) -> null,
 				varId      -> null);
 	}

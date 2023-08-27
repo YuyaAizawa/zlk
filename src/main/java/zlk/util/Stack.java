@@ -1,6 +1,7 @@
 package zlk.util;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
@@ -16,6 +17,11 @@ public class Stack<E> implements Iterable<E> {
 
 	public Stack(int initialCapacity) {
 		impl = new ArrayList<>(initialCapacity);
+	}
+
+	public Stack(java.util.List<E> list) {
+		impl = new ArrayList<>(list);
+		Collections.reverse(impl);
 	}
 
 	public boolean isEmpty() {
@@ -54,6 +60,12 @@ public class Stack<E> implements Iterable<E> {
 		return impl.remove(e);
 	}
 
+	public java.util.List<E> getAllAsList() {
+		java.util.List<E> result = new ArrayList<>();
+		forEach(e -> result.add(e));
+		return result;
+	}
+
 	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
@@ -77,6 +89,13 @@ public class Stack<E> implements Iterable<E> {
 		for(int idx = impl.size()-1; idx >= 0; idx--) {
 			action.accept(impl.get(idx));
 		}
+	}
+
+	@Override
+	public String toString() {
+		java.util.List<E> reversed = new ArrayList<>(impl);
+		java.util.Collections.reverse(reversed);
+		return reversed.toString();
 	}
 
 	@SuppressWarnings("rawtypes")

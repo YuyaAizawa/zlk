@@ -1,6 +1,7 @@
 package zlk.clconv;
 
 import static zlk.util.ErrorUtils.neverHappen;
+import static zlk.util.ErrorUtils.todo;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,11 +26,11 @@ import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.Type;
 import zlk.idcalc.IcAbs;
-import zlk.idcalc.IcApp;
+import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcPattern;
 import zlk.util.Location;
-import zlk.util.Stack;
 
 public final class ClosureConveter {
 
@@ -53,7 +54,7 @@ public final class ClosureConveter {
 	public CcModule convert() {
 		src.decls()
 				.stream()
-				.map(decl -> compileFunc(decl.id(), decl.body()))
+				.map(decl -> compileFunc(decl.id(), decl.args(), decl.body()))
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
 
@@ -64,14 +65,13 @@ public final class ClosureConveter {
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
 	 * @return クロージャの生成（クロージャが必要だったとき）
 	 */
-	private Optional<CcMkCls> compileFunc(Id id, IcExp body) {
+	private Optional<CcMkCls> compileFunc(Id id, List<IcPattern> args_, IcExp body) {
 
-		ExpWithArgs rolled = rollUpArgs(body);
-		IdList args = rolled.args;
-		IcExp newBody = rolled.exp;
+		// TODO パターンに対応
+		IdList args = args_.stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
 
 		knowns.add(id);
-		CcExp ccBody = compile(newBody);
+		CcExp ccBody = compile(body);
 		IdList frees = fvFunc(ccBody, args);
 
 		if(frees.isEmpty()) {
@@ -129,42 +129,54 @@ public final class ClosureConveter {
 
 	private CcExp compile(IcExp body) {
 		return body.fold(
-				cnst -> new CcCnst(cnst.value(), cnst.loc()),
-				var  -> new CcVar(var.id(), var.loc()),
-				abs  -> {
+				cnst    -> new CcCnst(cnst.value(), cnst.loc()),
+				var     -> new CcVar(var.id(), var.loc()),
+				foreign -> new CcVar(foreign.id(), foreign.loc()),
+				abs     -> {
 					return neverHappen(
-							"there must not be anonymous abs in this version.", body.loc());
+							"no anonymous abs in this version.", body.loc());
 				},
-				app  -> {
-					IcExp left = app;
-					Stack<IcExp> rights = new Stack<>();
-					while(left instanceof IcApp app_) {
-						left = app_.fun();
-						rights.push(app_.arg());
-					}
-
-					List<CcExp> args = new ArrayList<>();
-					rights.forEach(e -> args.add(compile(e)));
-					return new CcApp(compile(left), args, app.loc());
-//					CcExp funExp = compile(app.fun());
-//					List<CcExp> argExps =
-//							app.args().stream()
-//							.map(arg -> compile(arg)).toList();
-//					return new CcCall(funExp, argExps, app.loc());
+				app     -> {
+					CcExp funExp = compile(app.fun());
+					List<CcExp> argExps =
+							app.args().stream()
+							.map(arg -> compile(arg)).toList();
+					return new CcApp(funExp, argExps, app.loc());
 				},
-				if_  -> new CcIf(
+				if_     -> new CcIf(
 						compile(if_.cond()),
 						compile(if_.exp1()),
 						compile(if_.exp2()),
 						if_.loc()),
-				let  -> {
+				let     -> {
 					Id id = let.decl().id();
+					// TODO パターンに対応
+					IdList args = let.decl().args().stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
 					IcExp bounded = let.decl().body();
 					CcExp letBody = compile(let.body());
 					Location loc = let.loc();
 
-					if(bounded instanceof IcAbs) {
-						return compileFunc(id, bounded)
+					if(!args.isEmpty()) {
+						return compileFunc(id, let.decl().args(), bounded)
+								.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
+								.orElse(letBody); // トップレベルで定義されているのでletは要らない
+					} else {
+						return new CcLet(id, compile(bounded), letBody, loc);
+					}
+				},
+				letrec -> {
+					if(letrec.decls().size() != 1) {
+						todo();
+					}
+					IcDecl decl = letrec.decls().get(0);
+					Id id = decl.id();
+					// TODO パターンに対応
+					IdList args = decl.args().stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
+					IcExp bounded = decl.body();
+					CcExp letBody = compile(letrec.body());
+					Location loc = letrec.loc();
+					if(!args.isEmpty()) {
+						return compileFunc(id, decl.args(), bounded)
 								.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
 								.orElse(letBody); // トップレベルで定義されているのでletは要らない
 					} else {

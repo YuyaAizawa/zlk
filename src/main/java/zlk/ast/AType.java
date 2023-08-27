@@ -7,11 +7,11 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface AType extends PrettyPrintable, LocationHolder
-permits ATyBase, ATyArrow {
+permits ATyAtom, ATyArrow {
 	default <R> R fold(
-			Function<? super ATyBase, ? extends R> forBase,
+			Function<? super ATyAtom, ? extends R> forBase,
 			Function<? super ATyArrow, ? extends R> forArrow) {
-		if(this instanceof ATyBase base) {
+		if(this instanceof ATyAtom base) {
 			return forBase.apply(base);
 		} else if(this instanceof ATyArrow arrow) {
 			return forArrow.apply(arrow);
@@ -21,9 +21,9 @@ permits ATyBase, ATyArrow {
 	}
 
 	default void match(
-			Consumer<? super ATyBase> forBase,
+			Consumer<? super ATyAtom> forBase,
 			Consumer<? super ATyArrow> forArrow) {
-		if(this instanceof ATyBase base) {
+		if(this instanceof ATyAtom base) {
 			forBase.accept(base);
 		} else if(this instanceof ATyArrow arrow) {
 			forArrow.accept(arrow);
