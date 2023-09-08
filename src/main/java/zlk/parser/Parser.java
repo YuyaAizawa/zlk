@@ -44,8 +44,8 @@ import zlk.util.Position;
  * <module>   ::= module <ucid> <declList>
  *
  * <declList> ::= $(<decl>+)
- * $ The all decls start in the same column. This column called decl column of the declList.
- *   The elements other than the declared identifiers appear to the right of the decl column.
+ * $ The all decls start in the same column. This column called offside column of the declList.
+ *   The elements other than the declared identifiers appear to the right of the offside column.
  *
  * <decl>     ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
  * $ type annotation and decl pair starts in the same column.
@@ -72,7 +72,7 @@ public class Parser {
 	private Token current;
 	private Token next;
 
-	private int declColumn;
+	private int offsideColumn;
 
 	private Position end;
 
@@ -80,7 +80,7 @@ public class Parser {
 		this.lexer = lexer;
 		this.current = lexer.nextToken();
 		this.next = lexer.nextToken();
-		this.declColumn = 1;
+		this.offsideColumn = 1;
 	}
 
 	public Parser(String fileName) throws IOException {
@@ -96,7 +96,7 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		this.declColumn = 1;
+		this.offsideColumn = 1;
 		List<Decl> decls = parseDeclList();
 
 		if (current.kind() != EOF) {
@@ -116,7 +116,7 @@ public class Parser {
 
 	public Decl parseDecl() {
 
-		if(current.column() != declColumn) {
+		if(current.column() != offsideColumn) {
 			throw new RuntimeException(
 					current.pos() + " declaration must starts to the right column of the \"let\"");
 		}
@@ -125,18 +125,18 @@ public class Parser {
 
 		String name = parse(LCID);
 
-		if(current.column() <= declColumn) {
+		if(current.column() <= offsideColumn) {
 			throw new RuntimeException(current.pos() + " missing \":\" or \"=\" on \"" + name + "\"@" + start);
 		}
 
 		Optional<AType> anno;
 		if(current.kind() == COLON) {
 			nextToken();
-			if(current.column() <= declColumn) {
+			if(current.column() <= offsideColumn) {
 				throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
 			}
 			anno = Optional.of(parseType());
-			if(current.column() != declColumn) {
+			if(current.column() != offsideColumn) {
 				throw new RuntimeException(
 						current.pos() + " declaration must starts to the right column of the \"let\"");
 			}
@@ -150,16 +150,16 @@ public class Parser {
 
 		// TODO parse pattern
 		List<Var> args = new ArrayList<>();
-		while(current.kind() == LCID && current.column() > declColumn) {
+		while(current.kind() == LCID && current.column() > offsideColumn) {
 			args.add(new Var(parse(LCID), location(start, end)));
 		}
 
-		if(current.column() <= declColumn) {
+		if(current.column() <= offsideColumn) {
 			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
 		}
 		consume(EQUAL);
 
-		if(current.column() <= declColumn) {
+		if(current.column() <= offsideColumn) {
 			throw new RuntimeException(current.pos() + " missing body on \"" + name + "\"@" + start);
 		}
 		Exp body = parseExp();
@@ -172,11 +172,11 @@ public class Parser {
 		if(aExpStartToken(current)) {
 			Exp first = parseAExp();
 
-			if(aExpStartToken(current) && current.column() > declColumn) {
+			if(aExpStartToken(current) && current.column() > offsideColumn) {
 				List<Exp> exps = new ArrayList<>();
 				exps.add(first);
 
-				while(aExpStartToken(current) && current.column() > declColumn) {
+				while(aExpStartToken(current) && current.column() > offsideColumn) {
 					exps.add(parseAExp());
 				}
 				return new App(exps, location(start, end));
@@ -198,24 +198,25 @@ public class Parser {
 
 		List<Decl> declList;
 		if(current.kind() != IN) {
-			if(current.column() <= declColumn) {
+			if(current.column() <= offsideColumn) {
 				throw new RuntimeException(current.pos() + " declaration list must be indented");
 			}
 
-			int oldDeclColumn = declColumn;
-			declColumn = current.column();
+			int oldOffsideColumn = offsideColumn;
+			offsideColumn = current.column();
 			declList = parseDeclList();
-			declColumn = oldDeclColumn;
+			offsideColumn = oldOffsideColumn;
+
 		} else {
 			declList = List.of();
 		}
 
-		if(current.column() <= declColumn) {
+		if(current.column() <= offsideColumn) {
 			throw new RuntimeException(current.pos() + " missing \"in\" for \"let\"@" + start);
 		}
 		consume(IN);
 
-		if(current.column() <= declColumn) {
+		if(current.column() <= offsideColumn) {
 			throw new RuntimeException(current.pos() + " missing body for \"let\"@" + start);
 		}
 		Exp body = parseExp();

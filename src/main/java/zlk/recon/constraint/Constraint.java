@@ -174,8 +174,12 @@ public class Constraint implements PrettyPrintable {
 					let.flexes.forEach(v -> pp.append(" ").append(v));
 					pp.endl();
 
-					pp.append("headers:");
-					let.headers.forEach((id, ty) -> pp.append(" (").append(id).append(", ").append(ty).append(")"));
+					pp.append("headers: ");
+					if(let.headers.isEmpty()) {
+						pp.append("[]");
+					} else {
+						pp.endl().inc().append(let.headers).dec();
+					}
 					pp.endl();
 
 					pp.append("headerCons: ");

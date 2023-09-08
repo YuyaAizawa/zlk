@@ -14,68 +14,50 @@ import zlk.idcalc.IcPattern;
 import zlk.util.Location;
 
 public final class TypeChecker {
-	private IdMap<Type> env;
+
+	private final IdMap<Type> env;
 
 	public static Type check(IcApp app, IdMap<Type> type) {
 		TypeChecker tmp = new TypeChecker(type);
 		return tmp.check(app);
 	}
 
-	public TypeChecker(IdMap<Type> foreign) {
-		env = foreign.clone();
+	public TypeChecker(IdMap<Type> expected) {
+		env = expected;
 	}
 
-	public IdMap<Type> check(IcModule module) {
+	public void check(IcModule module) {
 		for(IcDecl decl : module.decls()) {
-			decl.anno().ifPresent(
-					anno -> env.put(decl.id(), anno));
+			check(decl);
 		}
-
-		for(IcDecl decl : module.decls()) {
-			decl.anno().ifPresent(
-					anno -> assertEqual(check(decl), anno, decl.loc()));
-		}
-		return env;
 	}
 
 	public Type check(IcDecl decl) {
-		Type anno = decl.anno().get(); // TODO 注釈が無いとき
-		System.out.println(decl.id()+": "+anno);
-
-		env.putOrConfirm(decl.id(), anno);
-
-		// TODO パターンのチェック
-		Type ret = anno;
+		Type ret = check(decl.body());
 		for(IcPattern arg : decl.args()) {
-			TyArrow arrow = ret.asArrow();
-			env.put(arg.fold(var -> var.id()), arrow.arg());
-			ret = arrow.ret();
+			ret = new TyArrow(check(arg), ret);
 		}
 
 		try {
-			typeAssertion(decl.body(), ret);
-			return anno;
+			assertEqual(ret, env.get(decl.id()), decl.loc());
+			return ret;
 		} catch (AssertionError e) {
 			throw new AssertionError("in " + decl.id().canonicalName(), e);
 		}
+	}
+
+	private Type check(IcPattern pattern) {
+		return pattern.fold(
+				var -> env.get(var.id()));
 	}
 
 	public Type check(IcExp exp) {
 		try {
 			return exp.fold(
 					cnst    -> cnst.type(),
-					var     -> {
-						Type ty = env.get(var.id());
-						if(ty == null) {
-							throw new NullPointerException(""+var);
-						}
-						return ty;
-					},
-					foreign -> foreign.type(),
-					abs     -> {
-						env.put(abs.id(), abs.type());
-						return Type.arrow(abs.type(), check(abs.body()));
-					},
+					var     -> env.get(var.id()),
+					foreign -> env.get(foreign.id()),
+					abs     -> Type.arrow(env.get(abs.id()), check(abs.body())),
 					app     -> {
 						List<Type> funTy = check(app.fun()).flatten();
 						List<IcExp> args = app.args();

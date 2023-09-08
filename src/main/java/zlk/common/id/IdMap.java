@@ -41,6 +41,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return impl.size();
 	}
 
+	public boolean isEmpty() {
+		return size() == 0;
+	}
+
 	public V getOrNull(Id id) {
 		return impl.get(id);
 	}
