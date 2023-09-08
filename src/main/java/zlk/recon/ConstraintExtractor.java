@@ -130,7 +130,6 @@ public final class ConstraintExtractor {
 		}
 
 		Constraint exprCon = extract(rtv, decl.body(), args.resultType);
-
 		return Constraint.let(
 				List.of(),
 				vars,

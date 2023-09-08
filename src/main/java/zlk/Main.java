@@ -36,10 +36,8 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				sq : I32 -> I32
 				sq a  =
 				  let
-				    pow : I32 -> I32 -> I32
 				    pow b c =
 				      if isZero c
 				      then 1
@@ -47,41 +45,32 @@ public class Main {
 				  in
 				    pow a 2
 
-				fact : I32 -> I32
 				fact n =
 				  if isZero n then
 				    1
 				  else
 				    let
-				      one : I32
 				      one = 1
-				      nn : I32
 				      nn = sub n one
 				    in
 				      mul n (fact nn)
 
-				make_adder : I32 -> I32 -> I32 -> I32
 				make_adder x =
 				  let
-				    adder : I32 -> I32 -> I32
 				    adder y =
 				      let
-				        adder2 : I32 -> I32
 				        adder2 z = add (add x y) z
 				      in
 				        adder2
 				  in
 				    adder
 
-				ans1 : I32
 				ans1 =
 				  sq 42
 
-				ans2 : I32
 				ans2 =
 				  fact 10
 
-				ans3 : I32
 				ans3 =
 				  make_adder 3 4 5
 				""";
@@ -104,20 +93,20 @@ public class Main {
 
 
 		System.out.println("-- EXTRACT CONSTRAINS --");
-		Constraint cons = ConstraintExtractor.extract(idcalc);
-		System.out.println(cons);
+		Constraint cint = ConstraintExtractor.extract(idcalc);
+		System.out.println(cint);
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
 		TypeReconstructor tr = new TypeReconstructor();
-		IdMap<Type> reconstructeds = tr.run(cons);
-		System.out.println(reconstructeds);
+		IdMap<Type> types = tr.run(cint);
+		System.out.println(types);
 		System.out.println();
+		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
 
-		System.out.println("-- TYPE CHECK --");
-		TypeChecker typeChecker = new TypeChecker(Builtin.builtins().stream().collect(
-				IdMap.collector(b -> b.id(), b -> b.type())));
-		IdMap<Type> types = typeChecker.check(idcalc);
+		System.out.println("-- TYPE CHECK --"); // TODO remove
+		TypeChecker typeChecker = new TypeChecker(types);
+		typeChecker.check(idcalc);
 		System.out.println();
 
 		System.out.println("-- CL CONV --");

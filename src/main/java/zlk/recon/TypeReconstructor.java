@@ -17,6 +17,7 @@ import zlk.common.id.IdMap;
 import zlk.common.type.Type;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.Category;
+import zlk.recon.constraint.IdVar;
 import zlk.recon.content.Content;
 import zlk.recon.content.Structure;
 import zlk.recon.flattype.FlatType;
@@ -26,6 +27,7 @@ import zlk.util.Stack;
 public class TypeReconstructor {
 
 	private Pool pool = new Pool(8);
+	private IdMap<Type> reconed = null;
 
 	private static record State(
 			IdMap<Variable> env,
@@ -44,10 +46,9 @@ public class TypeReconstructor {
 	}
 
 	public IdMap<Type> run(Constraint constraint) {
-		State state =
-				solve(new IdMap<>(), Variable.OUTERMOST_RANK, State.empty(), constraint);
-
-		return state.env.traverse(Variable::toAnnotation);
+		reconed = new IdMap<>();
+		solve(new IdMap<>(), Variable.OUTERMOST_RANK, State.empty(), constraint);
+		return reconed;
 	}
 
 	public State solve(IdMap<Variable> env, int rank, State state, Constraint constraint) {
@@ -105,6 +106,9 @@ public class TypeReconstructor {
 							State state2 =
 									solve(newEnv, rank, state1, cint.bodyCon());
 							locals.forEach((id, var) -> state2.occurs(id, var));
+
+							// record reconstructed types
+							locals.forEach((id, var) -> reconed.put(id, var.toType()));
 							return state2;
 						}
 					}
@@ -135,6 +139,10 @@ public class TypeReconstructor {
 
 					// check
 					cint.ridids().forEach(var -> checkGeneric(var));
+
+					// record reconstructed types
+					// is it really correct to record here?
+					locals.forEach((id, var) -> reconed.putOrConfirm(id, var.toType()));
 
 					IdMap<Variable> newEnv = IdMap.union(env, locals);
 					State tmpState = new State(state_.env, finalMark);
@@ -406,8 +414,6 @@ public class TypeReconstructor {
 
 	}
 
-	record IdVar(Id id, Variable var) {}
-
 	private static class Itv {
 		private Stack<ArrayList<IdVar>> impl;
 
@@ -431,8 +437,8 @@ public class TypeReconstructor {
 		public Variable get(Id id) {
 			for(ArrayList<IdVar> env : impl) {
 				for(IdVar idvar : env) {
-					if(id.equals(idvar.id)) {
-						return idvar.var;
+					if(id.equals(idvar.id())) {
+						return idvar.var();
 					}
 				}
 			}
