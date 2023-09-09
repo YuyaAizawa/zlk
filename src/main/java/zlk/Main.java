@@ -36,6 +36,8 @@ public class Main {
 				"""
 				module HelloMyLang
 
+				type IntList = Nil | Cons I32
+
 				sq a  =
 				  let
 				    pow b c =

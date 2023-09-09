@@ -90,10 +90,12 @@ public final class ConstraintExtractor {
 									Constraint.equal(branchTy, expected))));
 				},
 				let -> {
+					// TODO 型注釈から制約を抽出
 					Constraint bodyCons = extract(rtv, let.body(), expected);
 					return extractFromDef(rtv, let.decl(), bodyCons);
 				},
 				letrec -> {
+					// TODO 型注釈から制約を抽出
 					Constraint bodyCons = extract(rtv, letrec.body(), expected);
 					return extractFromRecursiveDef(rtv, letrec.decls(), bodyCons);
 				});

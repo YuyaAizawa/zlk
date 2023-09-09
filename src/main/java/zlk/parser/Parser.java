@@ -1,6 +1,7 @@
 package zlk.parser;
 
 import static zlk.parser.Token.Kind.ARROW;
+import static zlk.parser.Token.Kind.BAR;
 import static zlk.parser.Token.Kind.COLON;
 import static zlk.parser.Token.Kind.DIGITS;
 import static zlk.parser.Token.Kind.ELSE;
@@ -14,6 +15,7 @@ import static zlk.parser.Token.Kind.LPAREN;
 import static zlk.parser.Token.Kind.MODULE;
 import static zlk.parser.Token.Kind.RPAREN;
 import static zlk.parser.Token.Kind.THEN;
+import static zlk.parser.Token.Kind.TYPE;
 import static zlk.parser.Token.Kind.UCID;
 
 import java.io.IOException;
@@ -26,11 +28,14 @@ import zlk.ast.ATyAtom;
 import zlk.ast.AType;
 import zlk.ast.App;
 import zlk.ast.Cnst;
+import zlk.ast.Constructor;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
+import zlk.ast.Union;
+import zlk.ast.UnionOrDecl;
 import zlk.ast.Var;
 import zlk.common.cnst.Bool;
 import zlk.parser.Token.Kind;
@@ -41,11 +46,17 @@ import zlk.util.Position;
  * 構文解析器.
  * <h2>文法</h2>
  * <pre>{@code
- * <module>   ::= module <ucid> <declList>
+ * <module>   ::= module <ucid> $(<topDecl>*)
+ * $ The all decls start in the same column. This column called offside column.
+ *   Offside column of the topDecl is 1. The elements other than "type" keyword or the declared
+ *   identifiers appear to the right of the offside column.
  *
- * <declList> ::= $(<decl>+)
- * $ The all decls start in the same column. This column called offside column of the declList.
- *   The elements other than the declared identifiers appear to the right of the offside column.
+ * <topDecl>  ::= <union>
+ *              | <decl>
+ *
+ * <union>    ::= type <ucid> = <ctor> (| <ctor>)*
+ *
+ * <ctor>     ::= <ucid> <aType>*
  *
  * <decl>     ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
  * $ type annotation and decl pair starts in the same column.
@@ -54,6 +65,9 @@ import zlk.util.Position;
  *              | let $<declList> in <exp>
  *              | if <exp> then <exp> else <exp>
  * $ The declList starts to the right column of the "let" keyword.
+ *
+ * <declList> ::= $(<decl>+)
+ * $ The elements other than the declared identifiers appear to the right of the offside column.
  *
  * <aExp>     ::= ( <exp> )
  *              | <constant>
@@ -96,26 +110,64 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		this.offsideColumn = 1;
-		List<Decl> decls = parseDeclList();
+		List<UnionOrDecl> topDecls = new ArrayList<>();
 
-		if (current.kind() != EOF) {
-			throw new RuntimeException(current.pos() + " token remained.");
+		this.offsideColumn = 1;
+		while(current.kind() != EOF) {
+			if(current.kind() == TYPE) {
+				topDecls.add(UnionOrDecl.union(parseUnion()));
+			} else {
+				topDecls.add(UnionOrDecl.decl(parseDecl()));
+			}
 		}
 
-		return new Module(name, decls, fileName);
+		return new Module(name, topDecls, fileName);
 	}
 
-	public List<Decl> parseDeclList() {
-		List<Decl> decls = new ArrayList<>();
-		while(current.kind() == LCID) {
-			decls.add(parseDecl());
+	public Union parseUnion() {
+		if(current.column() != 1) {
+			throw new RuntimeException("type declaration must starts column 1");
 		}
-		return decls;
+
+		Position start = current.pos();
+
+		consume(TYPE);
+
+		String name = parse(UCID);
+
+		if(current.column() <= offsideColumn) {
+			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
+		}
+
+		List<Constructor> ctors = new ArrayList<>();
+		consume(EQUAL);
+		ctors.add(parseConstructor());
+		while(current.kind() == BAR) {
+			consume(BAR);
+			ctors.add(parseConstructor());
+		}
+
+		return new Union(name, ctors, location(start, end));
+	}
+
+	private Constructor parseConstructor() {
+		Position start = current.pos();
+
+		String name = parse(UCID);
+
+		List<AType> args = new ArrayList<>();
+		while(aTypeStartToken(current) && current.column() > offsideColumn) {
+			args.add(parseAType());
+		}
+
+		return new Constructor(name, args, location(start, end));
+	}
+
+	private static boolean aTypeStartToken(Token token) {
+		return token.kind() == UCID || token.kind() == LPAREN;
 	}
 
 	public Decl parseDecl() {
-
 		if(current.column() != offsideColumn) {
 			throw new RuntimeException(
 					current.pos() + " declaration must starts to the right column of the \"let\"");
@@ -286,6 +338,14 @@ public class Parser {
 		consume(RPAREN);
 
 		return exp;
+	}
+
+	private List<Decl> parseDeclList() {
+		List<Decl> decls = new ArrayList<>();
+		while(current.kind() == LCID) {
+			decls.add(parseDecl());
+		}
+		return decls;
 	}
 
 	private AType parseType() {
