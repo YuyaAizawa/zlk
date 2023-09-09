@@ -174,9 +174,9 @@ public class Constraint implements PrettyPrintable {
 					let.flexes.forEach(v -> pp.append(" ").append(v));
 					pp.endl();
 
-					pp.append("headers: ");
+					pp.append("headers:");
 					if(let.headers.isEmpty()) {
-						pp.append("[]");
+						pp.append(" []");
 					} else {
 						pp.endl().inc().append(let.headers).dec();
 					}

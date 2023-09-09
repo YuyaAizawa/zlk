@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import zlk.parser.Token.Kind;
 import zlk.util.Position;
 
 public record Token(Kind kind, String value, Position pos) {
@@ -16,6 +17,7 @@ public record Token(Kind kind, String value, Position pos) {
 		ILL(""),
 
 		ARROW     ("->"),
+		BAR       ("|"),
 		COLON     (":"),
 		EQUAL     ("="),
 		LPAREN    ("("),
@@ -24,6 +26,7 @@ public record Token(Kind kind, String value, Position pos) {
 		TRUE("true"),
 		FALSE("false"),
 		MODULE("module"),
+		TYPE("type"),
 		LET("let"),
 		IN("in"),
 		IF("if"),
@@ -36,6 +39,7 @@ public record Token(Kind kind, String value, Position pos) {
 						TRUE,
 						FALSE,
 						MODULE,
+						TYPE,
 						LET,
 						IN,
 						IF,

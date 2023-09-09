@@ -1,5 +1,6 @@
 package zlk.nameeval;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -7,6 +8,7 @@ import zlk.ast.AType;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
+import zlk.ast.Union;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.common.type.TyArrow;
@@ -15,6 +17,7 @@ import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcCnst;
+import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcForeign;
@@ -24,6 +27,7 @@ import zlk.idcalc.IcLetrec;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
+import zlk.idcalc.IcType;
 import zlk.idcalc.IcVar;
 import zlk.util.Location;
 import zlk.util.Position;
@@ -53,20 +57,40 @@ public final class NameEvaluator {
 		env.push(module.name());
 
 		// resister toplevels
-		module.decls().forEach(decl -> {
-			env.registerVar(decl.name());
-		});
+		module.decls().forEach(def ->
+			def.match(
+					union -> {
+						env.registerVar(union.name());
+						union.ctors().forEach(ctor -> env.registerVar(ctor.name()));
+					},
+					decl -> env.registerVar(decl.name()))
+		);
 
-		List<IcDecl> icDecls = module.decls()
-				.stream()
-				.map(decl -> eval(decl))
-				.toList();
+		List<IcType> icTypes = new ArrayList<>();
+		List<IcDecl> icDecls = new ArrayList<>();
+
+		module.decls().forEach(def ->
+				def.fold(
+						union -> icTypes.add(eval(union)),
+						decl  -> icDecls.add(eval(decl))));
 
 		env.pop();
 		if(env.scopeStack.size() != 1) {
 			throw new AssertionError();
 		}
-		return new IcModule(module.name(), icDecls, module.origin());
+		return new IcModule(module.name(), icTypes, icDecls, module.origin());
+	}
+
+	public IcType eval(Union union) {
+		Id id = env.get(union.name());
+
+		List<IcCtor> ctors = union.ctors().stream().map(ctor -> {
+			Id ctorId = env.get(ctor.name());
+			List<Type> args = ctor.args().stream().map(ty -> eval(ty)).toList();
+			return new IcCtor(ctorId, args, ctor.loc());
+		}).toList();
+
+		return new IcType(id, ctors, union.loc());
 	}
 
 	public IcDecl eval(Decl decl) {
