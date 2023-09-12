@@ -27,6 +27,8 @@ public final class ConstraintExtractor {
 
 				foreign -> Constraint.foreign(foreign.id(), foreign.type(), expected),
 
+				ctor -> Constraint.foreign(ctor.id(), ctor.type(), expected),
+
 				abs -> {
 					Args args = extractFromArgs(List.of(IcPattern.var(new IcPVar(abs.id(), abs.loc()))));
 					Constraint bodyCon = extract(rtv, abs.body(), args.type);

@@ -17,6 +17,7 @@ implements IcExp {
 				cnst    -> pp.append(cnst),
 				var     -> pp.append(var),
 				foreign -> pp.append(foreign),
+				ctor    -> pp.append(ctor.id()),
 				abs     -> pp.append("(").append(abs).append(")"),
 				app     -> pp.append(app),
 				ifExp   -> { pp
@@ -40,6 +41,7 @@ implements IcExp {
 					cnst    -> pp.append(cnst),
 					var     -> pp.append(var),
 					foreign -> pp.append(foreign),
+					ctor    -> pp.append(ctor.id()),
 					abs     -> pp.append("(").append(abs).append(")"),
 					app     -> pp.append("(").append(app).append(")"),
 					ifExp   -> { pp

@@ -312,6 +312,7 @@ public class Parser {
 		case DIGITS -> new Cnst(Integer.valueOf(parse(DIGITS)), location(start, end));
 
 		case LCID -> new Var(parse(LCID), location(start, end));
+		case UCID -> new Var(parse(UCID), location(start, end));
 
 		default -> throw new RuntimeException("not a exp");
 		};
@@ -320,6 +321,7 @@ public class Parser {
 	private static boolean aExpStartToken(Token token) {
 		switch (token.kind()) {
 		case LCID:
+		case UCID:
 		case DIGITS:
 		case TRUE:
 		case FALSE:
