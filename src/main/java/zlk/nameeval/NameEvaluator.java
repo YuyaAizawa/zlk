@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import zlk.ast.AType;
+import zlk.ast.Constructor;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
@@ -20,7 +21,6 @@ import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcForeign;
 import zlk.idcalc.IcIf;
 import zlk.idcalc.IcLet;
 import zlk.idcalc.IcLetrec;
@@ -28,7 +28,9 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcType;
-import zlk.idcalc.IcVar;
+import zlk.idcalc.IcVarCtor;
+import zlk.idcalc.IcVarForeign;
+import zlk.idcalc.IcVarLocal;
 import zlk.util.Location;
 import zlk.util.Position;
 
@@ -37,10 +39,12 @@ public final class NameEvaluator {
 	private final Module module;
 	private final Env env;
 	private final TyEnv tyEnv;
+	private final IdMap<Type> ctorTy;
 	private final IdMap<Type> builtinTy;
 
 	public NameEvaluator(Module module, List<Builtin> builtinFuncs) {
 		this.module = module;
+		this.ctorTy = new IdMap<>();
 		this.builtinTy = new IdMap<>();
 
 		env = new Env();
@@ -56,15 +60,21 @@ public final class NameEvaluator {
 	public IcModule eval() {
 		env.push(module.name());
 
-		// resister toplevels
+		// resister types
 		module.decls().forEach(def ->
 			def.match(
 					union -> {
-						env.registerVar(union.name());
-						union.ctors().forEach(ctor -> env.registerVar(ctor.name()));
+						Type type = new TyAtom(env.registerVar(union.name()));
+						tyEnv.put(union.name(), type);
 					},
-					decl -> env.registerVar(decl.name()))
-		);
+					decl -> {}));
+
+		// resister toplevels
+		module.decls().forEach(def ->
+			def.match(
+					union -> union.ctors().forEach(
+							ctor -> registerCtor(ctor, tyEnv.get(union.name()))),
+					decl -> env.registerVar(decl.name())));
 
 		List<IcType> icTypes = new ArrayList<>();
 		List<IcDecl> icDecls = new ArrayList<>();
@@ -79,6 +89,12 @@ public final class NameEvaluator {
 			throw new AssertionError();
 		}
 		return new IcModule(module.name(), icTypes, icDecls, module.origin());
+	}
+
+	private void registerCtor(Constructor ctor, Type type) {
+		Id id = env.registerVar(ctor.name());
+		Type type_ = Type.arrow(ctor.args().stream().map(ty -> eval(ty)).toList(), type);
+		ctorTy.put(id, type_);
 	}
 
 	public IcType eval(Union union) {
@@ -134,11 +150,15 @@ public final class NameEvaluator {
 				cnst  -> new IcCnst(cnst.value(), cnst.loc()),
 				var   -> {
 					Id id = env.get(var.name());
-					Type ty = builtinTy.getOrNull(id);
-					if(ty == null) {
-						return new IcVar(id, var.loc());
+					Type ctor = ctorTy.getOrNull(id);
+					Type builtin = builtinTy.getOrNull(id);
+					if(ctor != null) {
+						return new IcVarCtor(id, ctor, var.loc());
+					}
+					if(builtin == null) {
+						return new IcVarLocal(id, var.loc());
 					} else {
-						return new IcForeign(id, ty, var.loc());
+						return new IcVarForeign(id, builtin, var.loc());
 					}
 				},
 				app   -> {

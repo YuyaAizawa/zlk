@@ -46,6 +46,7 @@ public final class ClosureConveter {
 		this.type = type;
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
+		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
 		knowns.addAll(builtins);
 		this.toplevels = new ArrayList<>();
 		this.closureCount = new AtomicInteger();
@@ -132,6 +133,7 @@ public final class ClosureConveter {
 				cnst    -> new CcCnst(cnst.value(), cnst.loc()),
 				var     -> new CcVar(var.id(), var.loc()),
 				foreign -> new CcVar(foreign.id(), foreign.loc()),
+				ctor    -> new CcVar(ctor.id(), ctor.loc()),
 				abs     -> {
 					return neverHappen(
 							"no anonymous abs in this version.", body.loc());

@@ -4,7 +4,7 @@ import zlk.common.id.Id;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
-public record IcVar(
+public record IcVarLocal(
 		Id id,
 		Location loc)
 implements IcExp {

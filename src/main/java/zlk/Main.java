@@ -15,6 +15,7 @@ import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
@@ -71,7 +72,7 @@ public class Main {
 				  sq 42
 
 				ans2 =
-				  fact 10
+				  Cons
 
 				ans3 =
 				  make_adder 3 4 5
@@ -104,6 +105,9 @@ public class Main {
 		IdMap<Type> types = tr.run(cint);
 		System.out.println(types);
 		System.out.println();
+
+		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
+			types.put(ctor.id(), Type.arrow(ctor.args(), new TyAtom(union.id())))));
 		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- TYPE CHECK --"); // TODO remove

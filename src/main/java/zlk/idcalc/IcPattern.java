@@ -33,7 +33,7 @@ public final class IcPattern implements PrettyPrintable, LocationHolder {
 		neverHappen("");
 	}
 
-	public void fv(List<IcVar> acc, Set<Id> known) {
+	public void fv(List<IcVarLocal> acc, Set<Id> known) {
 		match(
 				var -> known.add(var.id()));
 	}

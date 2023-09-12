@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import zlk.common.type.TyArrow;
+import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.recon.Variable;
 import zlk.util.pp.PrettyPrintable;
@@ -52,7 +53,10 @@ permits App1, Fun1 {
 					if(app.id().equals(Type.I32.id())) {
 						return Type.I32;
 					}
-					return todo();
+
+					return Type.arrow(
+							app.args().stream().map(Variable::toAnnotation).toList(),
+							new TyAtom(app.id()));
 				},
 				fun -> new TyArrow(fun.arg().toType(), fun.ret().toType()));
 	}

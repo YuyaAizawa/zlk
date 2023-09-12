@@ -16,12 +16,13 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
+permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 
 	default <R> R fold(
 			Function<? super IcCnst, R> forCnst,
-			Function<? super IcVar, R> forVar,
-			Function<? super IcForeign, R> forForeign,
+			Function<? super IcVarLocal, R> forVar,
+			Function<? super IcVarForeign, R> forForeign,
+			Function<? super IcVarCtor, R> forCtor,
 			Function<? super IcAbs, R> forAbs,
 			Function<? super IcApp, R> forApp,
 			Function<? super IcIf, R> forIf,
@@ -29,10 +30,12 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 			Function<? super IcLetrec, R> forLetrec) {
 		if(this instanceof IcCnst cnst) {
 			return forCnst.apply(cnst);
-		} else if(this instanceof IcVar id) {
+		} else if(this instanceof IcVarLocal id) {
 			return forVar.apply(id);
-		} else if(this instanceof IcForeign foreign) {
+		} else if(this instanceof IcVarForeign foreign) {
 			return forForeign.apply(foreign);
+		} else if(this instanceof IcVarCtor ctor) {
+			return forCtor.apply(ctor);
 		} else if(this instanceof IcAbs abs) {
 			return forAbs.apply(abs);
 		} else if(this instanceof IcApp app) {
@@ -50,8 +53,9 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 
 	default void match(
 			Consumer<? super IcCnst> forCnst,
-			Consumer<? super IcVar> forVar,
-			Consumer<? super IcForeign> forForeign,
+			Consumer<? super IcVarLocal> forVar,
+			Consumer<? super IcVarForeign> forForeign,
+			Consumer<? super IcVarCtor> forCtor,
 			Consumer<? super IcAbs> forAbs,
 			Consumer<? super IcApp> forApp,
 			Consumer<? super IcIf> forIf,
@@ -59,10 +63,12 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 			Consumer<? super IcLetrec> forLetrec) {
 		if(this instanceof IcCnst cnst) {
 			forCnst.accept(cnst);
-		} else if(this instanceof IcVar id) {
+		} else if(this instanceof IcVarLocal id) {
 			forVar.accept(id);
-		} else if(this instanceof IcForeign foreign) {
+		} else if(this instanceof IcVarForeign foreign) {
 			forForeign.accept(foreign);
+		} else if(this instanceof IcVarCtor ctor) {
+			forCtor.accept(ctor);
 		} else if(this instanceof IcAbs abs) {
 			forAbs.accept(abs);
 		} else if(this instanceof IcApp app) {
@@ -78,14 +84,14 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 		}
 	}
 
-	default List<IcVar> fv(Collection<Id> known) {
-		List<IcVar> acc = new ArrayList<>();
+	default List<IcVarLocal> fv(Collection<Id> known) {
+		List<IcVarLocal> acc = new ArrayList<>();
 		Set<Id> knownSet = new HashSet<>(known);
 		fv(acc, knownSet);
 		return Collections.unmodifiableList(acc);
 	}
 
-	private void fv(List<IcVar> acc, Set<Id> known) {
+	private void fv(List<IcVarLocal> acc, Set<Id> known) {
 		match(
 				cnst -> {},
 				var -> {
@@ -93,6 +99,7 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 						acc.add(var);
 					}},
 				foreign -> {},
+				ctor -> {},
 				abs -> {
 					known.add(abs.id());
 					abs.body().fv(acc, known);
@@ -122,7 +129,7 @@ permits IcCnst, IcVar, IcForeign, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
 	}
 
 	static boolean isVar(IcExp exp) {
-		return exp instanceof IcVar;
+		return exp instanceof IcVarLocal;
 	}
 
 	static boolean isIf(IcExp exp) {

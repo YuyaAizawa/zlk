@@ -5,7 +5,7 @@ import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
-public record IcForeign(
+public record IcVarForeign(
 		Id id,
 		Type type,
 		Location loc)

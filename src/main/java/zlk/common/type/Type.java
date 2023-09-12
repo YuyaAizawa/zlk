@@ -1,6 +1,7 @@
 package zlk.common.type;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -28,6 +29,19 @@ permits TyAtom, TyArrow, TyVar {
 		}
 		return new TyArrow(rest[0], tail);
 	}
+
+	public static Type arrow(List<Type> args, Type ret) {
+		Type result = ret;
+
+		List<Type> args_ = new ArrayList<>(args);
+		Collections.reverse(args_);
+		for(Type arg : args_) {
+			result = new TyArrow(arg, result);
+		}
+
+		return result;
+	}
+
 	public static Type arrow(List<Type> types) {
 		return arrow(types.toArray(Type[]::new));
 	}

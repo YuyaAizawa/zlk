@@ -57,6 +57,7 @@ public final class TypeChecker {
 					cnst    -> cnst.type(),
 					var     -> env.get(var.id()),
 					foreign -> env.get(foreign.id()),
+					ctor    -> env.get(ctor.id()),
 					abs     -> Type.arrow(env.get(abs.id()), check(abs.body())),
 					app     -> {
 						List<Type> funTy = check(app.fun()).flatten();
