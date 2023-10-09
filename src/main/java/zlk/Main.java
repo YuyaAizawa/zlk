@@ -2,9 +2,13 @@ package zlk;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.BiConsumer;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.TraceClassVisitor;
@@ -37,7 +41,7 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList = Nil | Cons I32
+				type IntList = Nil | Cons I32 IntList
 
 				sq a  =
 				  let
@@ -87,13 +91,16 @@ public class Main {
 		ast.pp(System.out);
 		System.out.println();
 
-		System.out.println("-- ID CALC --");
+		System.out.println("-- NAME EVAL --");
 		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
 		NameEvaluator ne = new NameEvaluator(ast, Builtin.builtins());
 		IcModule idcalc = ne.eval();
 		idcalc.pp(System.out);
 		System.out.println();
 
+		System.out.println("-- UNCURRY --");
+		idcalc = null;
+		System.out.println();
 
 		System.out.println("-- EXTRACT CONSTRAINS --");
 		Constraint cint = ConstraintExtractor.extract(idcalc);
@@ -120,22 +127,35 @@ public class Main {
 		clconv.pp(System.out);
 		System.out.println();
 
-		System.out.println("-- BYTECODE --");
-		byte[] bin = new BytecodeGenerator(clconv, types, Builtin.builtins()).compile();
-		Files.write(Paths.get(name + ".class"), bin);
-		new ClassReader(bin).accept(
-				new TraceClassVisitor(
-						new PrintWriter(System.out)), 0);
+		System.out.println("-- BYTECODE GEN --");
+
+		Map<String, byte[]> classBins = new HashMap<>();
+		BiConsumer<String, byte[]> fileWriter =
+			(name_, bin) -> {
+				try {
+					new ClassReader(bin).accept(
+							new TraceClassVisitor(
+									new PrintWriter(System.out)), 0);
+					classBins.put(name_, bin);
+					Files.write(Paths.get(name_), bin);
+				} catch (IOException e) {
+					throw new UncheckedIOException(e);
+				}
+			};
+
+		new BytecodeGenerator(clconv, types, Builtin.builtins()).compile(fileWriter);
 
 		System.out.println();
-
 		System.out.println("-- EXECUTE --");
 
 		clazz = Class.forName(name, true, new ClassLoader() {
 			@Override
 			protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
-				// 存在しないクラスは全部このバイナリとして扱う
-				return defineClass(name, bin, 0, bin.length);
+				byte[] bin = classBins.get(str);
+				if(bin == null) {
+					throw new ClassNotFoundException(str);
+				}
+				return defineClass(str, bin, 0, bin.length);
 			}
 		});
 

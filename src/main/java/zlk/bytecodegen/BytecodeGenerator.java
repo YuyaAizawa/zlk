@@ -5,9 +5,11 @@ import static zlk.util.ErrorUtils.todo;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -16,9 +18,11 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import zlk.clcalc.CcApp;
+import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
+import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
 import zlk.common.cnst.ConstValue;
 import zlk.common.id.Id;
@@ -33,6 +37,7 @@ import zlk.util.Stack;
 public final class BytecodeGenerator {
 
 	private final CcModule module;
+	private final IdMap<String> classNames;
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
@@ -46,6 +51,7 @@ public final class BytecodeGenerator {
 
 	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins) {
 		this.module = module;
+		this.classNames = new IdMap<>();
 		this.types = types;
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.toplevelDescs = new IdMap<>();
@@ -53,12 +59,128 @@ public final class BytecodeGenerator {
 		this.pendings = new Stack<>();
 	}
 
-	public byte[] compile() {
+	public void compile(BiConsumer<String, byte[]> fileWriter) {
+		module.types().forEach(union -> {
+			classNames.put(union.id(), unionSuperName(union));
+			union.ctors().forEach(ctor -> {
+				classNames.put(ctor.id(), unionSubName(union, ctor));
+			});
+		});
 		module.toplevels().forEach(decl -> {
 			toplevelDescs.put(decl.id(), getDescription(decl, types));
 			toplevelDecls.put(decl.id(), decl);
 		});
 
+		module.types().forEach(union -> genUnionClass(union, fileWriter));
+		genMainClass(fileWriter);
+	}
+
+	private String unionSuperName(CcType union) {
+		return module.name().replace('.', '/')+"$"+union.id().simpleName();
+	}
+
+	private String unionSubName(CcType union, CcCtor ctor) {
+		return module.name().replace('.', '/')+"$"+union.id().simpleName()+"$"+ctor.id().simpleName();
+	}
+
+	private void genUnionClass(CcType union, BiConsumer<String, byte[]> fileWriter) {
+		// super class
+		genUnionSuperClass(union);
+		fileWriter.accept(classNames.get(union.id()) + ".class", cw.toByteArray());
+
+		// sub classes
+		for(CcCtor ctor : union.ctors()) {
+			genUnionSubClass(ctor, union);
+			fileWriter.accept(classNames.get(ctor.id()) + ".class", cw.toByteArray());
+		}
+	}
+
+	private void genUnionSuperClass(CcType union) {
+		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(
+				Opcodes.V16,
+				Opcodes.ACC_PUBLIC + Opcodes.ACC_INTERFACE + Opcodes.ACC_ABSTRACT,
+				classNames.get(union.id()),
+				null,
+				"java/lang/Object",
+				null);
+		cw.visitSource(module.origin() + ".zlk", null);
+		cw.visitNestHost(module.name().replace(".", "/"));
+		cw.visitEnd();
+	}
+
+	private void genUnionSubClass(CcCtor ctor, CcType union) {
+		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(
+				Opcodes.V16,
+				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
+				classNames.get(ctor.id()),
+				null,
+				"java/lang/Object",
+				new String[] {classNames.get(union.id())});
+		cw.visitSource(module.origin() + ".zlk", null);
+
+		for(int i = 0; i < ctor.args().size(); i++) {
+			Type type = ctor.args().get(i);
+			cw.visitField(
+					Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL,
+					"val"+i,
+					toDesc(type),
+					null,
+					null);
+		}
+
+		genUnionSubClassConstructor(ctor, union);
+
+		cw.visitNestHost(module.name().replace(".", "/"));
+
+		cw.visitEnd();
+	}
+
+	private void genUnionSubClassConstructor(CcCtor ctor, CcType union) {
+		String argsStr = ctor.args().stream()
+				.map(ty -> toDesc(ty))
+				.collect(Collectors.joining(""));
+		mv = cw.visitMethod(
+				Opcodes.ACC_PUBLIC,
+				"<init>",
+				"("+argsStr+")V",
+				null,
+				null);
+		mv.visitCode();
+
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(
+				Opcodes.INVOKESPECIAL,
+				"java/lang/Object",
+				"<init>",
+				"()V",
+				false);
+
+		for(int i = 0; i < ctor.args().size(); i++) {
+			Type ty = ctor.args().get(i);
+			loadLocal(i, ty);
+			mv.visitFieldInsn(
+					Opcodes.PUTFIELD,
+					classNames.get(union.id()),
+					"val"+i,
+					toDesc(ty));
+		}
+
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+	}
+
+	private static String toDesc(Type type) {
+		return type.fold(
+				atom       -> toBinary(atom),
+				(arg, ret) -> todo(),
+				var        -> { throw new Error(var); }
+		);
+	}
+
+	private void genMainClass(BiConsumer<String, byte[]> fileWriter) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 
 		cw.visit(
@@ -75,7 +197,16 @@ public final class BytecodeGenerator {
 
 		module.toplevels().forEach(decl -> compileDecl(decl));
 
-		return cw.toByteArray();
+		module.types().forEach(union -> {
+			cw.visitNestMember(toClassName(union.id()));
+			union.ctors().forEach(ctor -> {
+				cw.visitNestMember(toClassName(ctor.id()));
+			});
+		});
+
+		cw.visitEnd();
+
+		fileWriter.accept(module.origin() + ".class", cw.toByteArray());
 	}
 
 	private void genConstructor() {
@@ -174,23 +305,6 @@ public final class BytecodeGenerator {
 							localIdx -> {
 								loadLocal(localIdx, types.get(id));
 							});
-//							descriptor -> {
-//
-//
-//								insnStack.push(mv ->
-//										mv.visitMethodInsn(
-//											Opcodes.INVOKESTATIC,
-//											module.name(),
-//											javaMethodName(id),
-//											descriptor,
-//											false));
-//							},
-//							builtin -> {
-//								insnStack.push(builtin);
-//							},
-//							localIdx -> {
-//								loadLocal(localIdx, types.get(id));
-//							});
 				},
 				app  -> {
 					List<CcExp> args = app.args();
@@ -582,7 +696,18 @@ public final class BytecodeGenerator {
 	private static String toBinary(TyAtom ty) {
 		if(ty == Type.BOOL) { return "Z";}
 		if(ty == Type.I32)  { return "I";}
-		throw new IllegalArgumentException("Unexpected value: " + ty);
+		return "L"+toClassName(ty.id())+";";
+	}
+
+	private static String toClassName(Id id) {
+		Id parent = id.parent();
+		if(parent == null) {
+			return id.simpleName();
+		}
+		if(Character.isUpperCase(parent.simpleName().charAt(0))) {
+			return toClassName(parent)+"$"+id.simpleName();
+		}
+		return id.canonicalName().replace(".", "/");
 	}
 
 	private static String toBoxed(Type ty) {
