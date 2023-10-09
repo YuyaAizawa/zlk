@@ -15,12 +15,12 @@ public final class Env {
 
 	public Env() {
 		scopeStack = new Stack<>();
-		scopeStack.push(new Scope(""));
+		scopeStack.push(new Scope(null));
 	}
 
 	public void push(String scopeSimpleName) {
-		String scopeCanonicalName = getCanonical(scopeSimpleName);
-		scopeStack.push(new Scope(scopeCanonicalName));
+		scopeStack.push(new Scope(
+				Id.fromParentAndSimpleName(scopeStack.peek().name(), scopeSimpleName)));
 	}
 
 	public void pop() {
@@ -59,8 +59,7 @@ public final class Env {
 	}
 
 	public Id registerVar(String simpleName) {
-		String canonical = getCanonical(simpleName);
-		Id id = Id.fromCanonicalName(canonical);
+		Id id = Id.fromParentAndSimpleName(scopeStack.peek().name(), simpleName);
 		put(simpleName, id);
 		return id;
 	}
@@ -69,10 +68,6 @@ public final class Env {
 		put(id.simpleName(), id);
 		return id;
 	}
-
-	private String getCanonical(String simple) {
-		return scopeStack.peek().name().canonicalName() + Id.SEPARATOR + simple;
-	}
 }
 
 record Scope(
@@ -80,8 +75,8 @@ record Scope(
 		Map<String, Id> ids
 ) implements PrettyPrintable {
 
-	Scope(String canonicalName) {
-		this(Id.fromCanonicalName(canonicalName), new HashMap<>());
+	Scope(Id id) {
+		this(id, new HashMap<>());
 	}
 
 	@Override

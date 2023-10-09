@@ -14,22 +14,26 @@ import java.util.stream.Stream;
 
 import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCnst;
+import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcIf;
 import zlk.clcalc.CcLet;
 import zlk.clcalc.CcMkCls;
 import zlk.clcalc.CcModule;
+import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.Type;
 import zlk.idcalc.IcAbs;
+import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
+import zlk.idcalc.IcType;
 import zlk.util.Location;
 
 public final class ClosureConveter {
@@ -59,8 +63,10 @@ public final class ClosureConveter {
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
 
-		return new CcModule(src.name(), toplevels, src.origin());
+		List<CcType> types = src.types().stream().map(ty -> convert(ty)).toList();
+		return new CcModule(src.name(), types, toplevels, src.origin());
 	}
+
 
 	/**
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
@@ -241,5 +247,13 @@ public final class ClosureConveter {
 				src.name()
 				+ Id.SEPARATOR + closureCount.getAndIncrement()
 				+ Id.SEPARATOR + exceptModule);
+	}
+
+	private CcType convert(IcType icType) {
+		return new CcType(icType.id(), icType.ctors().stream().map(ctor -> convert(ctor)).toList(), icType.loc());
+	}
+
+	private CcCtor convert(IcCtor icCtor) {
+		return new CcCtor(icCtor.id(), icCtor.args(), icCtor.loc());
 	}
 }
