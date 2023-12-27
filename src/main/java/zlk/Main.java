@@ -72,11 +72,16 @@ public class Main {
 				  in
 				    adder
 
+				sum list =
+				  case list of
+				    Nil -> 0
+				    Cons hd tl -> add hd (sum tl)
+
 				ans1 =
 				  sq 42
 
 				ans2 =
-				  Cons
+				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 
 				ans3 =
 				  make_adder 3 4 5
@@ -98,9 +103,9 @@ public class Main {
 		idcalc.pp(System.out);
 		System.out.println();
 
-		System.out.println("-- UNCURRY --");
-		idcalc = null;
-		System.out.println();
+//		System.out.println("-- UNCURRY --");
+//		idcalc = null;
+//		System.out.println();
 
 		System.out.println("-- EXTRACT CONSTRAINS --");
 		Constraint cint = ConstraintExtractor.extract(idcalc);

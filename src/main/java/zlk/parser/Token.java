@@ -29,6 +29,8 @@ public record Token(Kind kind, String value, Position pos) {
 		TYPE("type"),
 		LET("let"),
 		IN("in"),
+		CASE("case"),
+		OF("of"),
 		IF("if"),
 		THEN("then"),
 		ELSE("else"),
@@ -42,6 +44,8 @@ public record Token(Kind kind, String value, Position pos) {
 						TYPE,
 						LET,
 						IN,
+						CASE,
+						OF,
 						IF,
 						THEN,
 						ELSE
