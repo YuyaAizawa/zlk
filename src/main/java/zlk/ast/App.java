@@ -25,6 +25,11 @@ implements Exp {
 					pp.append("(").endl()
 					.inc().append(let).endl()
 					.dec().append(")");
+				},
+				case_ -> {
+					pp.append("(").endl()
+					.inc().append(case_).endl()
+					.dec().append(")");
 				});
 		for(int i = 1; i < exps.size(); i++) {
 			pp.append(" ");
@@ -40,6 +45,11 @@ implements Exp {
 					let   -> { pp
 						.append("(").endl()
 						.inc().append(let).endl()
+						.dec().append(")");
+					},
+					case_ -> {
+						pp.append("(").endl()
+						.inc().append(case_).endl()
 						.dec().append(")");
 					});
 		}

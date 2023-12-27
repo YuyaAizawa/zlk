@@ -2,6 +2,7 @@ package zlk.parser;
 
 import static zlk.parser.Token.Kind.ARROW;
 import static zlk.parser.Token.Kind.BAR;
+import static zlk.parser.Token.Kind.CASE;
 import static zlk.parser.Token.Kind.COLON;
 import static zlk.parser.Token.Kind.DIGITS;
 import static zlk.parser.Token.Kind.ELSE;
@@ -13,6 +14,7 @@ import static zlk.parser.Token.Kind.LCID;
 import static zlk.parser.Token.Kind.LET;
 import static zlk.parser.Token.Kind.LPAREN;
 import static zlk.parser.Token.Kind.MODULE;
+import static zlk.parser.Token.Kind.OF;
 import static zlk.parser.Token.Kind.RPAREN;
 import static zlk.parser.Token.Kind.THEN;
 import static zlk.parser.Token.Kind.TYPE;
@@ -27,6 +29,8 @@ import zlk.ast.ATyArrow;
 import zlk.ast.ATyAtom;
 import zlk.ast.AType;
 import zlk.ast.App;
+import zlk.ast.Case;
+import zlk.ast.CaseBranch;
 import zlk.ast.Cnst;
 import zlk.ast.Constructor;
 import zlk.ast.Decl;
@@ -34,6 +38,9 @@ import zlk.ast.Exp;
 import zlk.ast.If;
 import zlk.ast.Let;
 import zlk.ast.Module;
+import zlk.ast.PCtor;
+import zlk.ast.PVar;
+import zlk.ast.Pattern;
 import zlk.ast.Union;
 import zlk.ast.UnionOrDecl;
 import zlk.ast.Var;
@@ -46,37 +53,45 @@ import zlk.util.Position;
  * 構文解析器.
  * <h2>文法</h2>
  * <pre>{@code
- * <module>   ::= module <ucid> $(<topDecl>*)
+ * <module>     ::= module <ucid> $(<topDecl>*)
  * $ The all decls start in the same column. This column called offside column.
  *   Offside column of the topDecl is 1. The elements other than "type" keyword or the declared
  *   identifiers appear to the right of the offside column.
  *
- * <topDecl>  ::= <union>
- *              | <decl>
+ * <topDecl>    ::= <union>
+ *                | <decl>
  *
- * <union>    ::= type <ucid> = <ctor> (| <ctor>)*
+ * <union>      ::= type <ucid> = <ctor> (| <ctor>)*
  *
- * <ctor>     ::= <ucid> <aType>*
+ * <ctor>       ::= <ucid> <aType>*
  *
- * <decl>     ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
+ * <decl>       ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
  * $ type annotation and decl pair starts in the same column.
  *
- * <exp>      ::= <aExp>+
- *              | let $<declList> in <exp>
- *              | if <exp> then <exp> else <exp>
+ * <exp>        ::= <aExp>+
+ *                | let $<declList> in <exp>
+ *                | if <exp> then <exp> else <exp>
+ *                | case <exp> of $<caseBranch>+
  * $ The declList starts to the right column of the "let" keyword.
  *
- * <declList> ::= $(<decl>+)
+ * <declList>   ::= $(<decl>+)
  * $ The elements other than the declared identifiers appear to the right of the offside column.
  *
- * <aExp>     ::= ( <exp> )
- *              | <constant>
- *              | <lcid>
+ * <aExp>       ::= ( <exp> )
+ *                | <constant>
+ *                | <lcid>
  *
- * <type>     ::= <aType> (-> <type>)?
+ * <caseBranch> ::= <pattern> -> <exp>
  *
- * <aType>    ::= ( <type> )
- *              | <ucid>
+ * <pattern>    ::= <ucid> <aPattern>*
+ *
+ * <aPattern>   ::= (<pattern>)
+ *                | <lcid>
+ *
+ * <type>       ::= <aType> (-> <type>)?
+ *
+ * <aType>      ::= ( <type> )
+ *                | <ucid>
  * }</pre>
  */
 public class Parser {
@@ -240,6 +255,7 @@ public class Parser {
 		return switch(current.kind()) {
 		case LET -> parseLetExp();
 		case IF -> parseIfExp();
+		case CASE -> parseCaseExp();
 		default -> throw new RuntimeException("not exp");
 		};
 	}
@@ -291,6 +307,72 @@ public class Parser {
 		Exp e = parseExp();
 
 		return new If(c, t, e, location(start, end));
+	}
+
+	private Exp parseCaseExp() {
+		Position start = current.pos();
+		consume(CASE);
+
+		Exp exp = parseExp();
+
+		consume(OF);
+
+		if(current.column() <= offsideColumn) {
+			throw new RuntimeException(current.pos() + " case branches must be indented");
+		}
+		int oldOffsideColumn = offsideColumn;
+		offsideColumn = current.column();
+		List<CaseBranch> caseBranches = parseCaseBranches();
+		offsideColumn = oldOffsideColumn;
+
+		return new Case(exp, caseBranches, location(start, end));
+	}
+
+	private List<CaseBranch> parseCaseBranches() {
+		List<CaseBranch> branches = new ArrayList<>();
+		while(current.column() == offsideColumn) {
+			branches.add(parseCaseBranch());
+		}
+		return branches;
+	}
+
+	private CaseBranch parseCaseBranch() {
+		Position start = current.pos();
+		Pattern pattern = parsePattern();
+
+		consume(ARROW);
+
+		// TODO check indent
+		Exp body = parseExp();
+
+		return new CaseBranch(pattern, body, location(start, end));
+	}
+
+	private Pattern parsePattern() {
+		Position start = current.pos();
+
+		String name = parse(UCID);
+
+		List<Pattern> args = new ArrayList<>();
+		while(current.kind() != ARROW) {
+			args.add(parseAPattern());
+		}
+
+		return new PCtor(name, args, location(start, end));
+	}
+
+	private Pattern parseAPattern() {
+		Position start = current.pos();
+		Pattern result;
+
+		if(current.kind() == LPAREN) {
+			consume(LPAREN);
+			result = parsePattern();
+			consume(RPAREN);
+		} else {
+			result = new PVar(parse(LCID), location(start, end));
+		}
+		return result;
 	}
 
 	private Exp parseAExp() {

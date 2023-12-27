@@ -14,14 +14,15 @@ import zlk.util.pp.PrettyPrinter;
  *
  */
 public sealed interface Exp extends PrettyPrintable, LocationHolder
-permits Cnst, Var, App, If, Let {
+permits Cnst, Var, App, If, Let, Case {
 
 	default <R> R fold(
 			Function<? super Cnst, ? extends R> forCnst,
 			Function<? super Var, ? extends R> forVar,
 			Function<? super App, ? extends R> forApp,
 			Function<? super If, ? extends R> forIf,
-			Function<? super Let, ? extends R> forLet) {
+			Function<? super Let, ? extends R> forLet,
+			Function<? super Case, ? extends R> forCase) {
 		if(this instanceof Cnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof Var var) {
@@ -32,6 +33,8 @@ permits Cnst, Var, App, If, Let {
 			return forIf.apply(if_);
 		} else if(this instanceof Let let) {
 			return forLet.apply(let);
+		} else if(this instanceof Case case_) {
+			return forCase.apply(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -42,7 +45,8 @@ permits Cnst, Var, App, If, Let {
 			Consumer<? super Var> forVar,
 			Consumer<? super App> forApp,
 			Consumer<? super If> forIf,
-			Consumer<? super Let> forLet) {
+			Consumer<? super Let> forLet,
+			Consumer<? super Case> forCase) {
 		if(this instanceof Cnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof Var var) {
@@ -53,6 +57,8 @@ permits Cnst, Var, App, If, Let {
 			forIf.accept(if_);
 		} else if(this instanceof Let let) {
 			forLet.accept(let);
+		} else if(this instanceof Case case_) {
+			forCase.accept(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
