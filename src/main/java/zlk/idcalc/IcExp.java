@@ -16,7 +16,7 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, IcLetrec {
+permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, IcLetrec, IcCase {
 
 	default <R> R fold(
 			Function<? super IcCnst, R> forCnst,
@@ -27,7 +27,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			Function<? super IcApp, R> forApp,
 			Function<? super IcIf, R> forIf,
 			Function<? super IcLet, R> forLet,
-			Function<? super IcLetrec, R> forLetrec) {
+			Function<? super IcLetrec, R> forLetrec,
+			Function<? super IcCase, R> forCase) {
 		if(this instanceof IcCnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof IcVarLocal id) {
@@ -46,6 +47,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			return forLet.apply(let);
 		} else if(this instanceof IcLetrec letrec) {
 			return forLetrec.apply(letrec);
+		} else if(this instanceof IcCase case_) {
+			return forCase.apply(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -60,7 +63,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			Consumer<? super IcApp> forApp,
 			Consumer<? super IcIf> forIf,
 			Consumer<? super IcLet> forLet,
-			Consumer<? super IcLetrec> forLetrec) {
+			Consumer<? super IcLetrec> forLetrec,
+			Consumer<? super IcCase> forCase) {
 		if(this instanceof IcCnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof IcVarLocal id) {
@@ -79,6 +83,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			forLet.accept(let);
 		} else if(this instanceof IcLetrec letrec) {
 			forLetrec.accept(letrec);
+		} else if(this instanceof IcCase case_) {
+			forCase.accept(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -115,16 +121,23 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 				},
 				let -> {
 					known.add(let.decl().id());
-					let.decl().args().forEach(arg -> arg.fv(acc, known));
+					let.decl().args().forEach(pat -> pat.addVars(known));
 					let.decl().body().fv(acc, known);
 					let.body().fv(acc, known);
 				},
 				letrec -> {
 					letrec.decls().forEach(decl -> {
-						decl.args().forEach(arg -> arg.fv(acc, known));
+						decl.args().forEach(pat -> pat.addVars(known));
 						decl.body().fv(acc, known);
 					});
 					letrec.body().fv(acc, known);
+				},
+				case_ -> {
+					case_.target().fv(acc, known);
+					for(IcCaseBranch branch: case_.branches()) {
+						branch.pattern().addVars(known);
+						branch.body().fv(acc, known);
+					}
 				});
 	}
 
