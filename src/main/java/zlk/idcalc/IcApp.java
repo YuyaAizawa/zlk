@@ -34,6 +34,11 @@ implements IcExp {
 					.append("(").endl()
 					.inc().append(letrec)
 					.dec().append(")");
+				},
+				case_ -> { pp
+					.append("(").endl()
+					.inc().append(case_)
+					.dec().append(")");
 				});
 		args.forEach(arg -> {
 			pp.append(" ");
@@ -57,6 +62,11 @@ implements IcExp {
 					letrec  -> { pp
 						.append("(").endl()
 						.inc().append(letrec)
+						.dec().append(")");
+					},
+					case_ -> { pp
+						.append("(").endl()
+						.inc().append(case_)
 						.dec().append(")");
 					});
 		});

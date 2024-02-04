@@ -5,10 +5,12 @@ import java.util.List;
 import java.util.Optional;
 
 import zlk.ast.AType;
+import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
 import zlk.ast.Decl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
+import zlk.ast.Pattern;
 import zlk.ast.Union;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -17,6 +19,8 @@ import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
+import zlk.idcalc.IcCase;
+import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcDecl;
@@ -25,6 +29,7 @@ import zlk.idcalc.IcIf;
 import zlk.idcalc.IcLet;
 import zlk.idcalc.IcLetrec;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcPCtor;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcType;
@@ -119,7 +124,7 @@ public final class NameEvaluator {
 			List<IcPattern> args = decl.args().stream()
 					.map(arg -> {
 						Id id_ = env.registerVar(arg.name());
-						return IcPattern.var(new IcPVar(id_, arg.loc()));
+						return (IcPattern) new IcPVar(id_, arg.loc());
 					})
 					.toList();
 			IcExp body = eval(decl.body());
@@ -177,6 +182,14 @@ public final class NameEvaluator {
 						ifExp.loc()),
 				let -> {
 					return eval(let.decls(), let.body());
+				},
+				case_ -> {
+					IcExp target = eval(case_.exp());
+					List<IcCaseBranch> branches = new ArrayList<>();
+					for (int i = 0; i < case_.branches().size(); i++) {
+						branches.add(eval(case_.branches().get(i), i));
+					}
+					return new IcCase(target, branches, case_.loc());
 				});
 	}
 
@@ -202,6 +215,32 @@ public final class NameEvaluator {
 		} else {
 			return tmpLet;
 		}
+	}
+
+	private IcCaseBranch eval(CaseBranch branch, int branchIdx) {
+		env.push("_" + branchIdx);
+		IcPattern pat = eval(branch.pattern());
+		IcExp body = eval(branch.body());
+		env.pop();
+		return new IcCaseBranch(pat, body, branch.loc());
+	}
+
+	private IcPattern eval(Pattern pat) {
+		return pat.fold(
+				var -> {
+					Id id = env.registerVar(var.name());
+					return new IcPVar(id, var.loc());
+				},
+				pctor -> {
+					Id ctor = env.get(pctor.name());
+					List<IcPattern> args = pctor.args().stream()
+							.map(arg -> eval(arg))
+							.toList();
+					return new IcPCtor(
+							new IcVarCtor(ctor, null, Location.noLocation()), // TODO location
+							args,
+							pctor.loc());
+				});
 	}
 
 	private Type eval(AType aTy) {
