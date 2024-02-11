@@ -53,7 +53,7 @@ permits VarN, AppN, FunN {
 					} else if(atom == zlk.common.type.Type.I32) {
 						return I32;
 					} else {
-						return todo();
+						return new AppN(atom.id(), List.of());
 					}
 				},
 				(arg, ret) -> new FunN(from(arg), from(ret)),

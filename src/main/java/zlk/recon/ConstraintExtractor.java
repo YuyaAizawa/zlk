@@ -5,6 +5,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import zlk.common.id.IdMap;
+import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
@@ -30,7 +31,7 @@ public final class ConstraintExtractor {
 				ctor -> Constraint.foreign(ctor.id(), ctor.type(), expected),
 
 				abs -> {
-					Args args = extractFromArgs(List.of(IcPattern.var(new IcPVar(abs.id(), abs.loc()))));
+					Args args = extractFromArgs(List.of(new IcPVar(abs.id(), abs.loc())));
 					Constraint bodyCon = extract(rtv, abs.body(), args.type);
 					return exists(args.vars.getAllAsList(),
 							Constraint.and(List.of(
@@ -100,6 +101,28 @@ public final class ConstraintExtractor {
 					// TODO 型注釈から制約を抽出
 					Constraint bodyCons = extract(rtv, letrec.body(), expected);
 					return extractFromRecursiveDef(rtv, letrec.decls(), bodyCons);
+				},
+				case_ -> {
+					Variable patVar = Variable.mkFlexVar();
+					Type patTy = new VarN(patVar);
+					Constraint targetCon = extract(rtv, case_.target(), patTy);
+
+					// TODO 型注釈から制約を抽出
+
+					Variable branchVar = Variable.mkFlexVar();
+					Type branchTy = new VarN(branchVar);
+
+					List<Constraint> branchCons = new ArrayList<>();
+					for (int i = 0; i < case_.branches().size(); i++) {
+						branchCons.add(extractFromCaseBranch(rtv, case_.branches().get(i),
+								patTy, branchTy));
+					}
+					return exists(
+							List.of(patVar, branchVar),
+							Constraint.and(List.of(
+									targetCon,
+									Constraint.and(branchCons),
+									Constraint.equal(branchTy, expected))));
 				});
 	}
 
@@ -215,6 +238,16 @@ public final class ConstraintExtractor {
 			args_.vars.push(argVar);
 			return new Args(args_.vars, (new FunN(argType, args_.type)), args_.resultType, args_.state);
 		}
+	}
+
+	private static Constraint extractFromCaseBranch(Rtv rtv, IcCaseBranch branch, Type patExpected, Type branchExpected) {
+		State state = new State().add(branch.pattern(), patExpected);
+		return Constraint.let(
+				List.of(),
+				state.vars.getAllAsList(),
+				state.headers,
+				Constraint.and(state.cons),
+				extract(rtv, branch.body(), branchExpected));
 	}
 
 

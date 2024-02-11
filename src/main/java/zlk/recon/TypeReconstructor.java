@@ -82,6 +82,14 @@ public class TypeReconstructor {
 					return state;
 				},
 
+				// CPattern
+				(ty, expectation) -> {
+					Variable actual = typeToVariable(rank, ty);
+					Variable expected = expectedToVariable(rank, expectation);
+					Unify.unify(actual, expected);
+					return state;
+				},
+
 				// CAnd,
 				list -> {
 					State result = state;
