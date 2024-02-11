@@ -7,17 +7,19 @@ import zlk.util.pp.PrettyPrinter;
 
 public record IcPCtor(
 		IcVarCtor ctor,
-		List<IcPattern> args,
+		List<IcPCtorArg> args,
 		Location loc) implements IcPattern {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(ctor);
-		for(IcPattern pat: args) {
+		for(IcPCtorArg arg: args) {
 			pp.append(" ");
-			pat.match(
+			arg.pattern().match(
 					var   -> pp.append(var),
 					pctor -> pp.append("(").append(pctor).append(")"));
 		}
 	}
 }
+
+

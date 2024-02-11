@@ -7,9 +7,11 @@ import zlk.common.type.TyArrow;
 import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.idcalc.IcApp;
+import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcPCtorArg;
 import zlk.idcalc.IcPattern;
 import zlk.util.Location;
 
@@ -48,7 +50,18 @@ public final class TypeChecker {
 
 	private Type check(IcPattern pattern) {
 		return pattern.fold(
-				var -> env.get(var.id()));
+				var -> env.get(var.id()),
+				ctor -> {
+					Type ctorType = env.get(ctor.ctor().id());
+					List<Type> argTypes = ctorType.flatten();
+
+					for (int i = 0; i < ctor.args().size(); i++) {
+						IcPCtorArg arg = ctor.args().get(i);
+						typeAssertion(arg.pattern(), arg.type());
+						assertEqual(arg.type(), argTypes.get(i), arg.pattern().loc());
+					}
+					return argTypes.get(argTypes.size()-1);
+				});
 	}
 
 	public Type check(IcExp exp) {
@@ -90,6 +103,17 @@ public final class TypeChecker {
 					letrec  -> {
 						letrec.decls().forEach(this::check);
 						return check(letrec.body());
+					},
+					case_  -> {
+						Type target = check(case_.target());
+						Type patternType = check(case_.branches().get(0).pattern());
+						assertEqual(patternType, target, case_.branches().get(0).pattern().loc());
+						Type bodyType = check(case_.branches().get(0).body());
+						for(IcCaseBranch branch: case_.branches()) {
+							typeAssertion(branch.pattern(), patternType);
+							typeAssertion(branch.body(), bodyType);
+						}
+						return bodyType;
 					});
 		} catch(NullPointerException e) {
 			throw new RuntimeException("on "+exp.loc(), e);
@@ -98,6 +122,10 @@ public final class TypeChecker {
 
 	private void typeAssertion(IcExp exp, Type expected) {
 		assertEqual(check(exp), expected, exp.loc());
+	}
+
+	private void typeAssertion(IcPattern pat, Type expected) {
+		assertEqual(check(pat), expected, pat.loc());
 	}
 
 	private static void assertEqual(Type actual, Type expected, Location loc) {

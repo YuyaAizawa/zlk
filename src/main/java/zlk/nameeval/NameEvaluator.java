@@ -30,6 +30,7 @@ import zlk.idcalc.IcLet;
 import zlk.idcalc.IcLetrec;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPCtor;
+import zlk.idcalc.IcPCtorArg;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcType;
@@ -233,9 +234,14 @@ public final class NameEvaluator {
 				},
 				pctor -> {
 					Id ctor = env.get(pctor.name());
-					List<IcPattern> args = pctor.args().stream()
-							.map(arg -> eval(arg))
-							.toList();
+
+					List<Pattern> argPats = pctor.args();
+					List<Type> argTys = ctorTy.get(ctor).flatten();
+					List<IcPCtorArg> args = new ArrayList<>();
+					for (int i = 0; i < argPats.size(); i++) {
+						args.add(new IcPCtorArg(eval(argPats.get(i)), argTys.get(i)));
+					}
+
 					return new IcPCtor(
 							new IcVarCtor(ctor, null, Location.noLocation()), // TODO location
 							args,

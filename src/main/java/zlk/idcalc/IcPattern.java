@@ -38,6 +38,6 @@ permits IcPVar, IcPCtor {
 	public default void addVars(Set<Id> known) {
 		match(
 				var  -> known.add(var.id()),
-				ctor -> ctor.args().forEach(pat -> pat.addVars(known)));
+				ctor -> ctor.args().forEach(arg -> arg.pattern().addVars(known)));
 	}
 }

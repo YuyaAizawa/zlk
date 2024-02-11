@@ -31,6 +31,7 @@ public class Constraint implements PrettyPrintable {
 		CEqual,
 		CLocal,
 		CForeign,
+		CPattern,
 		CAnd,
 		CLet,
 		CSaveTheEnvironment
@@ -59,6 +60,10 @@ public class Constraint implements PrettyPrintable {
 		return new Constraint(Category.CForeign, null, expected, anno, id, null, null);
 	}
 
+	public static Constraint pattern(Type type, Type expected) {
+		return new Constraint(Category.CPattern, type, expected, null, null, null, null);
+	}
+
 	public static Constraint and(List<Constraint> constraints) {
 		return new Constraint(Category.CAnd, null, null, null, null, constraints, null);
 	}
@@ -78,6 +83,7 @@ public class Constraint implements PrettyPrintable {
 			BiFunction<? super Type, ? super Type, ? extends R> forEqual,
 			BiFunction<? super Id, ? super Type, ? extends R> forLocal,
 			TriFunction<? super Id, ? super zlk.common.type.Type, ? super Type, ? extends R> forForeign,
+			BiFunction<? super Type, ? super Type, ? extends R> forPattern,
 			Function<? super List<Constraint>, ? extends R> forAnd,
 			Function<? super LetConstraint, ? extends R> forLet,
 			Supplier<? extends R> forSte) {
@@ -90,6 +96,8 @@ public class Constraint implements PrettyPrintable {
 			return forLocal.apply(name, expected);
 		case CForeign:
 			return forForeign.apply(name, anno, expected);
+		case CPattern:
+			return forPattern.apply(type, expected);
 		case CAnd:
 			return forAnd.apply(ands);
 		case CLet:
@@ -106,6 +114,7 @@ public class Constraint implements PrettyPrintable {
 			BiConsumer<? super Type, ? super Type> forEqual,
 			BiConsumer<? super Id, ? super Type> forLocal,
 			TriConsumer<? super Id, ? super zlk.common.type.Type, ? super Type> forForeign,
+			BiConsumer<? super Type, ? super Type> forPattern,
 			Consumer<? super List<Constraint>> forAnd,
 			Consumer<? super LetConstraint> forLet,
 			Runnable forSte) {
@@ -121,6 +130,9 @@ public class Constraint implements PrettyPrintable {
 			return;
 		case CForeign:
 			forForeign.accept(name, anno, expected);
+			return;
+		case CPattern:
+			forPattern.accept(type, expected);
 			return;
 		case CAnd:
 			forAnd.accept(ands);
@@ -156,6 +168,7 @@ public class Constraint implements PrettyPrintable {
 				(id, ty, expected) ->
 					pp.append("Foreign: ").append(id).append("::").append(ty)
 							.append(", ").append(expected),
+				(pat, expected) -> pp.append("Pattern: ").append(pat).append(", ").append(expected),
 				list -> {
 					pp.append("And:");
 					pp.inc();
