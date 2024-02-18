@@ -1,7 +1,9 @@
 package zlk.clcalc;
 
+import java.util.List;
+
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
+import zlk.idcalc.IcPattern;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
@@ -14,7 +16,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record CcDecl(
 		Id id,
-		IdList args,
+		List<IcPattern> args,
 		CcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {
@@ -27,7 +29,7 @@ implements PrettyPrintable, LocationHolder {
 	public void mkString(PrettyPrinter pp) {
 		pp.append("decl:").endl().inc();
 		pp.field("id", id);
-		pp.field("args", args);
+		pp.append("args: [").oneline(args, ", ").append("]").endl();
 		pp.field("body", body);
 		pp.dec();
 	}

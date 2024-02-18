@@ -13,6 +13,8 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import zlk.clcalc.CcApp;
+import zlk.clcalc.CcCase;
+import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcDecl;
@@ -27,11 +29,11 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.common.type.Type;
-import zlk.idcalc.IcAbs;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcType;
 import zlk.util.Location;
@@ -74,43 +76,42 @@ public final class ClosureConveter {
 	 */
 	private Optional<CcMkCls> compileFunc(Id id, List<IcPattern> args_, IcExp body) {
 
-		// TODO パターンに対応
-		IdList args = args_.stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
-
 		knowns.add(id);
 		CcExp ccBody = compile(body);
-		IdList frees = fvFunc(ccBody, args);
+		IdList frees = fvFunc(ccBody, args_);
 
 		if(frees.isEmpty()) {
 			System.out.println(id + " is not cloeure.");
-			toplevels.add(new CcDecl(id, args, ccBody, body.loc()));
+			toplevels.add(new CcDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
 			System.out.println(id + " is cloeure. frees: "+frees);
-			CcDecl closureFunc = makeClosure(id, frees, args, ccBody, type.get(id).apply(args.size()), body.loc());
+			CcDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
 		}
 	}
 
-	private ExpWithArgs rollUpArgs(IcExp target) {
-		IcExp body = target;
-		IdList args = new IdList();
-		while(body instanceof IcAbs abs) {
-			args.add(abs.id());
-			body = abs.body();
-		}
-		return new ExpWithArgs(body, args);
-	}
-	private record ExpWithArgs(IcExp exp, IdList args) {}
-
-	private CcDecl makeClosure(Id original, IdList frees, IdList originalArgs, CcExp body, Type retTy, Location loc) {
+	/**
+	 * 自由変数を引数に入れた新しい関数宣言を作る
+	 * @param original 元の関数のId
+	 * @param frees 自由変数
+	 * @param args_ 元の関数の引数
+	 * @param body 元の関数の中身
+	 * @param retTy 元の関数の戻り値型
+	 * @param loc 元の関数のLocation
+	 * @return
+	 */
+	private CcDecl makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
 		List<Type> types =
 				Stream.concat(Stream.concat(
 						frees.stream().map(type::get),
-						originalArgs.stream().map(type::get)),
+						args_.stream()
+								.map(pat -> pat.fold(
+										var -> type.get(var.id()),
+										ctor -> type.get(ctor.ctor().id())))),
 						Stream.of(retTy))
 						.toList();
 		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
@@ -121,11 +122,10 @@ public final class ClosureConveter {
 				frees.stream().collect(IdMap.collector(
 						Function.identity(),
 						id -> Id.fromParentAndSimpleName(clsId, id.simpleName())));
-		IdList clsArgs = new IdList();
-		clsArgs.addAll(originalArgs);
+		List<IcPattern> clsArgs = new ArrayList<>(args_);
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
-			clsArgs.add(newId);
+			clsArgs.add(new IcPVar(newId, Location.noLocation()));
 			type.put(newId, type.get(free));
 		}
 
@@ -158,8 +158,7 @@ public final class ClosureConveter {
 						if_.loc()),
 				let     -> {
 					Id id = let.decl().id();
-					// TODO パターンに対応
-					IdList args = let.decl().args().stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
+					List<IcPattern> args = let.decl().args();
 					IcExp bounded = let.decl().body();
 					CcExp letBody = compile(let.body());
 					Location loc = let.loc();
@@ -178,8 +177,7 @@ public final class ClosureConveter {
 					}
 					IcDecl decl = letrec.decls().get(0);
 					Id id = decl.id();
-					// TODO パターンに対応
-					IdList args = decl.args().stream().map(p -> p.fold(var -> var.id())).collect(IdList.collector());
+					List<IcPattern> args = decl.args();
 					IcExp bounded = decl.body();
 					CcExp letBody = compile(letrec.body());
 					Location loc = letrec.loc();
@@ -190,13 +188,24 @@ public final class ClosureConveter {
 					} else {
 						return new CcLet(id, compile(bounded), letBody, loc);
 					}
+				},
+				case_ -> {
+					CcExp target = compile(case_.target());
+					List<CcCaseBranch> branches =
+							case_.branches().stream()
+									.map(branch -> new CcCaseBranch(
+											branch.pattern(),
+											compile(branch.body()),
+											branch.loc()))
+									.toList();
+					return new CcCase(target, branches, case_.loc());
 				});
 	}
 
-	private IdList fvFunc(CcExp body, IdList args) {
+	private IdList fvFunc(CcExp body, List<IcPattern> args) {
 		IdList free = new IdList();
 		Set<Id> bounded = new HashSet<>(knowns);
-		bounded.addAll(args);
+		args.forEach(arg -> arg.addVars(bounded));
 		fv(body, bounded, free);
 		return free;
 	}
@@ -231,6 +240,13 @@ public final class ClosureConveter {
 					bounded.add(let.boundVar());
 					fv(let.boundExp(), bounded, free);
 					fv(let.mainExp(), bounded, free);
+				},
+				case_ -> {
+					fv(case_.target(), bounded, free);
+					for(CcCaseBranch branch: case_.branches()) {
+						branch.pattern().addVars(bounded);
+						fv(branch.body(), bounded, free);
+					}
 				});
 	}
 

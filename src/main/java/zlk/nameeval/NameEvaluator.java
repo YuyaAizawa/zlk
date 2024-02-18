@@ -243,7 +243,7 @@ public final class NameEvaluator {
 					}
 
 					return new IcPCtor(
-							new IcVarCtor(ctor, null, Location.noLocation()), // TODO location
+							new IcVarCtor(ctor, ctorTy.get(ctor), Location.noLocation()), // TODO location
 							args,
 							pctor.loc());
 				});
