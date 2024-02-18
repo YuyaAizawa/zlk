@@ -15,6 +15,7 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface Type extends PrettyPrintable
 permits TyAtom, TyArrow, TyVar {
 
+	public static final TyAtom UNIT = new TyAtom("UNIT");
 	public static final TyAtom BOOL = new TyAtom("Bool");
 	public static final TyAtom I32  = new TyAtom("I32");
 

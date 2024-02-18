@@ -9,7 +9,7 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 
 public sealed interface CcExp extends PrettyPrintable, LocationHolder
-permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
+permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 
 	default <R> R fold(
 			Function<? super CcCnst, ? extends R> forCnst,
@@ -17,7 +17,8 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 			Function<? super CcApp, ? extends R> forCall,
 			Function<? super CcMkCls, ? extends R> forMkCls,
 			Function<? super CcIf, ? extends R> forIf,
-			Function<? super CcLet, ? extends R> forLet) {
+			Function<? super CcLet, ? extends R> forLet,
+			Function<? super CcCase, ? extends R> forCase) {
 		if(this instanceof CcCnst cnst) {
 			return forCnst.apply(cnst);
 		} else if(this instanceof CcVar var) {
@@ -30,6 +31,8 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 			return forIf.apply(ifExp);
 		} else if(this instanceof CcLet let) {
 			return forLet.apply(let);
+		} else if(this instanceof CcCase case_) {
+			return forCase.apply(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -41,7 +44,8 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 			Consumer<? super CcApp> forCall,
 			Consumer<? super CcMkCls> forMkCls,
 			Consumer<? super CcIf> forIf,
-			Consumer<? super CcLet> forLet) {
+			Consumer<? super CcLet> forLet,
+			Consumer<? super CcCase> forCase) {
 		if(this instanceof CcCnst cnst) {
 			forCnst.accept(cnst);
 		} else if(this instanceof CcVar var) {
@@ -54,6 +58,8 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 			forIf.accept(ifExp);
 		} else if(this instanceof CcLet let) {
 			forLet.accept(let);
+		} else if(this instanceof CcCase case_) {
+			forCase.accept(case_);
 		} else {
 			throw new Error(this.getClass().toString());
 		}
@@ -80,7 +86,11 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet {
 						let.boundVar(),
 						let.boundExp().substId(map),
 						let.mainExp().substId(map),
-						let.loc()));
+						let.loc()),
+				case_ -> new CcCase(
+						case_.target().substId(map),
+						case_.branches().stream().map(branch -> branch.substId(map)).toList(),
+						case_.loc()));
 	}
 
 	static Function<Id, Id> forceVar(IdMap<CcExp> map) {

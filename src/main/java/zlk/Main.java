@@ -35,8 +35,8 @@ public class Main {
 
 	public static Class<?> clazz;
 
-	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
-		String name = "HelloMyLang";
+	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchFieldException {
+		String name = "HelloMyLang.zlk";
 		String src =
 				"""
 				module HelloMyLang
@@ -75,7 +75,7 @@ public class Main {
 				sum list =
 				  case list of
 				    Nil -> 0
-				    Cons hd tl -> add hd (sum tl)
+				    Cons hd tl -> add (sum tl) hd
 
 				ans1 =
 				  sq 42
@@ -125,6 +125,7 @@ public class Main {
 		System.out.println("-- TYPE CHECK --"); // TODO remove
 		TypeChecker typeChecker = new TypeChecker(types);
 		typeChecker.check(idcalc);
+		System.out.println(types);
 		System.out.println();
 
 		System.out.println("-- CL CONV --");
@@ -141,7 +142,7 @@ public class Main {
 					new ClassReader(bin).accept(
 							new TraceClassVisitor(
 									new PrintWriter(System.out)), 0);
-					classBins.put(name_, bin);
+					classBins.put(name_.split("\\.")[0], bin);
 					Files.write(Paths.get(name_), bin);
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
@@ -153,19 +154,21 @@ public class Main {
 		System.out.println();
 		System.out.println("-- EXECUTE --");
 
-		clazz = Class.forName(name, true, new ClassLoader() {
-			@Override
-			protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
-				byte[] bin = classBins.get(str);
-				if(bin == null) {
-					throw new ClassNotFoundException(str);
-				}
-				return defineClass(str, bin, 0, bin.length);
-			}
-		});
+		ClassLoader cl =
+				new ClassLoader() {
+					@Override
+					protected java.lang.Class<?> findClass(String str) throws ClassNotFoundException {
+						byte[] bin = classBins.get(str);
+						if(bin == null) {
+							throw new ClassNotFoundException(str);
+						}
+						return defineClass(str, bin, 0, bin.length);
+					}
+				};
+		clazz = Class.forName(name.split("\\.")[0], true, cl);
 
 		invoke("ans1", "sq 42 = ");
-		invoke("ans2", "fact 10 = ");
+		invoke("ans2", "sum (Cons 3 (Cons 2 (Cons 1 Nil))) = ");
 		invoke("ans3", "make_adder 3 4 5 = ");
 	}
 

@@ -117,7 +117,7 @@ public class Parser {
 	}
 
 	public Module parse() {
-		return parseModule(lexer.getFileName());
+		return parseModule(lexer.getFileName().split("\\.")[0]);
 	}
 
 	public Module parseModule(String fileName) {

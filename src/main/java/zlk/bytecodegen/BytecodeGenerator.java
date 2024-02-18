@@ -18,6 +18,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import zlk.clcalc.CcApp;
+import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcDecl;
 import zlk.clcalc.CcExp;
@@ -32,6 +33,8 @@ import zlk.common.type.TyArrow;
 import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.core.Builtin;
+import zlk.idcalc.IcPCtorArg;
+import zlk.idcalc.IcPattern;
 import zlk.util.Stack;
 
 public final class BytecodeGenerator {
@@ -42,10 +45,12 @@ public final class BytecodeGenerator {
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
 	private final IdMap<CcDecl> toplevelDecls;
+	private final IdMap<CcCtor> ctors;
 	private ClassWriter cw;
 
 	// for compileDecl
 	private IdList locals;
+	private static final Id LOCAL_DUMMY_ID = Id.fromCanonicalName("..DUMMY..");
 	private MethodVisitor mv;
 	private Stack<Runnable> pendings;
 
@@ -56,6 +61,7 @@ public final class BytecodeGenerator {
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.toplevelDescs = new IdMap<>();
 		this.toplevelDecls = new IdMap<>();
+		this.ctors = new IdMap<>();
 		this.pendings = new Stack<>();
 	}
 
@@ -64,6 +70,7 @@ public final class BytecodeGenerator {
 			classNames.put(union.id(), unionSuperName(union));
 			union.ctors().forEach(ctor -> {
 				classNames.put(ctor.id(), unionSubName(union, ctor));
+				ctors.put(ctor.id(), ctor);
 			});
 		});
 		module.toplevels().forEach(decl -> {
@@ -158,11 +165,12 @@ public final class BytecodeGenerator {
 				false);
 
 		for(int i = 0; i < ctor.args().size(); i++) {
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
 			Type ty = ctor.args().get(i);
-			loadLocal(i, ty);
+			loadLocal(i+1, ty);
 			mv.visitFieldInsn(
 					Opcodes.PUTFIELD,
-					classNames.get(union.id()),
+					classNames.get(ctor.id()),
 					"val"+i,
 					toDesc(ty));
 		}
@@ -231,7 +239,7 @@ public final class BytecodeGenerator {
 
 	private void compileDecl(CcDecl decl) { // TODO トップレベルは全て非カリー化する
 		try {
-			locals = new IdList(decl.args());
+			locals = new IdList();
 
 			mv = cw.visitMethod(
 					Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
@@ -241,6 +249,7 @@ public final class BytecodeGenerator {
 					null);
 
 			mv.visitCode();
+			registerArgs(decl.args());
 			compile(decl.body());
 			genReturn(types.get(decl.id()).apply(decl.arity()));
 			mv.visitMaxs(-1, -1); // compute all frames and local automatically
@@ -252,6 +261,55 @@ public final class BytecodeGenerator {
 		} catch(RuntimeException e) {
 			throw new RuntimeException("on method "+decl.id(), e);
 		}
+	}
+
+	/**
+	 * 関数の引数をlocalsに登録する
+	 * @param args 引数
+	 */
+	private void registerArgs(List<IcPattern> args) {
+		args.forEach(arg -> arg.match(
+				var -> locals.add(var.id()),
+				ctor -> locals.add(LOCAL_DUMMY_ID)));
+
+		for (int i = 0; i < args.size(); i++) {
+			int i_ = i;
+			args.get(i).match(
+					var -> {},
+					ctor -> {
+						Type subClassTy = types.get(ctor.ctor().id());
+						loadLocal(i_, subClassTy);
+						registerArgRec(ctor);
+					});
+		}
+	}
+	private void registerArgRec(IcPattern pat) {
+		// 事前条件：パターンに対応する値がstackのトップに乗っている
+		// 事後条件：パターンに対応する値をstackから消費
+		pat.match(
+				var -> {
+					locals.add(var.id());
+					storeLocal(locals.size()-1, types.get(var.id()));
+				},
+				ctor -> {
+					String subClassName = classNames.get(ctor.ctor().id());
+
+					// stackの数を調整
+					if(ctor.args().size() == 0) { mv.visitInsn(Opcodes.POP); }
+					for (int i = 0; i < ctor.args().size()-1; i++) {
+						mv.visitInsn(Opcodes.DUP);
+					}
+
+					for(int fieldIdx = 0; fieldIdx < ctor.args().size(); fieldIdx++) {
+						IcPCtorArg ctorArg = ctor.args().get(fieldIdx);
+						mv.visitFieldInsn(
+								Opcodes.GETFIELD,
+								subClassName,
+								"val"+fieldIdx,
+								toDesc(ctorArg.type()));
+						registerArgRec(ctorArg.pattern());
+					}
+				});
 	}
 
 	private void compile(CcExp exp) {
@@ -304,6 +362,20 @@ public final class BytecodeGenerator {
 							},
 							localIdx -> {
 								loadLocal(localIdx, types.get(id));
+							},
+							ctor -> {
+								if(ctor.args().size() != 0) {
+									todo("currying");
+								}
+								String subclassName = classNames.get(ctor.id());
+								mv.visitTypeInsn(Opcodes.NEW, subclassName);
+								mv.visitInsn(Opcodes.DUP);
+								mv.visitMethodInsn(
+										Opcodes.INVOKESPECIAL,
+										subclassName,
+										"<init>",
+										"()V",
+										false);
 							});
 				},
 				app  -> {
@@ -362,6 +434,21 @@ public final class BytecodeGenerator {
 										compile(args.get(i));
 										invokeApplyWithBoxing(funType.apply(i).asArrow());
 									}
+								},
+								ctor -> {
+									if(args.size() != ctor.args().size()) {
+										todo("currying");
+									}
+									String subclassName = classNames.get(ctor.id());
+									mv.visitTypeInsn(Opcodes.NEW, subclassName);
+									mv.visitInsn(Opcodes.DUP);
+									args.forEach(arg -> compile(arg));
+									mv.visitMethodInsn(
+											Opcodes.INVOKESPECIAL,
+											subclassName,
+											"<init>",
+											toDesc(ctor.args(), Type.UNIT),
+											false);
 								});
 					} else {
 						compile(app.fun());
@@ -430,13 +517,114 @@ public final class BytecodeGenerator {
 					locals.add(var);
 					storeLocal(locals.size()-1, types.get(var));
 					compile(let.mainExp());
+				},
+				case_ -> { // TODO マッチしないときの例外処理
+					/*
+					 * case e of
+					 *   pat1 -> exp1
+					 *   pat2 -> exp2
+					 *   pat3 -> exp3
+					 *
+					 * を
+					 *
+					 * e not match pat1 goto l2
+					 * exp1
+					 * goto neck
+					 * :l2
+					 * e not match pat2 goto l3
+					 * exp2
+					 * goto neck
+					 * :l3
+					 * exp3
+					 * goto neck  // stack framesのため
+					 * :neck
+					 *
+					 * にする．
+					 */
+					Type targetTy = getType(case_.target());
+					locals.add(LOCAL_DUMMY_ID);
+					int targetLocalIdx = locals.size()-1;
+					compile(case_.target());
+					storeLocal(targetLocalIdx, targetTy);
+					Label neck = new Label();
+
+					// マッチしないパターンに遭遇したら次の選択肢に進む
+					IdList localsBeforeBranch = new IdList(locals);
+					for(int branchIdx = 0; branchIdx < case_.branches().size(); branchIdx++) {
+						Label nextBranchLabel = (branchIdx < case_.branches().size()-1)
+								? new Label() : null;
+						CcCaseBranch branch = case_.branches().get(branchIdx);
+
+						checkMatchAndStoreLocals(
+								targetLocalIdx,
+								branch.pattern(),
+								nextBranchLabel);
+						compile(branch.body());
+						mv.visitJumpInsn(Opcodes.GOTO, neck);
+
+						if(nextBranchLabel != null) {
+							mv.visitLabel(nextBranchLabel);
+						}
+						locals = localsBeforeBranch;
+					}
+					mv.visitLabel(neck);
+				});
+	}
+	/**
+	 * パターンのマッチをチェックする．
+	 * マッチした場合，値をローカル変数に格納する．
+	 * マッチしなかった場合，次のLabelにjumpする．
+	 * 次のLabelがnullであるとき，チェックは省略される．
+	 * @param targetIdx チェックする値の局所変数番号
+	 * @param pat
+	 * @param next 次のラベル
+	 */
+	private void checkMatchAndStoreLocals(int targetIdx, IcPattern pat, Label next) {
+		Type targetTy = pat.fold(
+				var -> types.get(var.id()),
+				ctor -> ctor.ctor().type());
+
+		pat.match(
+				var -> {
+					locals.set(targetIdx, var.id());
+				},
+				ctor -> {
+					String subClassName = classNames.get(ctor.ctor().id());
+					if(next != null) {
+						loadLocal(targetIdx, targetTy);
+						mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
+						mv.visitJumpInsn(Opcodes.IFEQ, next);
+					}
+					if(ctor.args().size() == 0) {
+						return;
+					}
+					loadLocal(targetIdx, targetTy);
+					mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
+					for(int i = 1; i < ctor.args().size(); i++) {
+						mv.visitInsn(Opcodes.DUP);
+					}
+					int argBase = locals.size();
+					for(int i = 0; i < ctor.args().size(); i++) {
+						Type fieldTy = ctor.args().get(i).type();
+						mv.visitFieldInsn(
+								Opcodes.GETFIELD,
+								subClassName,
+								"val"+i,
+								toDesc(fieldTy));
+						locals.add(LOCAL_DUMMY_ID);
+						storeLocal(locals.size()-1, fieldTy);
+					}
+					for(int i = 0; i < ctor.args().size(); i++) {
+						checkMatchAndStoreLocals(argBase+i, ctor.args().get(i).pattern(), next);
+					}
 				});
 	}
 
 	private void switchByDecl(Id id,
 			Consumer<String> forTopLevelDescriptor,
 			Consumer<Builtin> forBuiltin,
-			Consumer<Integer> forLocalIdx) {
+			Consumer<Integer> forLocalIdx,
+			Consumer<CcCtor> forCtor) {
 
 		String descriptor = toplevelDescs.getOrNull(id);
 		if(descriptor != null) {
@@ -447,6 +635,12 @@ public final class BytecodeGenerator {
 		Builtin builtin = builtins.getOrNull(id);
 		if(builtin != null) {
 			forBuiltin.accept(builtin);
+			return;
+		}
+
+		CcCtor ctor = ctors.getOrNull(id);
+		if(ctor != null) {
+			forCtor.accept(ctor);
 			return;
 		}
 
@@ -548,22 +742,68 @@ public final class BytecodeGenerator {
 
 	private void loadCnst(ConstValue cnst) {
 		cnst.match(
-				bool -> { mv.visitLdcInsn(bool.value() ? 1 : 0); },
-				i32  -> { mv.visitLdcInsn(i32.value());});
+				bool -> {
+					if(bool.value()) {
+						mv.visitInsn(Opcodes.ICONST_1);
+					} else {
+						mv.visitInsn(Opcodes.ICONST_0);
+					}
+				},
+				i32  -> {
+					switch(i32.value()) {
+					case 0:
+						mv.visitInsn(Opcodes.ICONST_0);
+						return;
+					case 1:
+						mv.visitInsn(Opcodes.ICONST_1);
+						return;
+					case 2:
+						mv.visitInsn(Opcodes.ICONST_2);
+						return;
+					case 3:
+						mv.visitInsn(Opcodes.ICONST_3);
+						return;
+					case 4:
+						mv.visitInsn(Opcodes.ICONST_4);
+						return;
+					case 5:
+						mv.visitInsn(Opcodes.ICONST_5);
+						return;
+					default:
+						mv.visitLdcInsn(i32.value());
+						return;
+					}
+				});
 	}
 
 	private void loadLocal(int idx, Type ty) {
 		ty.match(
-				base       -> { mv.visitVarInsn(Opcodes.ILOAD, idx); },
+				base       -> {
+					if(base == Type.I32 || base == Type.BOOL) {
+						mv.visitVarInsn(Opcodes.ILOAD, idx);
+					} else if (base == Type.UNIT) {
+						throw new Error("cannot load Unit type variable");
+					} else {
+						mv.visitVarInsn(Opcodes.ALOAD, idx);
+					}
+				},
 				(arg, ret) -> { mv.visitVarInsn(Opcodes.ALOAD, idx); },
-				varId      -> { new Error("typevar"); });
+				varId      -> { throw new Error("typevar"); });
 	}
 
 	private void storeLocal(int idx, Type ty) {
 		ty.match(
-				base       -> { mv.visitVarInsn(Opcodes.ISTORE, idx); },
+				base       -> {
+					if(base == Type.I32 || base == Type.BOOL) {
+						mv.visitVarInsn(Opcodes.ISTORE, idx);
+					} else if (base == Type.UNIT) {
+						throw new Error("cannot store Unit type variable");
+					} else {
+						mv.visitVarInsn(Opcodes.ASTORE, idx);
+					}
+				},
 				(arg, ret) -> { mv.visitVarInsn(Opcodes.ASTORE, idx); },
-				varId      -> { new Error("typevar"); });
+				varId      -> { throw new Error("typevar"); });
 	}
 
 	private void genBoxing(TyAtom type) {
@@ -588,7 +828,15 @@ public final class BytecodeGenerator {
 
 	private void genReturn(Type type) {
 		type.match(
-				base       -> mv.visitInsn(Opcodes.IRETURN),
+				base       -> {
+					if(base == Type.BOOL || base == Type.I32) {
+						mv.visitInsn(Opcodes.IRETURN);
+					} else if(base == Type.UNIT) {
+						mv.visitInsn(Opcodes.RETURN);
+					} else {
+						mv.visitInsn(Opcodes.ARETURN);
+					}
+				},
 				(arg, ret) -> mv.visitInsn(Opcodes.ARETURN),
 				varId      -> { new Error("typevar"); });
 	}
@@ -644,9 +892,13 @@ public final class BytecodeGenerator {
 	}
 
 	private static String getDescription(CcDecl decl, IdMap<Type> types) {
-		IdList args = decl.args();
-		List<Type> argTys = args.stream().map(types::get).toList();
-		Type retTy = types.get(decl.id()).apply(args.size());
+
+		List<Type> argTys = decl.args().stream()
+				.map(pat -> pat.fold(
+						var -> types.get(var.id()),
+						ctor -> types.get(ctor.ctor().id())))
+				.toList();
+		Type retTy = types.get(decl.id()).apply(argTys.size());
 		return toDesc(argTys, retTy);
 	}
 
@@ -696,6 +948,7 @@ public final class BytecodeGenerator {
 	private static String toBinary(TyAtom ty) {
 		if(ty == Type.BOOL) { return "Z";}
 		if(ty == Type.I32)  { return "I";}
+		if(ty == Type.UNIT) { return "V";}
 		return "L"+toClassName(ty.id())+";";
 	}
 
@@ -751,7 +1004,8 @@ public final class BytecodeGenerator {
 				call  -> returnType(call),
 				mkCls -> types.get(mkCls.id()),
 				if_   -> getType(if_.thenExp()),
-				let   -> getType(let.mainExp()));
+				let   -> getType(let.mainExp()),
+				case_ -> getType(case_.branches().get(0).body()));
 	}
 
 	private static Pattern separatorReplacer = Pattern.compile(Id.SEPARATOR, Pattern.LITERAL);
