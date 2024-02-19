@@ -40,7 +40,12 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 
 	public Type toType() {
 		return get().content.fold(
-				var -> todo(),
+				var ->
+					// TODO 別の場所へ
+					new TyVar(var.maybeName() == null
+							? "?"+var.id()+"?"
+							: var.maybeName())
+				,
 				struct -> struct.flatType().toType());
 	}
 
