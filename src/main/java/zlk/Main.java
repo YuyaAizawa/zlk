@@ -75,7 +75,7 @@ public class Main {
 				sum list =
 				  case list of
 				    Nil -> 0
-				    Cons hd tl -> add (sum tl) hd
+				    Cons hd tl -> hd
 
 				ans1 =
 				  sq 42

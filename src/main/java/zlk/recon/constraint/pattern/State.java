@@ -35,7 +35,7 @@ public final class State {
 				ctor ->
 					// TODO 型変数に対応
 					addCtor(
-							ctor.ctor().type(),
+							ctor.ctor().type().apply(ctor.ctor().type().flatten().size()-1),  // TODO 結果の型を取る方法を作る
 							ctor.ctor().id(),
 							ctor.args(),
 							expected)
@@ -51,6 +51,8 @@ public final class State {
 		args.forEach(arg ->
 			add(arg.pattern(), zlk.recon.constraint.type.Type.from(arg.type())));
 
-		cons.add(Constraint.pattern(expected, expected));
+		zlk.recon.constraint.type.Type ctorType = zlk.recon.constraint.type.Type.from(ty);
+		System.out.println(ctorType);
+		cons.add(Constraint.pattern(ctorType, expected));
 	}
 }
