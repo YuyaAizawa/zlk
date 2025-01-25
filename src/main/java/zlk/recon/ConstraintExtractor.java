@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import zlk.common.ConstValue;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcDecl;
@@ -22,7 +23,11 @@ public final class ConstraintExtractor {
 
 	public static Constraint extract(Rtv rtv, IcExp exp, Type expected) {
 		return exp.fold(
-				cnst -> Constraint.equal(cnst.value().fold(b -> Type.BOOL, i -> Type.I32), expected),
+				cnst -> Constraint.equal(
+						switch (cnst.value()) {
+						case ConstValue.Bool _ -> Type.BOOL;
+						case ConstValue.I32 _ -> Type.I32;
+				}, expected),
 
 				var -> Constraint.local(var.id(), expected),
 

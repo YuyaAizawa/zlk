@@ -25,26 +25,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import zlk.ast.ATyArrow;
-import zlk.ast.ATyAtom;
 import zlk.ast.AType;
-import zlk.ast.App;
-import zlk.ast.Case;
 import zlk.ast.CaseBranch;
-import zlk.ast.Cnst;
 import zlk.ast.Constructor;
-import zlk.ast.Decl;
+import zlk.ast.Decl.FunDecl;
 import zlk.ast.Exp;
-import zlk.ast.If;
-import zlk.ast.Let;
+import zlk.ast.Exp.App;
+import zlk.ast.Exp.Case;
+import zlk.ast.Exp.Cnst;
+import zlk.ast.Exp.If;
+import zlk.ast.Exp.Let;
+import zlk.ast.Exp.Var;
 import zlk.ast.Module;
-import zlk.ast.PCtor;
-import zlk.ast.PVar;
 import zlk.ast.Pattern;
-import zlk.ast.Union;
-import zlk.ast.UnionOrDecl;
-import zlk.ast.Var;
-import zlk.common.cnst.Bool;
+import zlk.ast.Decl.TypeDecl;
+import zlk.ast.Decl;
+import zlk.common.ConstValue;
 import zlk.parser.Token.Kind;
 import zlk.util.Location;
 import zlk.util.Position;
@@ -125,21 +121,21 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		List<UnionOrDecl> topDecls = new ArrayList<>();
+		List<Decl> topDecls = new ArrayList<>();
 
 		this.offsideColumn = 1;
 		while(current.kind() != EOF) {
 			if(current.kind() == TYPE) {
-				topDecls.add(UnionOrDecl.union(parseUnion()));
+				topDecls.add(parseTypeDecl());
 			} else {
-				topDecls.add(UnionOrDecl.decl(parseDecl()));
+				topDecls.add(parseFunDecl());
 			}
 		}
 
 		return new Module(name, topDecls, fileName);
 	}
 
-	public Union parseUnion() {
+	public TypeDecl parseTypeDecl() {
 		if(current.column() != 1) {
 			throw new RuntimeException("type declaration must starts column 1");
 		}
@@ -162,7 +158,7 @@ public class Parser {
 			ctors.add(parseConstructor());
 		}
 
-		return new Union(name, ctors, location(start, end));
+		return new TypeDecl(name, ctors, location(start, end));
 	}
 
 	private Constructor parseConstructor() {
@@ -182,7 +178,7 @@ public class Parser {
 		return token.kind() == UCID || token.kind() == LPAREN;
 	}
 
-	public Decl parseDecl() {
+	public FunDecl parseFunDecl() {
 		if(current.column() != offsideColumn) {
 			throw new RuntimeException(
 					current.pos() + " declaration must starts to the right column of the \"let\"");
@@ -231,7 +227,7 @@ public class Parser {
 		}
 		Exp body = parseExp();
 
-		return new Decl(name, anno, args, body, location(start, end));
+		return new FunDecl(name, anno, args, body, location(start, end));
 	}
 
 	public Exp parseExp() {
@@ -264,7 +260,7 @@ public class Parser {
 		Position start = current.pos();
 		consume(LET);
 
-		List<Decl> declList;
+		List<FunDecl> declList;
 		if(current.kind() != IN) {
 			if(current.column() <= offsideColumn) {
 				throw new RuntimeException(current.pos() + " declaration list must be indented");
@@ -358,7 +354,7 @@ public class Parser {
 			args.add(parseAPattern());
 		}
 
-		return new PCtor(name, args, location(start, end));
+		return new Pattern.Ctor(name, args, location(start, end));
 	}
 
 	private Pattern parseAPattern() {
@@ -370,7 +366,7 @@ public class Parser {
 			result = parsePattern();
 			consume(RPAREN);
 		} else {
-			result = new PVar(parse(LCID), location(start, end));
+			result = new Pattern.Var(parse(LCID), location(start, end));
 		}
 		return result;
 	}
@@ -383,12 +379,12 @@ public class Parser {
 
 		case TRUE -> {
 			nextToken();
-			yield new Cnst(Bool.TRUE, location(start, end));
+			yield new Cnst(ConstValue.TRUE, location(start, end));
 		}
 
 		case FALSE -> {
 			nextToken();
-			yield new Cnst(Bool.FALSE, location(start, end));
+			yield new Cnst(ConstValue.FALSE, location(start, end));
 		}
 
 		case DIGITS -> new Cnst(Integer.valueOf(parse(DIGITS)), location(start, end));
@@ -424,10 +420,10 @@ public class Parser {
 		return exp;
 	}
 
-	private List<Decl> parseDeclList() {
-		List<Decl> decls = new ArrayList<>();
+	private List<FunDecl> parseDeclList() {
+		List<FunDecl> decls = new ArrayList<>();
 		while(current.kind() == LCID) {
-			decls.add(parseDecl());
+			decls.add(parseFunDecl());
 		}
 		return decls;
 	}
@@ -439,7 +435,7 @@ public class Parser {
 
 		if(current.kind() == ARROW) {
 			nextToken();
-			return new ATyArrow(ty, parseType(), location(start, end));
+			return new AType.Arrow(ty, parseType(), location(start, end));
 		} else {
 			return ty;
 		}
@@ -450,7 +446,7 @@ public class Parser {
 		return switch(current.kind()) {
 		case LPAREN -> parseParenType();
 		case UCID -> {
-			AType type = new ATyAtom(current.value(), location(start, end));
+			AType type = new AType.Atom(current.value(), location(start, end));
 			nextToken();
 			yield type;
 		}
