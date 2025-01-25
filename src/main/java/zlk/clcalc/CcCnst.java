@@ -1,6 +1,6 @@
 package zlk.clcalc;
 
-import zlk.common.cnst.ConstValue;
+import zlk.common.ConstValue;
 import zlk.common.type.TyAtom;
 import zlk.common.type.Type;
 import zlk.util.Location;
@@ -12,9 +12,10 @@ public record CcCnst(
 ) implements CcExp {
 
 	public Type type() {
-		return value().fold(
-				bool -> TyAtom.BOOL,
-				i32  -> TyAtom.I32);
+		return switch(value) {
+		case ConstValue.Bool _ -> TyAtom.BOOL;
+		case ConstValue.I32 _ -> TyAtom.I32;
+		};
 	}
 
 	@Override

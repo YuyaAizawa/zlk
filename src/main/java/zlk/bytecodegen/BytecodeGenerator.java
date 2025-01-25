@@ -25,7 +25,7 @@ import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
-import zlk.common.cnst.ConstValue;
+import zlk.common.ConstValue;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
@@ -741,39 +741,26 @@ public final class BytecodeGenerator {
 	}
 
 	private void loadCnst(ConstValue cnst) {
-		cnst.match(
-				bool -> {
-					if(bool.value()) {
-						mv.visitInsn(Opcodes.ICONST_1);
-					} else {
-						mv.visitInsn(Opcodes.ICONST_0);
-					}
-				},
-				i32  -> {
-					switch(i32.value()) {
-					case 0:
-						mv.visitInsn(Opcodes.ICONST_0);
-						return;
-					case 1:
-						mv.visitInsn(Opcodes.ICONST_1);
-						return;
-					case 2:
-						mv.visitInsn(Opcodes.ICONST_2);
-						return;
-					case 3:
-						mv.visitInsn(Opcodes.ICONST_3);
-						return;
-					case 4:
-						mv.visitInsn(Opcodes.ICONST_4);
-						return;
-					case 5:
-						mv.visitInsn(Opcodes.ICONST_5);
-						return;
-					default:
-						mv.visitLdcInsn(i32.value());
-						return;
-					}
-				});
+		switch(cnst) {
+		case ConstValue.Bool(boolean value) -> {
+			if(value) {
+				mv.visitInsn(Opcodes.ICONST_1);
+			} else {
+				mv.visitInsn(Opcodes.ICONST_0);
+			}
+		}
+		case ConstValue.I32(int value) -> {
+			switch(value) {
+			case 0 -> mv.visitInsn(Opcodes.ICONST_0);
+			case 1 -> mv.visitInsn(Opcodes.ICONST_1);
+			case 2 -> mv.visitInsn(Opcodes.ICONST_2);
+			case 3 -> mv.visitInsn(Opcodes.ICONST_3);
+			case 4 -> mv.visitInsn(Opcodes.ICONST_4);
+			case 5 -> mv.visitInsn(Opcodes.ICONST_5);
+			default -> 	mv.visitLdcInsn(value);
+			}
+		}
+		}
 	}
 
 	private void loadLocal(int idx, Type ty) {
