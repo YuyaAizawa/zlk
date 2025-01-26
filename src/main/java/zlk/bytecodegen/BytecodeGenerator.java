@@ -26,12 +26,10 @@ import zlk.clcalc.CcModule;
 import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
 import zlk.common.ConstValue;
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyArrow;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcPCtorArg;
 import zlk.idcalc.IcPattern;
@@ -181,11 +179,11 @@ public final class BytecodeGenerator {
 	}
 
 	private static String toDesc(Type type) {
-		return type.fold(
-				atom       -> toBinary(atom),
-				(arg, ret) -> todo(),
-				var        -> { throw new Error(var); }
-		);
+		return switch(type) {
+		case Type.Atom atom -> toBinary(atom);
+		case Type.Arrow _ -> todo();
+		case Type.Var(String name) -> { throw new Error(name); }
+		};
 	}
 
 	private void genMainClass(BiConsumer<String, byte[]> fileWriter) {
@@ -325,7 +323,7 @@ public final class BytecodeGenerator {
 					switchByDecl(id,
 							descriptor -> {
 								Type funType = types.get(id);
-								if(funType instanceof TyArrow arrow) {
+								if(funType instanceof Type.Arrow arrow) {
 									List<Type> type = arrow.flatten();
 									Id nextId = null;
 									for (int i = type.size()-1; i >= 0; i--) {
@@ -464,7 +462,7 @@ public final class BytecodeGenerator {
 					Id impl = mkCls.clsFunc();
 					IdList caps = mkCls.caps();
 					List<Type> indyArgTys = caps.stream().map(types::get).toList();
-					TyArrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
+					Type.Arrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
 
 					if(indyReturnTy == null) {
 						throw new Error(impl.toString());
@@ -764,36 +762,42 @@ public final class BytecodeGenerator {
 	}
 
 	private void loadLocal(int idx, Type ty) {
-		ty.match(
-				base       -> {
-					if(base == Type.I32 || base == Type.BOOL) {
-						mv.visitVarInsn(Opcodes.ILOAD, idx);
-					} else if (base == Type.UNIT) {
-						throw new Error("cannot load Unit type variable");
-					} else {
-						mv.visitVarInsn(Opcodes.ALOAD, idx);
-					}
-				},
-				(arg, ret) -> { mv.visitVarInsn(Opcodes.ALOAD, idx); },
-				varId      -> { throw new Error("typevar"); });
+		switch(ty) {
+		case Type.Atom _ -> {
+			if(ty == Type.I32 || ty == Type.BOOL) {
+				mv.visitVarInsn(Opcodes.ILOAD, idx);
+			} else if (ty == Type.UNIT) {
+				throw new Error("cannot load Unit type variable");
+			} else {
+				mv.visitVarInsn(Opcodes.ALOAD, idx);
+			}
+		}
+		case Type.Arrow _ ->
+			mv.visitVarInsn(Opcodes.ALOAD, idx);
+		case Type.Var _ ->
+			throw new Error("typevar");
+		}
 	}
 
 	private void storeLocal(int idx, Type ty) {
-		ty.match(
-				base       -> {
-					if(base == Type.I32 || base == Type.BOOL) {
-						mv.visitVarInsn(Opcodes.ISTORE, idx);
-					} else if (base == Type.UNIT) {
-						throw new Error("cannot store Unit type variable");
-					} else {
-						mv.visitVarInsn(Opcodes.ASTORE, idx);
-					}
-				},
-				(arg, ret) -> { mv.visitVarInsn(Opcodes.ASTORE, idx); },
-				varId      -> { throw new Error("typevar"); });
+		switch(ty) {
+		case Type.Atom _ -> {
+			if(ty == Type.I32 || ty == Type.BOOL) {
+				mv.visitVarInsn(Opcodes.ISTORE, idx);
+			} else if (ty == Type.UNIT) {
+				throw new Error("cannot store Unit type variable");
+			} else {
+				mv.visitVarInsn(Opcodes.ASTORE, idx);
+			}
+		}
+		case Type.Arrow _ ->
+			mv.visitVarInsn(Opcodes.ASTORE, idx);
+		case Type.Var _ ->
+			throw new Error("typevar");
+		}
 	}
 
-	private void genBoxing(TyAtom type) {
+	private void genBoxing(Type.Atom type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKESTATIC,
@@ -803,7 +807,7 @@ public final class BytecodeGenerator {
 				false);
 	}
 
-	private void genUnboxing(TyAtom type) {
+	private void genUnboxing(Type.Atom type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
@@ -814,21 +818,24 @@ public final class BytecodeGenerator {
 	}
 
 	private void genReturn(Type type) {
-		type.match(
-				base       -> {
-					if(base == Type.BOOL || base == Type.I32) {
-						mv.visitInsn(Opcodes.IRETURN);
-					} else if(base == Type.UNIT) {
-						mv.visitInsn(Opcodes.RETURN);
-					} else {
-						mv.visitInsn(Opcodes.ARETURN);
-					}
-				},
-				(arg, ret) -> mv.visitInsn(Opcodes.ARETURN),
-				varId      -> { new Error("typevar"); });
+		switch(type) {
+		case Type.Atom _ -> {
+			if(type == Type.BOOL || type == Type.I32) {
+				mv.visitInsn(Opcodes.IRETURN);
+			} else if(type == Type.UNIT) {
+				mv.visitInsn(Opcodes.RETURN);
+			} else {
+				mv.visitInsn(Opcodes.ARETURN);
+			}
+		}
+		case Type.Arrow _ ->
+			mv.visitInsn(Opcodes.ARETURN);
+		case Type.Var _ ->
+			throw new Error("typevar");
+		}
 	}
 
-	private void invokeApplyWithBoxing(TyArrow ty) {
+	private void invokeApplyWithBoxing(Type.Arrow ty) {
 		Type argTy = ty.arg();
 		if(!argTy.isArrow()) {
 			Boxing boxing = Boxing.of(argTy.asAtom());
@@ -865,7 +872,7 @@ public final class BytecodeGenerator {
 		};
 	}
 
-	private static String toFunctionApplyDescErased(TyArrow ty) {
+	private static String toFunctionApplyDescErased(Type.Arrow ty) {
 		return toDesc(ty.arg(), ty.ret(), any -> objectDesc);
 	}
 
@@ -874,7 +881,7 @@ public final class BytecodeGenerator {
 	 * @param ty
 	 * @return ディスクリプション
 	 */
-	private static String toBoxedDesc(TyArrow ty) {
+	private static String toBoxedDesc(Type.Arrow ty) {
 		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asAtom()).boxedClassDesc);
 	}
 
@@ -932,7 +939,7 @@ public final class BytecodeGenerator {
 	private static final String objectDesc = "Ljava/lang/Object;";
 	private static final String functionDesc = "Ljava/util/function/Function;";
 
-	private static String toBinary(TyAtom ty) {
+	private static String toBinary(Type.Atom ty) {
 		if(ty == Type.BOOL) { return "Z";}
 		if(ty == Type.I32)  { return "I";}
 		if(ty == Type.UNIT) { return "V";}
@@ -951,26 +958,30 @@ public final class BytecodeGenerator {
 	}
 
 	private static String toBoxed(Type ty) {
-		return ty.fold(
-				base       -> Boxing.of(base).boxedClassDesc,
-				(arg, ret) -> functionDesc,
-				varId      -> { throw new Error("typevar"); }
-		);
+		return switch(ty) {
+		case Type.Atom atom ->
+			Boxing.of(atom).boxedClassDesc;
+		case Type.Arrow _ ->
+			functionDesc;
+		case Type.Var _ -> { throw new Error("typevar"); }
+		};
 	}
 
 	private static String toBoxedSignature(Type ty) {
-		return ty.fold(
-				base       -> Boxing.of(base).boxedClassDesc,
-				(arg, ret) -> "Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;",
-				varId      -> { throw new Error("typevar"); }
-		);
+		return switch(ty) {
+		case Type.Atom atom ->
+			Boxing.of(atom).boxedClassDesc;
+		case Type.Arrow(Type arg, Type ret) ->
+			"Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;";
+		case Type.Var _ -> { throw new Error("typevar"); }
+		};
 	}
 
-	private static String toFunctionClassDesc(TyArrow ty) {
+	private static String toFunctionClassDesc(Type.Arrow ty) {
 		return "L"+toFunctionClassName(ty)+";";
 	}
 
-	private static String toFunctionClassName(TyArrow fun) {
+	private static String toFunctionClassName(Type.Arrow fun) {
 		Objects.requireNonNull(fun);
 		return "java/util/function/Function";
 	}
@@ -1030,7 +1041,7 @@ enum Boxing {
 		this.boxMethodDesc = boxMethodDecs;
 	}
 
-	public static Boxing of(TyAtom ty) {
+	public static Boxing of(Type.Atom ty) {
 		if(ty == Type.BOOL) { return BOOL;}
 		if(ty == Type.I32)  { return INT;}
 		throw new IllegalArgumentException("Unexpected value: " + ty);

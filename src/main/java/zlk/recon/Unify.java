@@ -2,11 +2,12 @@ package zlk.recon;
 
 import java.util.List;
 
-import zlk.recon.content.Content;
-import zlk.recon.content.FlexVar;
-import zlk.recon.flattype.App1;
-import zlk.recon.flattype.FlatType;
-import zlk.recon.flattype.Fun1;
+import zlk.recon.constraint.Content;
+import zlk.recon.constraint.FlatType;
+import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.Structure;
+import zlk.recon.constraint.FlatType.App1;
+import zlk.recon.constraint.FlatType.Fun1;
 
 public final class Unify {
 
@@ -33,10 +34,12 @@ public final class Unify {
 		Descriptor v_ = v.get();
 		Context context = new Context(u, u_, v, v_);
 
-		context.firstDesc.content.match(
-				var -> unifyVar(context, u_.content, v_.content),
-				cture -> unifyStructure(context, cture.flatType(), u_.content, v_.content)
-				);
+		switch(context.firstDesc.content) {
+		case FlexVar _ ->
+			unifyVar(context, u_.content, v_.content);
+		case Structure(FlatType flatType) ->
+			unifyStructure(context, flatType, u_.content, v_.content);
+		}
 	}
 
 	private static void unifyVar(Context context, Content content, Content otherContent) {
@@ -49,32 +52,31 @@ public final class Unify {
 
 	private static void unifyStructure(Context context, FlatType flatType, Content content,
 			Content otherContent) {
-		otherContent.match(
-				var -> merge(context, content),
-				sture -> {
-					FlatType otherFlatType = sture.flatType();
-
-					if(flatType instanceof App1 app && otherFlatType instanceof App1 otherApp) {
-						if(app.id().equals(otherApp.id())) {
-							List<Variable> args = app.args();
-							List<Variable> otherArgs = otherApp.args();
-							if(args.size() != otherArgs.size()) {
-								throw new Missmatch();
-							}
-							for(int i = 0;i < args.size();i++) {
-								unify(args.get(i), otherArgs.get(i));
-							}
-						} else {
-							throw new Missmatch();
-						}
-					} else if (flatType instanceof Fun1 fun && otherFlatType instanceof Fun1 otherFun) {
-						unify(fun.arg(), otherFun.arg());
-						unify(fun.ret(), otherFun.ret());
-						merge(context, otherContent);
-					} else {
+		switch(otherContent) {
+		case FlexVar _ -> merge(context, content);
+		case Structure(FlatType otherFlatType) -> {
+			if(flatType instanceof App1 app && otherFlatType instanceof App1 otherApp) {
+				if(app.id().equals(otherApp.id())) {
+					List<Variable> args = app.args();
+					List<Variable> otherArgs = otherApp.args();
+					if(args.size() != otherArgs.size()) {
 						throw new Missmatch();
 					}
-				});
+					for(int i = 0;i < args.size();i++) {
+						unify(args.get(i), otherArgs.get(i));
+					}
+				} else {
+					throw new Missmatch();
+				}
+			} else if (flatType instanceof Fun1 fun && otherFlatType instanceof Fun1 otherFun) {
+				unify(fun.arg(), otherFun.arg());
+				unify(fun.ret(), otherFun.ret());
+				merge(context, otherContent);
+			} else {
+				throw new Missmatch();
+			}
+		}
+		}
 	}
 }
 

@@ -163,10 +163,4 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 	 */
 	@Override
 	void mkString(PrettyPrinter pp);
-
-	public static String buildString(IcExp exp) {
-		StringBuilder sb = new StringBuilder();
-		exp.pp(sb);
-		return sb.toString();
-	}
 }

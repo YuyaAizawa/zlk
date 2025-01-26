@@ -12,7 +12,7 @@ import zlk.recon.constraint.Constraint;
 import zlk.util.Stack;
 
 public final class State {
-	public IdMap<zlk.recon.constraint.type.Type> headers;
+	public IdMap<zlk.recon.constraint.Type> headers;
 	public Stack<Variable> vars;
 	public List<Constraint> cons; // revCon but not reversed
 
@@ -28,7 +28,7 @@ public final class State {
 		cons = new ArrayList<>();
 	}
 
-	public State add(IcPattern pattern, zlk.recon.constraint.type.Type expected) {
+	public State add(IcPattern pattern, zlk.recon.constraint.Type expected) {
 		pattern.match(
 				var ->
 					addToHeaders(var.id(), expected),
@@ -43,15 +43,15 @@ public final class State {
 		return this;
 	}
 
-	private void addToHeaders(Id id, zlk.recon.constraint.type.Type expected) {
+	private void addToHeaders(Id id, zlk.recon.constraint.Type expected) {
 		headers.put(id, expected);
 	}
 
-	private void addCtor(zlk.common.type.Type ty, Id ctorId, List<IcPCtorArg> args, zlk.recon.constraint.type.Type expected) {
+	private void addCtor(zlk.common.Type ty, Id ctorId, List<IcPCtorArg> args, zlk.recon.constraint.Type expected) {
 		args.forEach(arg ->
-			add(arg.pattern(), zlk.recon.constraint.type.Type.from(arg.type())));
+			add(arg.pattern(), zlk.recon.constraint.Type.from(arg.type())));
 
-		zlk.recon.constraint.type.Type ctorType = zlk.recon.constraint.type.Type.from(ty);
+		zlk.recon.constraint.Type ctorType = zlk.recon.constraint.Type.from(ty);
 		System.out.println(ctorType);
 		cons.add(Constraint.pattern(ctorType, expected));
 	}

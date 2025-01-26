@@ -12,15 +12,19 @@ import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.common.type.Type;
 import zlk.recon.constraint.Constraint;
+import zlk.recon.constraint.Content;
+import zlk.recon.constraint.FlatType;
 import zlk.recon.constraint.Constraint.Category;
+import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.Structure;
+import zlk.recon.constraint.Type.AppN;
+import zlk.recon.constraint.Type.FunN;
+import zlk.recon.constraint.Type.VarN;
 import zlk.recon.constraint.IdVar;
-import zlk.recon.content.Content;
-import zlk.recon.content.Structure;
-import zlk.recon.flattype.FlatType;
 import zlk.util.Stack;
 
 // unifyがList<Variable>に値を入れるのはレコードのときだけ
@@ -172,7 +176,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable expectedToVariable(int rank, zlk.recon.constraint.type.Type expectation) {
+	private Variable expectedToVariable(int rank, zlk.recon.constraint.Type expectation) {
 		return typeToVariable(rank, expectation);
 	}
 
@@ -245,19 +249,18 @@ public class TypeReconstructor {
 
 	private int adjustRankContent(Content content, int youngMark, int visitMark, int groupRank) {
 		ToIntFunction<Variable> go = var -> adjustRank(var, youngMark, visitMark, groupRank);
-		return content.fold(
-				flex -> groupRank,
-				cture -> cture.flatType().fold(
-						app -> {
-							int tmp = app.args().stream()
-									.mapToInt(go)
-									.max()
-									.orElse(Variable.OUTERMOST_RANK);
-							return Math.max(tmp, Variable.OUTERMOST_RANK);
-							},
-						fun -> Math.max(
-								go.applyAsInt(fun.arg()),
-								go.applyAsInt(fun.ret()))));
+		return switch(content) {
+		case FlexVar _ -> groupRank;
+		case Structure(FlatType.App1(_, List<Variable> args)) -> {
+			int tmp = args.stream()
+					.mapToInt(go)
+					.max()
+					.orElse(Variable.OUTERMOST_RANK);
+			yield Math.max(tmp, Variable.OUTERMOST_RANK);
+		}
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
+		};
 	}
 
 	private void introduce(int rank, List<Variable> vars) {
@@ -268,24 +271,25 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable typeToVariable(int rank, zlk.recon.constraint.type.Type ty) {
+	private Variable typeToVariable(int rank, zlk.recon.constraint.Type ty) {
 		return typeToVar(rank, new IdMap<>(), ty);
 	}
 
-	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, zlk.recon.constraint.type.Type ty) {
-		Function<zlk.recon.constraint.type.Type, Variable> go = t -> typeToVar(rank, aliasDict, t);
+	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, zlk.recon.constraint.Type ty) {
+		Function<zlk.recon.constraint.Type, Variable> go = t -> typeToVar(rank, aliasDict, t);
 
-		return ty.fold(
-				var -> var.var(),
-				app -> {
-					List<Variable> argVars = app.args().stream().map(go).toList();
-					return register(rank, Content.app(app.id(), argVars));
-				},
-				fun -> {
-					Variable aVar = go.apply(fun.arg());
-					Variable bVar = go.apply(fun.ret());
-					return register(rank, Content.fun(aVar, bVar));
-				});
+		return switch(ty) {
+		case VarN(Variable var) -> var;
+		case AppN(Id id, var args) -> {
+			List<Variable> argVars = args.stream().map(go).toList();
+			yield register(rank, Content.app(id, argVars));
+		}
+		case FunN(var arg, var ret) -> {
+			Variable aVar = go.apply(arg);
+			Variable bVar = go.apply(ret);
+			yield register(rank, Content.fun(aVar, bVar));
+		}
+		};
 	}
 
 	private Variable register(int rank, Content content) {
@@ -299,11 +303,12 @@ public class TypeReconstructor {
 				new Descriptor(Variable.mkFlexVar(name), rank, Variable.NO_MARK));
 
 		Map<String, Variable> flexVars = ty.flatten().stream()
-				.flatMap(t -> t.fold(
-						a -> Stream.of(),
-						(ar, rt) -> Stream.of(),
-						v -> Stream.of(v)))
-				.collect(Collectors.toMap(v -> v, makeVar));
+				.flatMap(t ->
+					switch(t) {
+					case Type.Var(String name) -> Stream.of(name);
+					default -> Stream.of();
+					}
+				).collect(Collectors.toMap(v -> v, makeVar));
 
 		pool.addAll(flexVars.values(), rank);
 		return srcTypeToVar(rank, flexVars, ty);
@@ -311,14 +316,17 @@ public class TypeReconstructor {
 
 	private Variable srcTypeToVar(int rank, Map<String, Variable> flexVars, Type ty) {
 		Function<Type, Variable> go = t -> srcTypeToVar(rank, flexVars, t);
-		return ty.fold(
-				atom -> register(rank, Content.app(atom.id(), List.of())),
-				(arg, ret) -> {
-					Variable argVar = go.apply(arg);
-					Variable retVar = go.apply(ret);
-					return register(rank, Content.fun(argVar, retVar));
-				},
-				name -> Objects.requireNonNull(flexVars.get(name)));
+		return switch(ty) {
+		case Type.Atom(Id id) ->
+			register(rank, Content.app(id, List.of()));
+		case Type.Arrow(Type arg, Type ret) -> {
+			Variable argVar = go.apply(arg);
+			Variable retVar = go.apply(ret);
+			yield register(rank, Content.fun(argVar, retVar));
+		}
+		case Type.Var(String name) ->
+			Objects.requireNonNull(flexVars.get(name));
+		};
 	}
 
 	private Variable makeCopy(int rank, Variable target) {
@@ -345,12 +353,10 @@ public class TypeReconstructor {
 		pool.add(copy, rank);
 		copieds.add(target, copy);
 
-		descriptor.content.match(
-				flex -> {},
-				cture -> {
-					FlatType newTerm = cture.flatType().traverse(v -> makeCopy(rank, v, copieds));
-					copy.set(md.apply(new Structure(newTerm)));
-				});
+		if(descriptor.content instanceof Structure(FlatType flatType)) {
+			FlatType newTerm = flatType.traverse(v -> makeCopy(rank, v, copieds));
+			copy.set(md.apply(new Structure(newTerm)));
+		}
 
 		return copy;
 	}
