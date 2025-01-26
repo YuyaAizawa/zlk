@@ -10,7 +10,6 @@ import java.util.function.Supplier;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.recon.Variable;
-import zlk.recon.constraint.type.Type;
 import zlk.util.TriConsumer;
 import zlk.util.TriFunction;
 import zlk.util.pp.PrettyPrintable;
@@ -21,7 +20,7 @@ public class Constraint implements PrettyPrintable {
 	public final Category category;
 	private final Type type;
 	private final Type expected;
-	private final zlk.common.type.Type anno;
+	private final zlk.common.Type anno;
 	private final Id name;
 	private final List<Constraint> ands;
 	private final LetConstraint let;
@@ -56,7 +55,7 @@ public class Constraint implements PrettyPrintable {
 		return new Constraint(Category.CLocal, null, expected, null, id, null, null);
 	}
 
-	public static Constraint foreign(Id id, zlk.common.type.Type anno, Type expected) {
+	public static Constraint foreign(Id id, zlk.common.Type anno, Type expected) {
 		return new Constraint(Category.CForeign, null, expected, anno, id, null, null);
 	}
 
@@ -82,7 +81,7 @@ public class Constraint implements PrettyPrintable {
 			Supplier<? extends R> forTrue,
 			BiFunction<? super Type, ? super Type, ? extends R> forEqual,
 			BiFunction<? super Id, ? super Type, ? extends R> forLocal,
-			TriFunction<? super Id, ? super zlk.common.type.Type, ? super Type, ? extends R> forForeign,
+			TriFunction<? super Id, ? super zlk.common.Type, ? super Type, ? extends R> forForeign,
 			BiFunction<? super Type, ? super Type, ? extends R> forPattern,
 			Function<? super List<Constraint>, ? extends R> forAnd,
 			Function<? super LetConstraint, ? extends R> forLet,
@@ -113,7 +112,7 @@ public class Constraint implements PrettyPrintable {
 			Runnable forTrue,
 			BiConsumer<? super Type, ? super Type> forEqual,
 			BiConsumer<? super Id, ? super Type> forLocal,
-			TriConsumer<? super Id, ? super zlk.common.type.Type, ? super Type> forForeign,
+			TriConsumer<? super Id, ? super zlk.common.Type, ? super Type> forForeign,
 			BiConsumer<? super Type, ? super Type> forPattern,
 			Consumer<? super List<Constraint>> forAnd,
 			Consumer<? super LetConstraint> forLet,
@@ -148,7 +147,7 @@ public class Constraint implements PrettyPrintable {
 		}
 	}
 
-	private Constraint(Category category, Type type, Type expected, zlk.common.type.Type anno, Id name, List<Constraint> ands,
+	private Constraint(Category category, Type type, Type expected, zlk.common.Type anno, Id name, List<Constraint> ands,
 			LetConstraint let) {
 		this.category = category;
 		this.type = type;

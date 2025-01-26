@@ -2,10 +2,8 @@ package zlk.typecheck;
 
 import java.util.List;
 
+import zlk.common.Type;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyArrow;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcDecl;
@@ -37,7 +35,7 @@ public final class TypeChecker {
 	public Type check(IcDecl decl) {
 		Type ret = check(decl.body());
 		for(IcPattern arg : decl.args()) {
-			ret = new TyArrow(check(arg), ret);
+			ret = new Type.Arrow(check(arg), ret);
 		}
 
 		try {
@@ -91,7 +89,7 @@ public final class TypeChecker {
 						return funTy.get(funTy.size()-1);
 					},
 					ifExp   -> {
-						typeAssertion(ifExp.cond(), TyAtom.BOOL);
+						typeAssertion(ifExp.cond(), Type.BOOL);
 						Type exp1Type = check(ifExp.exp1());
 						typeAssertion(ifExp.exp2(), exp1Type);
 						return exp1Type;

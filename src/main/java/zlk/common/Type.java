@@ -1,23 +1,26 @@
-package zlk.common.type;
+package zlk.common;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
+import zlk.common.Type.Arrow;
+import zlk.common.Type.Atom;
+import zlk.common.Type.Var;
+import zlk.common.id.Id;
 import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Type extends PrettyPrintable
-permits TyAtom, TyArrow, TyVar {
+permits Atom, Arrow, Var {
+	record Atom(Id id) implements Type {}
+	record Arrow(Type arg, Type ret) implements Type {}
+	record Var(String name) implements Type {}
 
-	public static final TyAtom UNIT = new TyAtom("UNIT");
-	public static final TyAtom BOOL = new TyAtom("Bool");
-	public static final TyAtom I32  = new TyAtom("I32");
+	public static final Atom UNIT = new Atom(Id.fromCanonicalName("Unit"));
+	public static final Atom BOOL = new Atom(Id.fromCanonicalName("Bool"));
+	public static final Atom I32  = new Atom(Id.fromCanonicalName("I32"));
 
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -26,9 +29,9 @@ permits TyAtom, TyArrow, TyVar {
 
 		Type tail = rest[rest.length - 1];
 		for(int idx = rest.length - 2; idx > 0; idx--) {
-			tail = new TyArrow(rest[idx], tail);
+			tail = new Arrow(rest[idx], tail);
 		}
-		return new TyArrow(rest[0], tail);
+		return new Arrow(rest[0], tail);
 	}
 
 	public static Type arrow(List<Type> args, Type ret) {
@@ -37,7 +40,7 @@ permits TyAtom, TyArrow, TyVar {
 		List<Type> args_ = new ArrayList<>(args);
 		Collections.reverse(args_);
 		for(Type arg : args_) {
-			result = new TyArrow(arg, result);
+			result = new Arrow(arg, result);
 		}
 
 		return result;
@@ -47,28 +50,18 @@ permits TyAtom, TyArrow, TyVar {
 		return arrow(types.toArray(Type[]::new));
 	}
 
-	<R> R fold(
-			Function<TyAtom, R> forBase,
-			BiFunction<Type, Type, R> forArrow,
-			Function<String, R> forVar);
-
-	void match(
-			Consumer<TyAtom> forBase,
-			BiConsumer<Type, Type> forArrow,
-			Consumer<String> forVar);
-
-	default TyAtom asAtom() {
-		return fold(
-				base       -> (TyAtom)this,
-				(arg, ret) -> null,
-				varId      -> null);
+	default Atom asAtom() {
+		return switch(this) {
+		case Atom atom -> atom;
+		default -> null;
+		};
 	}
 
-	default TyArrow asArrow() {
-		return fold(
-				base       -> null,
-				(arg, ret) -> (TyArrow)this,
-				varId      -> null);
+	default Arrow asArrow() {
+		return switch(this) {
+		case Arrow arrow -> arrow;
+		default -> null;
+		};
 	}
 
 	default boolean isArrow() {
@@ -82,17 +75,21 @@ permits TyAtom, TyArrow, TyVar {
 	 * @throws IndexOutOfBoundsException 指定回数適用できない場合
 	 */
 	default Type apply(int cnt) {
-		Type type = this;
+		Type result = this;
 		for(int i = 0; i < cnt ; i++) {
-			type = type.fold(
-					base       -> { throw tooManyApplies(this, cnt); },
-					(arg, ret) -> ret,
-					varId      -> { throw tooManyApplies(this, cnt); });
+			result = switch(result) {
+			case Atom _ -> throw tooManyApplies(this, cnt);
+			case Arrow(_, Type ret) -> ret;
+			case Var _ -> throw tooManyApplies(this, cnt);
+			};
 		}
-		return type;
+		return result;
 	}
 	private static IndexOutOfBoundsException tooManyApplies(Type type, int cnt) {
-		return new IndexOutOfBoundsException(String.format("too many applies. type: %s, cnt: %d", type, cnt));
+		return new IndexOutOfBoundsException(String.format(
+				"too many applies. type: %s, cnt: %d",
+				type,
+				cnt));
 	}
 
 	/**
@@ -102,16 +99,17 @@ permits TyAtom, TyArrow, TyVar {
 	 * @throws IndexOutOfBoundsException 指定回数適用できないか適用後の型が引数を持たない場合
 	 */
 	default Type arg(int idx) {
-		try {
-			return apply(idx).fold(
-					base       -> { throw new IndexOutOfBoundsException(); },
-					(arg, ret) -> arg,
-					varId      -> { throw new IndexOutOfBoundsException(); }
-			);
-		} catch(IndexOutOfBoundsException e) {
-			throw new IndexOutOfBoundsException(String.format(
-					"no arg. type: %s, idx: %d", this, idx));
-		}
+		return switch(apply(idx)) {
+		case Atom _ -> throw typeMissmatch(Arrow.class, Atom.class);
+		case Arrow(Type arg, _) -> arg;
+		case Var _ -> throw typeMissmatch(Arrow.class, Var.class);
+		};
+	}
+	private static IndexOutOfBoundsException typeMissmatch(Class<?> expected, Class<?> actual) {
+		return new IndexOutOfBoundsException(String.format(
+				"type missmatch. expected: %s, actual: %s",
+				expected.getTypeName(),
+				actual.getTypeName()));
 	}
 
 	default List<Type> flatten() {
@@ -119,7 +117,7 @@ permits TyAtom, TyArrow, TyVar {
 
 		Type ret = this;
 		while(ret.isArrow()) {
-			TyArrow fun = ret.asArrow();
+			Arrow fun = ret.asArrow();
 			flatten.add(fun.arg());
 			ret = fun.ret();
 		}
@@ -134,23 +132,28 @@ permits TyAtom, TyArrow, TyVar {
 
 		Type result = stack.pop();
 		while(!stack.isEmpty()) {
-			result = new TyArrow(stack.pop(), result);
+			result = new Arrow(stack.pop(), result);
 		}
 		return result;
 	}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {
-		match(
-				base         -> pp.append(base),
-				(arg, ret) -> {
-					if(arg.isArrow()) {
-						pp.append("(").append(arg).append(")");
-					} else {
-						pp.append(arg);
-					}
-					pp.append(" -> ").append(ret);
-				},
-				varId      -> pp.append("[").append(varId).append("]"));
+		switch(this) {
+		case Atom(Id id) -> {
+			pp.append(id);
+		}
+		case Arrow(Type arg, Type ret) -> {
+			if(arg.isArrow()) {
+				pp.append("(").append(arg).append(")");
+			} else {
+				pp.append(arg);
+			}
+			pp.append(" -> ").append(ret);
+		}
+		case Var(String name) -> {
+			pp.append("[").append(name).append("]");
+		}
+		}
 	}
 }

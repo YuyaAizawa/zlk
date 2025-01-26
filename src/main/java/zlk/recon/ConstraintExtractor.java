@@ -13,10 +13,10 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.recon.constraint.Constraint;
+import zlk.recon.constraint.Type;
+import zlk.recon.constraint.Type.FunN;
+import zlk.recon.constraint.Type.VarN;
 import zlk.recon.constraint.pattern.State;
-import zlk.recon.constraint.type.FunN;
-import zlk.recon.constraint.type.Type;
-import zlk.recon.constraint.type.VarN;
 import zlk.util.Stack;
 
 public final class ConstraintExtractor {

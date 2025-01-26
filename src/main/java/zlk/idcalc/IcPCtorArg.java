@@ -1,6 +1,6 @@
 package zlk.idcalc;
 
-import zlk.common.type.Type;
+import zlk.common.Type;
 
 public record IcPCtorArg(
 		IcPattern pattern,

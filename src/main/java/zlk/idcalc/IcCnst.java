@@ -1,7 +1,7 @@
 package zlk.idcalc;
 
 import zlk.common.ConstValue;
-import zlk.common.type.TyAtom;
+import zlk.common.Type;
 import zlk.util.Location;
 import zlk.util.pp.PrettyPrinter;
 
@@ -10,10 +10,10 @@ public record IcCnst(
 		Location loc)
 implements IcExp {
 
-	public TyAtom type() {
+	public Type.Atom type() {
 		return switch(value) {
-		case ConstValue.Bool _ -> TyAtom.BOOL;
-		case ConstValue.I32 _ -> TyAtom.I32;
+		case ConstValue.Bool _ -> Type.BOOL;
+		case ConstValue.I32 _ -> Type.I32;
 		};
 	}
 

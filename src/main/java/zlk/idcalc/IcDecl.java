@@ -3,8 +3,8 @@ package zlk.idcalc;
 import java.util.List;
 import java.util.Optional;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;

@@ -1,7 +1,7 @@
 package zlk.idcalc;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.type.Type;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;

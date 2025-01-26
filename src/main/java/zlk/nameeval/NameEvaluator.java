@@ -18,11 +18,9 @@ import zlk.ast.Exp.Let;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
 import zlk.common.ConstValue;
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyArrow;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcApp;
 import zlk.idcalc.IcCase;
@@ -65,8 +63,8 @@ public final class NameEvaluator {
 		}
 
 		tyEnv = new TyEnv();
-		tyEnv.put("Bool", TyAtom.BOOL);
-		tyEnv.put("I32" , TyAtom.I32);
+		tyEnv.put("Bool", Type.BOOL);
+		tyEnv.put("I32" , Type.I32);
 	}
 
 	public IcModule eval() {
@@ -76,7 +74,7 @@ public final class NameEvaluator {
 		module.decls().forEach(def -> {
 			switch(def) {
 			case TypeDecl(String name, _, _) -> {
-				Type type = new TyAtom(env.registerVar(name));
+				Type type = new Type.Atom(env.registerVar(name));
 				tyEnv.put(name, type);
 			}
 			default -> {}
@@ -262,7 +260,7 @@ public final class NameEvaluator {
 	private Type eval(AType aTy) {
 		return switch (aTy) {
 		case AType.Atom(String name, _) -> tyEnv.get(name);
-		case AType.Arrow(AType arg, AType ret, _) -> new TyArrow(eval(arg), eval(ret));
+		case AType.Arrow(AType arg, AType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
 		};
 	}
 }

@@ -17,10 +17,9 @@ import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
+import zlk.common.Type;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
@@ -119,7 +118,7 @@ public class Main {
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new TyAtom(union.id())))));
+			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
 		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- TYPE CHECK --"); // TODO remove
