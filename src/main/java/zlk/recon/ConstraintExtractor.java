@@ -13,6 +13,13 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
 import zlk.recon.constraint.Constraint;
+import zlk.recon.constraint.Constraint.CAnd;
+import zlk.recon.constraint.Constraint.CEqual;
+import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CLet;
+import zlk.recon.constraint.Constraint.CLocal;
+import zlk.recon.constraint.Constraint.CSaveTheEnvironment;
+import zlk.recon.constraint.Constraint.CTrue;
 import zlk.recon.constraint.Type;
 import zlk.recon.constraint.Type.FunN;
 import zlk.recon.constraint.Type.VarN;
@@ -23,30 +30,30 @@ public final class ConstraintExtractor {
 
 	public static Constraint extract(Rtv rtv, IcExp exp, Type expected) {
 		return exp.fold(
-				cnst -> Constraint.equal(
+				cnst -> new CEqual(
 						switch (cnst.value()) {
 						case ConstValue.Bool _ -> Type.BOOL;
 						case ConstValue.I32 _ -> Type.I32;
 				}, expected),
 
-				var -> Constraint.local(var.id(), expected),
+				var -> new CLocal(var.id(), expected),
 
-				foreign -> Constraint.foreign(foreign.id(), foreign.type(), expected),
+				foreign -> new CForeign(foreign.id(), foreign.type(), expected),
 
-				ctor -> Constraint.foreign(ctor.id(), ctor.type(), expected),
+				ctor -> new CForeign(ctor.id(), ctor.type(), expected),
 
 				abs -> {
 					Args args = extractFromArgs(List.of(new IcPVar(abs.id(), abs.loc())));
 					Constraint bodyCon = extract(rtv, abs.body(), args.type);
 					return exists(args.vars.getAllAsList(),
-							Constraint.and(List.of(
-									Constraint.let(
+							new CAnd(List.of(
+									new CLet(
 											List.of(),
 											args.state.vars.getAllAsList(),
 											args.state.headers,
-											Constraint.ctrue(),
+											new CTrue(),
 											bodyCon),
-									Constraint.equal(args.type, expected)
+									new CEqual(args.type, expected)
 					)));
 				},
 
@@ -78,11 +85,11 @@ public final class ConstraintExtractor {
 					vars.add(resultVar);
 					vars.add(funcVar);
 
-					return exists(vars, Constraint.and(List.of(
+					return exists(vars, new CAnd(List.of(
 							funcCon,
-							Constraint.equal(funcTy, arityType),
-							Constraint.and(argCons),
-							Constraint.equal(resultTy, expected))));
+							new CEqual(funcTy, arityType),
+							new CAnd(argCons),
+							new CEqual(resultTy, expected))));
 				},
 				if_ -> {
 					Constraint condCon = extract(rtv, if_.cond(), Type.BOOL);
@@ -91,11 +98,11 @@ public final class ConstraintExtractor {
 					Constraint thenCon = extract(rtv, if_.exp1(), branchTy);
 					Constraint elseCon = extract(rtv, if_.exp2(), branchTy);
 					return exists(List.of(branchVar),
-							Constraint.and(List.of(
+							new CAnd(List.of(
 									condCon,
 									thenCon,
 									elseCon,
-									Constraint.equal(branchTy, expected))));
+									new CEqual(branchTy, expected))));
 				},
 				let -> {
 					// TODO 型注釈から制約を抽出
@@ -124,10 +131,10 @@ public final class ConstraintExtractor {
 					}
 					return exists(
 							List.of(patVar, branchVar),
-							Constraint.and(List.of(
+							new CAnd(List.of(
 									targetCon,
-									Constraint.and(branchCons),
-									Constraint.equal(branchTy, expected))));
+									new CAnd(branchCons),
+									new CEqual(branchTy, expected))));
 				});
 	}
 
@@ -144,7 +151,7 @@ public final class ConstraintExtractor {
 				return extractFromRecursiveDef(new Rtv(), decls_, extract(i));
 			}).orElseGet(() -> extractFromDef(new Rtv(), decl, extract(i)));
 		} else {
-			return Constraint.saveTheEnvironment();
+			return new CSaveTheEnvironment();
 		}
 	}
 
@@ -162,15 +169,15 @@ public final class ConstraintExtractor {
 		}
 
 		Constraint exprCon = extract(rtv, decl.body(), args.resultType);
-		return Constraint.let(
+		return new CLet(
 				List.of(),
 				vars,
 				IdMap.of(decl.id(), args.type),
-				Constraint.let(
+				new CLet(
 						List.of(),
 						pvars,
 						args.state.headers,
-						Constraint.and(args.state.cons),
+						new CAnd(args.state.cons),
 						exprCon),
 				bodyCon);
 	}
@@ -182,9 +189,9 @@ public final class ConstraintExtractor {
 			Info ridgedInfo, Info flexInfo) {
 
 		if(defs.isEmpty()) {
-			return Constraint.let(ridgedInfo.vars, List.of(), ridgedInfo.headers, Constraint.ctrue(),
-					Constraint.let(List.of(), flexInfo.vars, flexInfo.headers, Constraint.let(List.of(), List.of(), flexInfo.headers, Constraint.ctrue(), Constraint.and(flexInfo.cons)),
-							Constraint.and(List.of(Constraint.and(ridgedInfo.cons), bodyCon))));
+			return new CLet(ridgedInfo.vars, List.of(), ridgedInfo.headers, new CTrue(),
+					new CLet(List.of(), flexInfo.vars, flexInfo.headers, new CLet(List.of(), List.of(), flexInfo.headers, new CTrue(), new CAnd(flexInfo.cons)),
+							new CAnd(List.of(new CAnd(ridgedInfo.cons), bodyCon))));
 		}
 		IcDecl def = defs.get(0);
 		List<IcDecl> otherDefs = defs.subList(1, defs.size());
@@ -195,11 +202,11 @@ public final class ConstraintExtractor {
 				extract(rtv, def.body(), args.resultType);
 
 		Constraint defCon =
-				Constraint.let(
+				new CLet(
 						List.of(),
 						args.state.vars.getAllAsList(),
 						args.state.headers,
-						Constraint.and(args.state.cons),
+						new CAnd(args.state.cons),
 						exprCon);
 
 		List<Constraint> cons = new ArrayList<>(flexInfo.cons);
@@ -214,7 +221,7 @@ public final class ConstraintExtractor {
 	}
 
 	public static Constraint exists(List<Variable> flexes, Constraint constraint) {
-		return Constraint.let(List.of(), flexes, IdMap.of(), constraint, Constraint.ctrue());
+		return new CLet(List.of(), flexes, IdMap.of(), constraint, new CTrue());
 	}
 
 	public static Args extractFromArgs(List<IcPattern> args) {
@@ -247,11 +254,11 @@ public final class ConstraintExtractor {
 
 	private static Constraint extractFromCaseBranch(Rtv rtv, IcCaseBranch branch, Type patExpected, Type branchExpected) {
 		State state = new State().add(branch.pattern(), patExpected);
-		return Constraint.let(
+		return new CLet(
 				List.of(),
 				state.vars.getAllAsList(),
 				state.headers,
-				Constraint.and(state.cons),
+				new CAnd(state.cons),
 				extract(rtv, branch.body(), branchExpected));
 	}
 

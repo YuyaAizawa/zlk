@@ -16,11 +16,12 @@ public record CcType(
 
 		@Override
 		public void mkString(PrettyPrinter pp) {
-			pp.append("type ").append(id).endl().inc();
-			pp.append("= ").append(ctors.get(0));
-			ctors.subList(1, ctors.size())
-					.forEach(ctor -> pp.endl().append("| ").append(ctor));
-			pp.dec();
+			pp.append("type ").append(id).endl();
+			pp.indent(() -> {
+				pp.append("= ").append(ctors.get(0));
+				ctors.subList(1, ctors.size())
+						.forEach(ctor -> pp.endl().append("| ").append(ctor));
+			});
 		}
 
 		@Override

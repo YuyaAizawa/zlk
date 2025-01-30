@@ -20,7 +20,7 @@ import org.objectweb.asm.Opcodes;
 import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCtor;
-import zlk.clcalc.CcDecl;
+import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcType;
@@ -42,7 +42,7 @@ public final class BytecodeGenerator {
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
-	private final IdMap<CcDecl> toplevelDecls;
+	private final IdMap<CcFunc> toplevelDecls;
 	private final IdMap<CcCtor> ctors;
 	private ClassWriter cw;
 
@@ -71,7 +71,7 @@ public final class BytecodeGenerator {
 				ctors.put(ctor.id(), ctor);
 			});
 		});
-		module.toplevels().forEach(decl -> {
+		module.funcs().forEach(decl -> {
 			toplevelDescs.put(decl.id(), getDescription(decl, types));
 			toplevelDecls.put(decl.id(), decl);
 		});
@@ -201,7 +201,7 @@ public final class BytecodeGenerator {
 
 		genConstructor();
 
-		module.toplevels().forEach(decl -> compileDecl(decl));
+		module.funcs().forEach(decl -> compileDecl(decl));
 
 		module.types().forEach(union -> {
 			cw.visitNestMember(toClassName(union.id()));
@@ -235,7 +235,7 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private void compileDecl(CcDecl decl) { // TODO トップレベルは全て非カリー化する
+	private void compileDecl(CcFunc decl) { // TODO トップレベルは全て非カリー化する
 		try {
 			locals = new IdList();
 
@@ -511,10 +511,10 @@ public final class BytecodeGenerator {
 				},
 				let -> {
 					compile(let.boundExp());
-					Id var = let.boundVar();
+					Id var = let.var();
 					locals.add(var);
 					storeLocal(locals.size()-1, types.get(var));
-					compile(let.mainExp());
+					compile(let.body());
 				},
 				case_ -> { // TODO マッチしないときの例外処理
 					/*
@@ -885,7 +885,7 @@ public final class BytecodeGenerator {
 		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asAtom()).boxedClassDesc);
 	}
 
-	private static String getDescription(CcDecl decl, IdMap<Type> types) {
+	private static String getDescription(CcFunc decl, IdMap<Type> types) {
 
 		List<Type> argTys = decl.args().stream()
 				.map(pat -> pat.fold(
@@ -1002,7 +1002,7 @@ public final class BytecodeGenerator {
 				call  -> returnType(call),
 				mkCls -> types.get(mkCls.id()),
 				if_   -> getType(if_.thenExp()),
-				let   -> getType(let.mainExp()),
+				let   -> getType(let.body()),
 				case_ -> getType(case_.branches().get(0).body()));
 	}
 

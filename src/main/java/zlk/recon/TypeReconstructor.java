@@ -16,15 +16,22 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.recon.constraint.Constraint;
+import zlk.recon.constraint.Constraint.CAnd;
+import zlk.recon.constraint.Constraint.CEqual;
+import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CLet;
+import zlk.recon.constraint.Constraint.CLocal;
+import zlk.recon.constraint.Constraint.CPattern;
+import zlk.recon.constraint.Constraint.CSaveTheEnvironment;
+import zlk.recon.constraint.Constraint.CTrue;
 import zlk.recon.constraint.Content;
-import zlk.recon.constraint.FlatType;
-import zlk.recon.constraint.Constraint.Category;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.Structure;
+import zlk.recon.constraint.FlatType;
+import zlk.recon.constraint.IdVar;
 import zlk.recon.constraint.Type.AppN;
 import zlk.recon.constraint.Type.FunN;
 import zlk.recon.constraint.Type.VarN;
-import zlk.recon.constraint.IdVar;
 import zlk.util.Stack;
 
 // unifyがList<Variable>に値を入れるのはレコードのときだけ
@@ -56,117 +63,97 @@ public class TypeReconstructor {
 	}
 
 	public State solve(IdMap<Variable> env, int rank, State state, Constraint constraint) {
-		return constraint.fold(
-				// CTrue
-				() -> state,
-
-				// CEqual
-				(ty, expectation) -> {
-					Variable actual = typeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-
-				},
-
-				// CLocal
-				(id, expectation) -> {
-					// env内の変数は再利用する
-					Variable actual = makeCopy(rank, env.get(id));
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CForeign
-				(id, ty, expectation) -> {
-					Variable actual = srcTypeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CPattern
-				(ty, expectation) -> {
-					Variable actual = typeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CAnd,
-				list -> {
-					State result = state;
-					for(Constraint c : list) {
-						result = solve(env, rank, state, c);
-					}
-					return result;
-				},
-
-				// CLet
-				cint -> {
-					if(cint.ridids().isEmpty()) {
-						if(cint.bodyCon().category == Category.CTrue) {
-							introduce(rank, cint.flexes());
-							return solve(env, rank, state, cint.headerCon());
-						} else if(cint.flexes().isEmpty()) {
-							State state1 =
-									solve(env, rank, state, cint.headerCon());
-							IdMap<Variable> locals =
-									cint.headers().traverse(ty -> typeToVariable(rank, ty));
-							IdMap<Variable> newEnv = IdMap.union(env, locals);
-							State state2 =
-									solve(newEnv, rank, state1, cint.bodyCon());
-							locals.forEach((id, var) -> state2.occurs(id, var));
-
-							// record reconstructed types
-							locals.forEach((id, var) -> reconed.put(id, var.toType()));
-							return state2;
-						}
-					}
-
-					int nextRank = rank + 1;
-					pool.ensureCapasity(nextRank);
-
-					List<Variable> vars = new ArrayList<>();
-					vars.addAll(cint.ridids());
-					vars.addAll(cint.flexes());
-					vars.forEach(v -> {
-						Descriptor d = v.get();
-						Descriptor d_ = new Descriptor(d.content, nextRank, d.mark);
-						v.set(d_);
-					});
-					pool.clear(nextRank);
-					pool.addAll(vars, nextRank);
-
-					IdMap<Variable> locals = cint.headers().traverse(ty -> typeToVariable(nextRank, ty));
-					State state_ = solve(env, nextRank, state, cint.headerCon());
-
-					int youngMark = state_.mark;
-					int visitMark = youngMark + 1;
-					int finalMark = visitMark + 1;
-
-					generalize(youngMark, visitMark, nextRank);
-					pool.clear(nextRank);
-
-					// check
-					cint.ridids().forEach(var -> checkGeneric(var));
+		return switch (constraint) {
+		case CTrue() -> state;
+		case CEqual(zlk.recon.constraint.Type type, zlk.recon.constraint.Type expected) -> {
+			Variable actual = typeToVariable(rank, type);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CLocal(Id id, zlk.recon.constraint.Type expected) -> {
+			Variable actual = makeCopy(rank, env.get(id));
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CForeign(Id id, zlk.common.Type anno, zlk.recon.constraint.Type expected) -> {
+			Variable actual = srcTypeToVariable(rank, anno);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CPattern(zlk.recon.constraint.Type type, zlk.recon.constraint.Type expected) -> {
+			Variable actual = typeToVariable(rank, type);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CAnd(List<Constraint> constraints) -> {
+			State result = state;
+			for (Constraint c : constraints) {
+				result = solve(env, rank, state, c);
+			}
+			yield result;
+		}
+		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<zlk.recon.constraint.Type> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
+			if (ridids.isEmpty()) {
+				if (bodyCon instanceof CTrue) {
+					introduce(rank, flexes);
+					yield solve(env, rank, state, headerCon);
+				} else if (flexes.isEmpty()) {
+					State state1 = solve(env, rank, state, headerCon);
+					IdMap<Variable> locals = headerAnno.traverse(ty -> typeToVariable(rank, ty));
+					IdMap<Variable> newEnv = IdMap.union(env, locals);
+					State state2 = solve(newEnv, rank, state1, bodyCon);
+					locals.forEach((id, var) -> state2.occurs(id, var));
 
 					// record reconstructed types
-					// is it really correct to record here?
-					locals.forEach((id, var) -> reconed.putOrConfirm(id, var.toType()));
+					locals.forEach((id, var) -> reconed.put(id, var.toType()));
+					yield state2;
+				}
+			}
 
-					IdMap<Variable> newEnv = IdMap.union(env, locals);
-					State tmpState = new State(state_.env, finalMark);
-					State newState = solve(newEnv, rank, tmpState, cint.bodyCon());
+			int nextRank = rank + 1;
+			pool.ensureCapasity(nextRank);
 
-					locals.forEach((id, var) -> newState.occurs(id, var));
-					return newState;
-				},
+			List<Variable> vars = new ArrayList<>();
+			vars.addAll(ridids);
+			vars.addAll(flexes);
+			vars.forEach(v -> {
+				Descriptor d = v.get();
+				Descriptor d_ = new Descriptor(d.content, nextRank, d.mark);
+				v.set(d_);
+			});
+			pool.clear(nextRank);
+			pool.addAll(vars, nextRank);
 
-				// SaveTheEnvironment
-				() -> state.saveTheEnvironment(env)
-		);
+			IdMap<Variable> locals = headerAnno.traverse(ty -> typeToVariable(nextRank, ty));
+			State state_ = solve(env, nextRank, state, headerCon);
+
+			int youngMark = state_.mark;
+			int visitMark = youngMark + 1;
+			int finalMark = visitMark + 1;
+
+			generalize(youngMark, visitMark, nextRank);
+			pool.clear(nextRank);
+
+			// check
+			ridids.forEach(var -> checkGeneric(var));
+
+			// record reconstructed types
+			// is it really correct to record here?
+			locals.forEach((id, var) -> reconed.putOrConfirm(id, var.toType()));
+
+			IdMap<Variable> newEnv = IdMap.union(env, locals);
+			State tmpState = new State(state_.env, finalMark);
+			State newState = solve(newEnv, rank, tmpState, bodyCon);
+
+			locals.forEach((id, var) -> newState.occurs(id, var));
+			yield newState;
+		}
+		case CSaveTheEnvironment() -> state.saveTheEnvironment(env);
+		};
 	}
 
 	private void checkGeneric(Variable var) {

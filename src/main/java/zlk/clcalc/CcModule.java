@@ -8,22 +8,22 @@ import zlk.util.pp.PrettyPrinter;
 public record CcModule(
 		String name,
 		List<CcType> types,
-		List<CcDecl> toplevels,
+		List<CcFunc> funcs,
 		String origin)
 implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("module:").endl().inc();
-		pp.append("name: ").append(name).endl();
-		pp.append("origin: ").append(origin).endl();
+		pp.append("module:").endl();
+		pp.indent(() -> {
+			pp.append("name: ").append(name).endl();
+			pp.append("origin: ").append(origin).endl();
+			pp.append("decls:");
+			pp.indent(() -> {
+				types.forEach(type -> pp.endl().append(type));
+				funcs.forEach(func -> pp.endl().append(func));
 
-		pp.append("types:").endl().inc();
-		types.forEach(type -> pp.append(type).endl());
-		pp.dec();
-
-		pp.append("decls:").endl().inc();
-		toplevels.forEach(pp::append);
-		pp.dec().dec();
+			});
+		});
 	}
 }

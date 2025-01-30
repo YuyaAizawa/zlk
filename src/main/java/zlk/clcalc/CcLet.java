@@ -11,18 +11,25 @@ import zlk.util.pp.PrettyPrinter;
  * @author YuyaAizawa
  */
 public record CcLet(
-		Id boundVar,
+		Id var,
 		CcExp boundExp,
-		CcExp mainExp,
+		CcExp body,
 		Location loc)
 implements CcExp, PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("let:").endl().inc();
-		pp.field("boundVar", boundVar);
-		pp.field("boundExp", boundExp);
-		pp.field("mainExp", mainExp);
-		pp.dec();
+		pp.append("let:").endl();
+		pp.indent(() -> {
+			pp.append("var: ").append(var).endl();
+			pp.append("boundExp:").endl();
+			pp.indent(() -> {
+				pp.append(boundExp).endl();
+			});
+			pp.append("body:").endl();
+			pp.indent(() -> {
+				pp.append(body);
+			});
+		});
 	}
 }

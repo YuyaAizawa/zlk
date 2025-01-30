@@ -53,6 +53,6 @@ public final class State {
 
 		zlk.recon.constraint.Type ctorType = zlk.recon.constraint.Type.from(ty);
 		System.out.println(ctorType);
-		cons.add(Constraint.pattern(ctorType, expected));
+		cons.add(new Constraint.CPattern(ctorType, expected));
 	}
 }
