@@ -17,7 +17,7 @@ import zlk.clcalc.CcCase;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcCtor;
-import zlk.clcalc.CcDecl;
+import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcExp;
 import zlk.clcalc.CcIf;
 import zlk.clcalc.CcLet;
@@ -44,7 +44,7 @@ public final class ClosureConveter {
 	private final IdMap<Type> type; // 変換後のIdの型を追加
 	private final Set<Id> knowns;
 
-	private final List<CcDecl> toplevels;
+	private final List<CcFunc> toplevels;
 	private final AtomicInteger closureCount;
 
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
@@ -82,12 +82,12 @@ public final class ClosureConveter {
 
 		if(frees.isEmpty()) {
 			System.out.println(id + " is not cloeure.");
-			toplevels.add(new CcDecl(id, args_, ccBody, body.loc()));
+			toplevels.add(new CcFunc(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
 			System.out.println(id + " is cloeure. frees: "+frees);
-			CcDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
+			CcFunc closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
@@ -104,7 +104,7 @@ public final class ClosureConveter {
 	 * @param loc 元の関数のLocation
 	 * @return
 	 */
-	private CcDecl makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
+	private CcFunc makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
 		List<Type> types =
 				Stream.concat(Stream.concat(
 						frees.stream().map(type::get),
@@ -131,7 +131,7 @@ public final class ClosureConveter {
 
 		CcExp clsBody = body.substId(idMap);
 
-		return new CcDecl(clsId, clsArgs, clsBody, loc);
+		return new CcFunc(clsId, clsArgs, clsBody, loc);
 	}
 
 	private CcExp compile(IcExp body) {
@@ -237,9 +237,9 @@ public final class ClosureConveter {
 					fv(if_.elseExp(), bounded, free);
 				},
 				let  -> {
-					bounded.add(let.boundVar());
+					bounded.add(let.var());
 					fv(let.boundExp(), bounded, free);
-					fv(let.mainExp(), bounded, free);
+					fv(let.body(), bounded, free);
 				},
 				case_ -> {
 					fv(case_.target(), bounded, free);

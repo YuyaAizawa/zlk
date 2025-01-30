@@ -19,7 +19,9 @@ implements PrettyPrintable {
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(pattern).append(" ->").inc().endl();
-		pp.append(body).dec();
+		pp.indent(() -> {
+			pp.append(body);
+		});
 	}
 
 	CcCaseBranch substId(IdMap<Id> map) {

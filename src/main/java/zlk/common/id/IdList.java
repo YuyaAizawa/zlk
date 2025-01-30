@@ -39,7 +39,7 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.oneline(this, " ");
+		pp.append("[").append(PrettyPrintable.join(iterator(), ", ")).append("]");
 	}
 
 	@Override

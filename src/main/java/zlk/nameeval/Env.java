@@ -1,9 +1,10 @@
 package zlk.nameeval;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.function.Function;
 
 import zlk.common.id.Id;
 import zlk.util.Stack;
@@ -81,12 +82,10 @@ record Scope(
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		List<? extends PrettyPrintable> entryies = ids.entrySet().stream().map(e -> new PrettyPrintable() {
-			@Override
-			public void mkString(PrettyPrinter pp) {
-				pp.append(e.getKey()).append(": ").append(e.getValue().canonicalName());
-			}
-		}).toList();
-		pp.append("name: ").append(name).append(", entry: [").oneline(entryies, ", ").append("]");
+		Function<Entry<String, Id>, PrettyPrintable> entryMapper = entry ->
+		(pp_ -> pp_.append(entry.getKey()).append(": ").append(entry.getValue().canonicalName()));
+
+		pp.append(PrettyPrintable.toElmListStyle(
+				ids.entrySet().stream().map(entryMapper).iterator()));
 	}
 }

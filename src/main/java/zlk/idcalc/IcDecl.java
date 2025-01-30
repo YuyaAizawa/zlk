@@ -1,5 +1,6 @@
 package zlk.idcalc;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,14 +26,16 @@ implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(id);
-		if(recs.isPresent()) {
-			pp.append(" [");
-			pp.oneline(recs.get().stream().map(decl -> decl.id).toList(), ", ");
-			pp.append("]");
-		}
+		pp.append(id).append(" ");
+		recs.ifPresent(recList -> {
+			Iterator<Id> idIter = recList.stream().map(decl -> decl.id).iterator();
+			PrettyPrintable elmStyleIdList = PrettyPrintable.toElmListStyle(idIter);
+			pp.withoutLineBreak(
+					pp_ -> pp_.append(elmStyleIdList)
+			);
+		});
 		anno.ifPresent(ty -> {
-			pp.append(" : ").append(ty).endl();
+			pp.append(": ").append(ty).endl();
 			pp.append(id);
 		});
 		args.forEach(arg -> {

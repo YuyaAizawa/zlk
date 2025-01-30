@@ -83,9 +83,9 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 						if_.elseExp().substId(map),
 						if_.loc()),
 				let   -> new CcLet(
-						let.boundVar(),
+						let.var(),
 						let.boundExp().substId(map),
-						let.mainExp().substId(map),
+						let.body().substId(map),
 						let.loc()),
 				case_ -> new CcCase(
 						case_.target().substId(map),
