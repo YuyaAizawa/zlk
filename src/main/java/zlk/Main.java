@@ -74,7 +74,7 @@ public class Main {
 				sum list =
 				  case list of
 				    Nil -> 0
-				    Cons hd tl -> hd
+				    Cons hd tl -> add hd (sum tl)
 
 				ans1 =
 				  sq 42
@@ -108,13 +108,13 @@ public class Main {
 
 		System.out.println("-- EXTRACT CONSTRAINS --");
 		Constraint cint = ConstraintExtractor.extract(idcalc);
-		System.out.println(cint);
+		System.out.println(cint.buildString());
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
 		TypeReconstructor tr = new TypeReconstructor();
 		IdMap<Type> types = tr.run(cint);
-		System.out.println(types);
+		System.out.println(types.buildString());
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->

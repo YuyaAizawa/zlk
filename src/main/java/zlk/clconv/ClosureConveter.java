@@ -10,32 +10,43 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCase;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcCtor;
-import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcExp;
+import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcIf;
 import zlk.clcalc.CcLet;
 import zlk.clcalc.CcMkCls;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
+import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
-import zlk.idcalc.IcDecl;
+import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcExp;
+import zlk.idcalc.IcExp.IcAbs;
+import zlk.idcalc.IcExp.IcApp;
+import zlk.idcalc.IcExp.IcCase;
+import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcLetrec;
+import zlk.idcalc.IcExp.IcVarCtor;
+import zlk.idcalc.IcExp.IcVarForeign;
+import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
-import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
-import zlk.idcalc.IcType;
+import zlk.idcalc.IcPattern.Var;
+import zlk.idcalc.IcTypeDecl;
 import zlk.util.Location;
 
 public final class ClosureConveter {
@@ -105,15 +116,11 @@ public final class ClosureConveter {
 	 * @return
 	 */
 	private CcFunc makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
-		List<Type> types =
-				Stream.concat(Stream.concat(
-						frees.stream().map(type::get),
-						args_.stream()
-								.map(pat -> pat.fold(
-										var -> type.get(var.id()),
-										ctor -> type.get(ctor.ctor().id())))),
-						Stream.of(retTy))
-						.toList();
+		List<Type> types = new ArrayList<>();
+		frees.forEach(id -> types.add(type.get(id)));
+		args_.forEach(pat -> types.add(type.get(pat.headId())));
+		types.add(retTy);
+
 		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
 		Id clsId = freshId(original);
 		type.put(clsId, clsTy);
@@ -125,7 +132,7 @@ public final class ClosureConveter {
 		List<IcPattern> clsArgs = new ArrayList<>(args_);
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
-			clsArgs.add(new IcPVar(newId, Location.noLocation()));
+			clsArgs.add(new Var(newId, Location.noLocation()));
 			type.put(newId, type.get(free));
 		}
 
@@ -134,85 +141,94 @@ public final class ClosureConveter {
 		return new CcFunc(clsId, clsArgs, clsBody, loc);
 	}
 
-	private CcExp compile(IcExp body) {
-		return body.fold(
-				cnst    -> new CcCnst(cnst.value(), cnst.loc()),
-				var     -> new CcVar(var.id(), var.loc()),
-				foreign -> new CcVar(foreign.id(), foreign.loc()),
-				ctor    -> new CcVar(ctor.id(), ctor.loc()),
-				abs     -> {
-					return neverHappen(
-							"no anonymous abs in this version.", body.loc());
-				},
-				app     -> {
-					CcExp funExp = compile(app.fun());
-					List<CcExp> argExps =
-							app.args().stream()
-							.map(arg -> compile(arg)).toList();
-					return new CcApp(funExp, argExps, app.loc());
-				},
-				if_     -> new CcIf(
-						compile(if_.cond()),
-						compile(if_.exp1()),
-						compile(if_.exp2()),
-						if_.loc()),
-				let     -> {
-					Id id = let.decl().id();
-					List<IcPattern> args = let.decl().args();
-					IcExp bounded = let.decl().body();
-					CcExp letBody = compile(let.body());
-					Location loc = let.loc();
+	private CcExp compile(IcExp exp) {
+		return switch (exp) {
+		case IcCnst(ConstValue value, Location loc) -> {
+			yield new CcCnst(value, loc);
+		}
+		case IcVarLocal(Id id, Location loc) -> {
+			yield new CcVar(id, loc);
+		}
+		case IcVarForeign(Id id, Type _, Location loc) -> {
+			yield new CcVar(id, loc);
+		}
+		case IcVarCtor(Id id, Type _, Location loc) -> {
+			yield new CcVar(id, loc);
+		}
+		case IcAbs(Id _, Type _, IcExp body, Location _) -> {
+			yield neverHappen("no anonymous abs in this version.", body.loc());
+		}
+		case IcApp(IcExp fun, List<IcExp> args, Location loc) -> {
+			CcExp funExp = compile(fun);
+			List<CcExp> argExps = args.stream()
+					.map(arg -> compile(arg))
+					.toList();
+			yield new CcApp(funExp, argExps, loc);
+		}
+		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location loc) -> {
+			yield new CcIf(
+					compile(cond),
+					compile(thenExp),
+					compile(elseExp),
+					loc);
+		}
+		case IcLet(IcFunDecl decl, IcExp body, Location loc) -> {
+			Id id = decl.id();
+			List<IcPattern> args = decl.args();
+			IcExp bounded = decl.body();
+			CcExp letBody = compile(body);
 
-					if(!args.isEmpty()) {
-						return compileFunc(id, let.decl().args(), bounded)
-								.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-								.orElse(letBody); // トップレベルで定義されているのでletは要らない
-					} else {
-						return new CcLet(id, compile(bounded), letBody, loc);
-					}
-				},
-				letrec -> {
-					if(letrec.decls().size() != 1) {
-						todo();
-					}
-					IcDecl decl = letrec.decls().get(0);
-					Id id = decl.id();
-					List<IcPattern> args = decl.args();
-					IcExp bounded = decl.body();
-					CcExp letBody = compile(letrec.body());
-					Location loc = letrec.loc();
-					if(!args.isEmpty()) {
-						return compileFunc(id, decl.args(), bounded)
-								.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-								.orElse(letBody); // トップレベルで定義されているのでletは要らない
-					} else {
-						return new CcLet(id, compile(bounded), letBody, loc);
-					}
-				},
-				case_ -> {
-					CcExp target = compile(case_.target());
-					List<CcCaseBranch> branches =
-							case_.branches().stream()
-									.map(branch -> new CcCaseBranch(
-											branch.pattern(),
-											compile(branch.body()),
-											branch.loc()))
-									.toList();
-					return new CcCase(target, branches, case_.loc());
-				});
+			if(!args.isEmpty()) {
+				yield compileFunc(id, decl.args(), bounded)
+						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
+						.orElse(letBody); // トップレベルで定義されているのでletは要らない
+			} else {
+				yield new CcLet(id, compile(bounded), letBody, loc);
+			}
+		}
+		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location loc) -> {
+			if(decls.size() != 1) {
+				todo();
+			}
+			IcFunDecl decl = decls.get(0);
+			Id id = decl.id();
+			List<IcPattern> args = decl.args();
+			IcExp bounded = decl.body();
+			CcExp letBody = compile(body);
+
+			if(!args.isEmpty()) {
+				yield compileFunc(id, decl.args(), bounded)
+						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
+						.orElse(letBody);
+			} else {
+				yield new CcLet(id, compile(bounded), letBody, loc);
+			}
+		}
+		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
+			CcExp compiledTarget = compile(target);
+			List<CcCaseBranch> compiledBranches =
+					branches.stream()
+							.map(branch -> new CcCaseBranch(
+									branch.pattern(),
+									compile(branch.body()),
+									branch.loc()))
+							.toList();
+			yield new CcCase(compiledTarget, compiledBranches, loc);
+		}
+		};
 	}
 
 	private IdList fvFunc(CcExp body, List<IcPattern> args) {
 		IdList free = new IdList();
 		Set<Id> bounded = new HashSet<>(knowns);
-		args.forEach(arg -> arg.addVars(bounded));
+		args.forEach(arg -> arg.accumulateVars(bounded));
 		fv(body, bounded, free);
 		return free;
 	}
 
 	private void fv(CcExp exp, Set<Id> bounded, IdList free) {
 		exp.match(
-				cnst -> {},
+				_ -> {},
 				var  -> {
 					Id id = var.id();
 					if(!bounded.contains(id) && !free.contains(id)) {
@@ -244,7 +260,7 @@ public final class ClosureConveter {
 				case_ -> {
 					fv(case_.target(), bounded, free);
 					for(CcCaseBranch branch: case_.branches()) {
-						branch.pattern().addVars(bounded);
+						branch.pattern().accumulateVars(bounded);
 						fv(branch.body(), bounded, free);
 					}
 				});
@@ -265,7 +281,7 @@ public final class ClosureConveter {
 				+ Id.SEPARATOR + exceptModule);
 	}
 
-	private CcType convert(IcType icType) {
+	private CcType convert(IcTypeDecl icType) {
 		return new CcType(icType.id(), icType.ctors().stream().map(ctor -> convert(ctor)).toList(), icType.loc());
 	}
 

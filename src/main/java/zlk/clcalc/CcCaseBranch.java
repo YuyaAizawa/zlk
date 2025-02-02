@@ -26,7 +26,7 @@ implements PrettyPrintable {
 
 	CcCaseBranch substId(IdMap<Id> map) {
 		Set<Id> ids = new HashSet<>();
-		pattern.addVars(ids);
+		pattern.accumulateVars(ids);
 		ids.forEach(id -> {
 			if(map.containsKey(id)) {
 				throw new RuntimeException(""+id);

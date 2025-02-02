@@ -22,21 +22,21 @@ permits CTrue, CEqual, CLocal, CForeign, CPattern, CAnd, CLet, CSaveTheEnvironme
 	record CTrue() implements Constraint {}
 
 	record CEqual(
-			Type type,
-			Type expected) implements Constraint {}
+			RcType type,
+			RcType expected) implements Constraint {}
 
 	record CLocal(
 			Id id,
-			Type expected) implements Constraint {}
+			RcType expected) implements Constraint {}
 
 	record CForeign(
 			Id id,
 			zlk.common.Type anno,
-			Type expected) implements Constraint {}
+			RcType expected) implements Constraint {}
 
 	record CPattern(
-			Type type,
-			Type expected) implements Constraint {}
+			RcType type,
+			RcType expected) implements Constraint {}
 
 	record CAnd(  // TODO: これ出現個所決まってたらList<Constraint>にならない？
 			List<Constraint> constraints) implements Constraint {}
@@ -44,7 +44,7 @@ permits CTrue, CEqual, CLocal, CForeign, CPattern, CAnd, CLet, CSaveTheEnvironme
 	record CLet(
 			List<Variable> ridids,
 			List<Variable> flexes,
-			IdMap<Type> headerAnno,
+			IdMap<RcType> headerAnno,
 			Constraint headerCon,
 			Constraint bodyCon) implements Constraint {}
 
@@ -56,16 +56,16 @@ permits CTrue, CEqual, CLocal, CForeign, CPattern, CAnd, CLet, CSaveTheEnvironme
 		case CTrue() -> {
 			pp.append("True");
 		}
-		case CEqual(Type type, Type expected) -> {
+		case CEqual(RcType type, RcType expected) -> {
 			pp.append("Equal: ").append(type).append(", ").append(expected);
 		}
-		case CLocal(Id id, Type expected) -> {
+		case CLocal(Id id, RcType expected) -> {
 			pp.append("Local: ").append(id).append(", ").append(expected);
 		}
-		case CForeign(Id id, zlk.common.Type anno, Type expected) -> {
+		case CForeign(Id id, zlk.common.Type anno, RcType expected) -> {
 			pp.append("Foreign: ").append(id).append("::").append(anno).append(", ").append(expected);
 		}
-		case CPattern(Type type, Type expected) -> {
+		case CPattern(RcType type, RcType expected) -> {
 			pp.append("Pattern: ").append(type).append(", ").append(expected);
 		}
 		case CAnd(List<Constraint> constraints) -> {
@@ -74,7 +74,7 @@ permits CTrue, CEqual, CLocal, CForeign, CPattern, CAnd, CLet, CSaveTheEnvironme
 				constraints.forEach(c -> pp.endl().append(c));
 			});
 		}
-		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<Type> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
+		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<RcType> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
 			pp.append("Let:").endl();
 			pp.indent(() -> {
 				pp.append("ridids:");

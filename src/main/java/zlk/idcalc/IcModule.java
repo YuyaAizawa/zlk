@@ -7,8 +7,8 @@ import zlk.util.pp.PrettyPrinter;
 
 public record IcModule(
 		String name,
-		List<IcType> types,
-		List<IcDecl> decls,
+		List<IcTypeDecl> types,
+		List<IcFunDecl> decls,
 		String origin)
 implements PrettyPrintable{
 

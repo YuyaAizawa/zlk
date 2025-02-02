@@ -32,7 +32,7 @@ permits Cnst, Var, App, If, Let, Case {
 	}
 	record Var(String name, Location loc) implements Exp {}
 	record App(List<Exp> exps, 	Location loc) implements Exp {}
-	record If(Exp cond, Exp exp1, Exp exp2, Location loc) implements Exp {}
+	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
 	record Let(List<FunDecl> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, List<CaseBranch> branches, Location loc) implements Exp {}
 
