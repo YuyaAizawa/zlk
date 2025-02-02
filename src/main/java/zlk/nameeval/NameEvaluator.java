@@ -22,25 +22,22 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.IcApp;
-import zlk.idcalc.IcCase;
 import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcCnst;
 import zlk.idcalc.IcCtor;
-import zlk.idcalc.IcDecl;
+import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcIf;
-import zlk.idcalc.IcLet;
-import zlk.idcalc.IcLetrec;
+import zlk.idcalc.IcExp.IcApp;
+import zlk.idcalc.IcExp.IcCase;
+import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcLetrec;
+import zlk.idcalc.IcExp.IcVarCtor;
+import zlk.idcalc.IcExp.IcVarForeign;
+import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
-import zlk.idcalc.IcPCtor;
-import zlk.idcalc.IcPCtorArg;
-import zlk.idcalc.IcPVar;
 import zlk.idcalc.IcPattern;
-import zlk.idcalc.IcType;
-import zlk.idcalc.IcVarCtor;
-import zlk.idcalc.IcVarForeign;
-import zlk.idcalc.IcVarLocal;
+import zlk.idcalc.IcTypeDecl;
 import zlk.util.Location;
 import zlk.util.Position;
 
@@ -93,8 +90,8 @@ public final class NameEvaluator {
 			}
 		});
 
-		List<IcType> icTypes = new ArrayList<>();
-		List<IcDecl> icDecls = new ArrayList<>();
+		List<IcTypeDecl> icTypes = new ArrayList<>();
+		List<IcFunDecl> icDecls = new ArrayList<>();
 
 		module.decls().forEach(def -> {
 			switch(def) {
@@ -116,7 +113,7 @@ public final class NameEvaluator {
 		ctorTy.put(id, type_);
 	}
 
-	public IcType eval(TypeDecl union) {
+	public IcTypeDecl eval(TypeDecl union) {
 		Id id = env.get(union.name());
 
 		List<IcCtor> ctors = union.ctors().stream().map(ctor -> {
@@ -125,10 +122,10 @@ public final class NameEvaluator {
 			return new IcCtor(ctorId, args, ctor.loc());
 		}).toList();
 
-		return new IcType(id, ctors, union.loc());
+		return new IcTypeDecl(id, ctors, union.loc());
 	}
 
-	public IcDecl eval(FunDecl decl) {
+	public IcFunDecl eval(FunDecl decl) {
 		try {
 			String declName = decl.name();
 			env.push(declName);
@@ -138,24 +135,20 @@ public final class NameEvaluator {
 			List<IcPattern> args = decl.args().stream()
 					.map(arg -> {
 						Id id_ = env.registerVar(arg.name());
-						return (IcPattern) new IcPVar(id_, arg.loc());
+						return (IcPattern) new IcPattern.Var(id_, arg.loc());
 					})
 					.toList();
 			IcExp body = eval(decl.body());
 
 			env.pop();
 
-			// TODO 再帰関数の強連結成分を求めるコンパイルフェーズを作る
-			return new IcDecl(
+			return new IcFunDecl(
 					id,
 					anno,
 					args,
 					body.fv(List.of())
-						.stream()
-						.map(var -> var.id())
-						.toList()
 						.contains(id) ?
-								Optional.of(List.of()) :
+								Optional.of(List.of()) : // TODO 再帰関数の強連結成分を求めるコンパイルフェーズを作る
 									Optional.empty(),
 					body,
 					decl.loc());
@@ -220,9 +213,8 @@ public final class NameEvaluator {
 		IcLet tmpLet = new IcLet(eval(decl), eval(decls.subList(1, decls.size()), body),
 				new Location(module.origin(), decl.loc().start(), end));
 
-		if(tmpLet.decl().body().fv(List.of()).stream()
-				.map(var -> var.id())
-				.toList()
+		if(tmpLet.decl().body()
+				.fv(List.of())
 				.contains(tmpLet.decl().id())) {
 			return new IcLetrec(List.of(tmpLet.decl().norec()), tmpLet.body(), tmpLet.loc());
 		} else {
@@ -242,17 +234,17 @@ public final class NameEvaluator {
 		switch(pat) {
 		case Pattern.Var(String name, Location loc): {
 			Id id = env.registerVar(name);
-			return new IcPVar(id, loc);
+			return new IcPattern.Var(id, loc);
 		}
 		case Pattern.Ctor(String name, List<Pattern> args, Location loc): {
 			Id ctor = env.get(name);
 			List<Type> argTys = ctorTy.get(ctor).flatten();
-			List<IcPCtorArg> args_ = new ArrayList<>();
+			List<IcPattern.Arg> args_ = new ArrayList<>();
 			for (int i = 0; i < args.size(); i++) {
-				args_.add(new IcPCtorArg(eval(args.get(i)), argTys.get(i)));
+				args_.add(new IcPattern.Arg(eval(args.get(i)), argTys.get(i)));
 			}
 			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctorTy.get(ctor), Location.noLocation());  // TODO location
-			return new IcPCtor(icVarCtor, args_, loc);
+			return new IcPattern.Ctor(icVarCtor, args_, loc);
 		}
 		}
 	}

@@ -29,9 +29,10 @@ import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.Structure;
 import zlk.recon.constraint.FlatType;
 import zlk.recon.constraint.IdVar;
-import zlk.recon.constraint.Type.AppN;
-import zlk.recon.constraint.Type.FunN;
-import zlk.recon.constraint.Type.VarN;
+import zlk.recon.constraint.RcType;
+import zlk.recon.constraint.RcType.AppN;
+import zlk.recon.constraint.RcType.FunN;
+import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Stack;
 
 // unifyがList<Variable>に値を入れるのはレコードのときだけ
@@ -65,25 +66,25 @@ public class TypeReconstructor {
 	public State solve(IdMap<Variable> env, int rank, State state, Constraint constraint) {
 		return switch (constraint) {
 		case CTrue() -> state;
-		case CEqual(zlk.recon.constraint.Type type, zlk.recon.constraint.Type expected) -> {
+		case CEqual(RcType type, RcType expected) -> {
 			Variable actual = typeToVariable(rank, type);
 			Variable expected_ = expectedToVariable(rank, expected);
 			Unify.unify(actual, expected_);
 			yield state;
 		}
-		case CLocal(Id id, zlk.recon.constraint.Type expected) -> {
+		case CLocal(Id id, RcType expected) -> {
 			Variable actual = makeCopy(rank, env.get(id));
 			Variable expected_ = expectedToVariable(rank, expected);
 			Unify.unify(actual, expected_);
 			yield state;
 		}
-		case CForeign(Id id, zlk.common.Type anno, zlk.recon.constraint.Type expected) -> {
+		case CForeign(Id id, zlk.common.Type anno, RcType expected) -> {
 			Variable actual = srcTypeToVariable(rank, anno);
 			Variable expected_ = expectedToVariable(rank, expected);
 			Unify.unify(actual, expected_);
 			yield state;
 		}
-		case CPattern(zlk.recon.constraint.Type type, zlk.recon.constraint.Type expected) -> {
+		case CPattern(RcType type, RcType expected) -> {
 			Variable actual = typeToVariable(rank, type);
 			Variable expected_ = expectedToVariable(rank, expected);
 			Unify.unify(actual, expected_);
@@ -96,7 +97,7 @@ public class TypeReconstructor {
 			}
 			yield result;
 		}
-		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<zlk.recon.constraint.Type> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
+		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<RcType> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
 			if (ridids.isEmpty()) {
 				if (bodyCon instanceof CTrue) {
 					introduce(rank, flexes);
@@ -163,7 +164,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable expectedToVariable(int rank, zlk.recon.constraint.Type expectation) {
+	private Variable expectedToVariable(int rank, RcType expectation) {
 		return typeToVariable(rank, expectation);
 	}
 
@@ -258,12 +259,12 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable typeToVariable(int rank, zlk.recon.constraint.Type ty) {
+	private Variable typeToVariable(int rank, RcType ty) {
 		return typeToVar(rank, new IdMap<>(), ty);
 	}
 
-	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, zlk.recon.constraint.Type ty) {
-		Function<zlk.recon.constraint.Type, Variable> go = t -> typeToVar(rank, aliasDict, t);
+	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, RcType ty) {
+		Function<RcType, Variable> go = t -> typeToVar(rank, aliasDict, t);
 
 		return switch(ty) {
 		case VarN(Variable var) -> var;

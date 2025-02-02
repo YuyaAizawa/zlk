@@ -13,10 +13,17 @@ permits Bool, I32 {
 	public static final ConstValue TRUE = new Bool(true);
 	public static final ConstValue FALSE = new Bool(false);
 
+	default Type type() {
+		return switch(this) {
+		case Bool _ -> Type.BOOL;
+		case I32 _ -> Type.I32;
+		};
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case Bool(boolean value) -> {if(value) pp.append("True"); else pp.append("False");}
+		case Bool(boolean value) -> pp.append(value ? "Ture" : "False");
 		case I32(int value) -> pp.append(value);
 		}
 	}

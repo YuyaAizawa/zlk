@@ -20,8 +20,8 @@ import org.objectweb.asm.Opcodes;
 import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCtor;
-import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcExp;
+import zlk.clcalc.CcFunc;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcType;
 import zlk.clcalc.CcVar;
@@ -31,8 +31,9 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.IcPCtorArg;
+import zlk.idcalc.IcExp;
 import zlk.idcalc.IcPattern;
+import zlk.util.Location;
 import zlk.util.Stack;
 
 public final class BytecodeGenerator {
@@ -266,48 +267,50 @@ public final class BytecodeGenerator {
 	 * @param args 引数
 	 */
 	private void registerArgs(List<IcPattern> args) {
-		args.forEach(arg -> arg.match(
-				var -> locals.add(var.id()),
-				ctor -> locals.add(LOCAL_DUMMY_ID)));
+		args.forEach(arg -> {
+			if(arg instanceof IcPattern.Var var) {
+				locals.add(var.headId());
+			} else {
+				locals.add(LOCAL_DUMMY_ID);
+			}
+		});
 
 		for (int i = 0; i < args.size(); i++) {
-			int i_ = i;
-			args.get(i).match(
-					var -> {},
-					ctor -> {
-						Type subClassTy = types.get(ctor.ctor().id());
-						loadLocal(i_, subClassTy);
-						registerArgRec(ctor);
-					});
+			if(args.get(i) instanceof IcPattern.Ctor ctor) {
+				Type subClassTy = types.get(ctor.headId());
+				loadLocal(i, subClassTy);
+				registerArgRec(ctor);
+			}
 		}
 	}
 	private void registerArgRec(IcPattern pat) {
 		// 事前条件：パターンに対応する値がstackのトップに乗っている
 		// 事後条件：パターンに対応する値をstackから消費
-		pat.match(
-				var -> {
-					locals.add(var.id());
-					storeLocal(locals.size()-1, types.get(var.id()));
-				},
-				ctor -> {
-					String subClassName = classNames.get(ctor.ctor().id());
+		switch(pat) {
+		case IcPattern.Var(Id id, Location _) -> {
+			locals.add(id);
+			storeLocal(locals.size()-1, types.get(id));
+		}
+		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+			String subClassName = classNames.get(ctor.id());
 
-					// stackの数を調整
-					if(ctor.args().size() == 0) { mv.visitInsn(Opcodes.POP); }
-					for (int i = 0; i < ctor.args().size()-1; i++) {
-						mv.visitInsn(Opcodes.DUP);
-					}
+			// stackの数を調整
+			if(args.size() == 0) { mv.visitInsn(Opcodes.POP); }
+			for (int i = 0; i < args.size()-1; i++) {
+				mv.visitInsn(Opcodes.DUP);
+			}
 
-					for(int fieldIdx = 0; fieldIdx < ctor.args().size(); fieldIdx++) {
-						IcPCtorArg ctorArg = ctor.args().get(fieldIdx);
-						mv.visitFieldInsn(
-								Opcodes.GETFIELD,
-								subClassName,
-								"val"+fieldIdx,
-								toDesc(ctorArg.type()));
-						registerArgRec(ctorArg.pattern());
-					}
-				});
+			for(int fieldIdx = 0; fieldIdx < args.size(); fieldIdx++) {
+				IcPattern.Arg ctorArg = args.get(fieldIdx);
+				mv.visitFieldInsn(
+						Opcodes.GETFIELD,
+						subClassName,
+						"val"+fieldIdx,
+						toDesc(ctorArg.type()));
+				registerArgRec(ctorArg.pattern());
+			}
+		}
+		}
 	}
 
 	private void compile(CcExp exp) {
@@ -516,7 +519,23 @@ public final class BytecodeGenerator {
 					storeLocal(locals.size()-1, types.get(var));
 					compile(let.body());
 				},
-				case_ -> { // TODO マッチしないときの例外処理
+				case_ -> {
+					// TODO マッチしないときの例外処理
+					// TODO tableswitchに置き換え（以下のようにしてできるはず）
+					// invokedynamic #0:typeSwitch, 0  2つ目の引数は型リストの前半を無視するとき使う
+					// tableswitch   { // -1 to 0
+					//        0: l1
+					//        1: l2
+					//        2: l3
+					//        default: lerr
+					// }
+					// BootstrapMethods:
+					//  0: REF_invokeStatic java/lang/runtime/SwitchBootstraps.typeSwitch:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;
+					//    Method arguments:
+					//      Type1
+					//      Type2
+					//      Type3
+
 					/*
 					 * case e of
 					 *   pat1 -> exp1
@@ -578,44 +597,42 @@ public final class BytecodeGenerator {
 	 * @param next 次のラベル
 	 */
 	private void checkMatchAndStoreLocals(int targetIdx, IcPattern pat, Label next) {
-		Type targetTy = pat.fold(
-				var -> types.get(var.id()),
-				ctor -> ctor.ctor().type());
-
-		pat.match(
-				var -> {
-					locals.set(targetIdx, var.id());
-				},
-				ctor -> {
-					String subClassName = classNames.get(ctor.ctor().id());
-					if(next != null) {
-						loadLocal(targetIdx, targetTy);
-						mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
-						mv.visitJumpInsn(Opcodes.IFEQ, next);
-					}
-					if(ctor.args().size() == 0) {
-						return;
-					}
-					loadLocal(targetIdx, targetTy);
-					mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
-					for(int i = 1; i < ctor.args().size(); i++) {
-						mv.visitInsn(Opcodes.DUP);
-					}
-					int argBase = locals.size();
-					for(int i = 0; i < ctor.args().size(); i++) {
-						Type fieldTy = ctor.args().get(i).type();
-						mv.visitFieldInsn(
-								Opcodes.GETFIELD,
-								subClassName,
-								"val"+i,
-								toDesc(fieldTy));
-						locals.add(LOCAL_DUMMY_ID);
-						storeLocal(locals.size()-1, fieldTy);
-					}
-					for(int i = 0; i < ctor.args().size(); i++) {
-						checkMatchAndStoreLocals(argBase+i, ctor.args().get(i).pattern(), next);
-					}
-				});
+		switch(pat) {
+		case IcPattern.Var(Id id, Location _) -> {
+			locals.set(targetIdx, id);
+		}
+		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+			Type targetTy = ctor.type();
+			String subClassName = classNames.get(ctor.id());
+			if(next != null) {
+				loadLocal(targetIdx, targetTy);
+				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
+				mv.visitJumpInsn(Opcodes.IFEQ, next);
+			}
+			if(args.size() == 0) {
+				return;
+			}
+			loadLocal(targetIdx, targetTy);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
+			for(int i = 1; i < args.size(); i++) {
+				mv.visitInsn(Opcodes.DUP);
+			}
+			int argBase = locals.size();
+			for(int i = 0; i < args.size(); i++) {
+				Type fieldTy = args.get(i).type();
+				mv.visitFieldInsn(
+						Opcodes.GETFIELD,
+						subClassName,
+						"val"+i,
+						toDesc(fieldTy));
+				locals.add(LOCAL_DUMMY_ID);
+				storeLocal(locals.size()-1, fieldTy);
+			}
+			for(int i = 0; i < args.size(); i++) {
+				checkMatchAndStoreLocals(argBase+i, args.get(i).pattern(), next);
+			}
+		}
+		};
 	}
 
 	private void switchByDecl(Id id,
@@ -888,9 +905,7 @@ public final class BytecodeGenerator {
 	private static String getDescription(CcFunc decl, IdMap<Type> types) {
 
 		List<Type> argTys = decl.args().stream()
-				.map(pat -> pat.fold(
-						var -> types.get(var.id()),
-						ctor -> types.get(ctor.ctor().id())))
+				.map(pat -> types.get(pat.headId()))
 				.toList();
 		Type retTy = types.get(decl.id()).apply(argTys.size());
 		return toDesc(argTys, retTy);

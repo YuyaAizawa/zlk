@@ -53,7 +53,6 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 	public V get(Id id) {
 		V result = getOrNull(id);
 		if(result == null) {
-			System.out.println(this);
 			throw new NoSuchElementException("id: "+id);
 		}
 		return result;

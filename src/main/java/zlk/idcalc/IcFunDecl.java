@@ -11,11 +11,11 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public record IcDecl(
+public record IcFunDecl(
 		Id id,
 		Optional<Type> anno,
 		List<IcPattern> args,
-		Optional<List<IcDecl>> recs,
+		Optional<List<IcFunDecl>> recs,
 		IcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {
@@ -45,7 +45,7 @@ implements PrettyPrintable, LocationHolder {
 		pp.inc().append(body).dec();
 	}
 
-	public IcDecl norec() {
-		return new IcDecl(id, anno, args, Optional.empty(), body, loc);
+	public IcFunDecl norec() {
+		return new IcFunDecl(id, anno, args, Optional.empty(), body, loc);
 	}
 }

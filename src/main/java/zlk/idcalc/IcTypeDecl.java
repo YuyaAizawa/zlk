@@ -8,7 +8,7 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public record IcType(
+public record IcTypeDecl(
 	Id id,
 	List<IcCtor> ctors,
 	Location loc
@@ -21,12 +21,5 @@ public record IcType(
 		ctors.subList(1, ctors.size())
 				.forEach(ctor -> pp.endl().append("| ").append(ctor));
 		pp.dec();
-	}
-
-	@Override
-	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
 	}
 }
