@@ -8,7 +8,7 @@ import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public record CcType(
+public record CcTypeDecl(
 		Id id,
 		List<CcCtor> ctors,
 		Location loc
