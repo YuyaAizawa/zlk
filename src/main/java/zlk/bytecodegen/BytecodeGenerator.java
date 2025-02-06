@@ -17,14 +17,19 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.clcalc.CcApp;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcExp;
-import zlk.clcalc.CcFunc;
+import zlk.clcalc.CcExp.CcApp;
+import zlk.clcalc.CcExp.CcCase;
+import zlk.clcalc.CcExp.CcCnst;
+import zlk.clcalc.CcExp.CcIf;
+import zlk.clcalc.CcExp.CcLet;
+import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcVar;
+import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
-import zlk.clcalc.CcType;
-import zlk.clcalc.CcVar;
+import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -43,7 +48,7 @@ public final class BytecodeGenerator {
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
-	private final IdMap<CcFunc> toplevelDecls;
+	private final IdMap<CcFunDecl> toplevelDecls;
 	private final IdMap<CcCtor> ctors;
 	private ClassWriter cw;
 
@@ -81,15 +86,15 @@ public final class BytecodeGenerator {
 		genMainClass(fileWriter);
 	}
 
-	private String unionSuperName(CcType union) {
+	private String unionSuperName(CcTypeDecl union) {
 		return module.name().replace('.', '/')+"$"+union.id().simpleName();
 	}
 
-	private String unionSubName(CcType union, CcCtor ctor) {
+	private String unionSubName(CcTypeDecl union, CcCtor ctor) {
 		return module.name().replace('.', '/')+"$"+union.id().simpleName()+"$"+ctor.id().simpleName();
 	}
 
-	private void genUnionClass(CcType union, BiConsumer<String, byte[]> fileWriter) {
+	private void genUnionClass(CcTypeDecl union, BiConsumer<String, byte[]> fileWriter) {
 		// super class
 		genUnionSuperClass(union);
 		fileWriter.accept(classNames.get(union.id()) + ".class", cw.toByteArray());
@@ -101,7 +106,7 @@ public final class BytecodeGenerator {
 		}
 	}
 
-	private void genUnionSuperClass(CcType union) {
+	private void genUnionSuperClass(CcTypeDecl union) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(
 				Opcodes.V16,
@@ -115,7 +120,7 @@ public final class BytecodeGenerator {
 		cw.visitEnd();
 	}
 
-	private void genUnionSubClass(CcCtor ctor, CcType union) {
+	private void genUnionSubClass(CcCtor ctor, CcTypeDecl union) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(
 				Opcodes.V16,
@@ -143,7 +148,7 @@ public final class BytecodeGenerator {
 		cw.visitEnd();
 	}
 
-	private void genUnionSubClassConstructor(CcCtor ctor, CcType union) {
+	private void genUnionSubClassConstructor(CcCtor ctor, CcTypeDecl union) {
 		String argsStr = ctor.args().stream()
 				.map(ty -> toDesc(ty))
 				.collect(Collectors.joining(""));
@@ -236,7 +241,7 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private void compileDecl(CcFunc decl) { // TODO トップレベルは全て非カリー化する
+	private void compileDecl(CcFunDecl decl) { // TODO トップレベルは全て非カリー化する
 		try {
 			locals = new IdList();
 
@@ -314,278 +319,215 @@ public final class BytecodeGenerator {
 	}
 
 	private void compile(CcExp exp) {
-		exp.match(
-				cnst -> {
-					loadCnst(cnst.value());
-				},
-				var -> {
-					// note: It cannot decide with only appearance of 'var' whether the invocation
-					//       static or not, so invokestatic places in app case.
+		switch (exp) {
+		case CcCnst(ConstValue value, Location _) -> {
+			loadCnst(value);
+		}
+		case CcVar(Id id, Location _) -> {
+			switchByDecl(id, descriptor -> {
+				Type funType = types.get(id);
+				if (funType instanceof Type.Arrow arrow) {
+					List<Type> type = arrow.flatten();
+					Id nextId = null;
+					for (int i = type.size() - 1; i >= 0; i--) {
+						List<Type> args = type.subList(0, i);
+						List<Type> ret = type.subList(i, type.size());
 
-					Id id = var.id();
-					switchByDecl(id,
-							descriptor -> {
-								Type funType = types.get(id);
-								if(funType instanceof Type.Arrow arrow) {
-									List<Type> type = arrow.flatten();
-									Id nextId = null;
-									for (int i = type.size()-1; i >= 0; i--) {
-										List<Type> args = type.subList(0, i);
-										List<Type> ret  = type.subList(i, type.size());
+						Id lambdaId = Id.fromParentAndSimpleName(Id.fromParentAndSimpleName(id, ""),
+								i + "");
 
-										Id lambdaId = Id.fromParentAndSimpleName(Id.fromParentAndSimpleName(id, ""), i + "");
+						if (args.size() == type.size() - 1) {
+							genBoxedMethod(lambdaId, args, id, ret.get(0));
+						} else {
+							genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
+						}
+						nextId = lambdaId;
+					}
 
-										if(args.size() == type.size()-1) {
-											genBoxedMethod(lambdaId, args, id, ret.get(0));
-										} else {
-											genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
-										}
-										nextId = lambdaId;
-									}
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(nextId),
+							"()" + functionDesc, false);
+				} else {
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(id),
+							descriptor, false);
+				}
+			}, _ -> {
+				todo("make method and currying");
+			}, localIdx -> {
+				loadLocal(localIdx, types.get(id));
+			}, ctor -> {
+				if (ctor.args().size() != 0) {
+					todo("currying");
+				}
+				String subclassName = classNames.get(ctor.id());
+				mv.visitTypeInsn(Opcodes.NEW, subclassName);
+				mv.visitInsn(Opcodes.DUP);
+				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, subclassName, "<init>", "()V", false);
+			});
+		}
+		case CcApp(CcExp fun, List<CcExp> args, Location loc) -> {
+			Type funType = getType(fun);
+			if (fun instanceof CcVar var) {
+				Id funId = var.id();
 
-									mv.visitMethodInsn(
-											Opcodes.INVOKESTATIC,
-											module.name(),
-											javaMethodName(nextId),
-											"()"+functionDesc,
-											false);
-								} else {
-									mv.visitMethodInsn(
-											Opcodes.INVOKESTATIC,
-											module.name(),
-											javaMethodName(id),
-											descriptor,
-											false);
-								}
-							},
-							builtin -> {
-								todo("make method and currying");
-							},
-							localIdx -> {
-								loadLocal(localIdx, types.get(id));
-							},
-							ctor -> {
-								if(ctor.args().size() != 0) {
-									todo("currying");
-								}
-								String subclassName = classNames.get(ctor.id());
-								mv.visitTypeInsn(Opcodes.NEW, subclassName);
-								mv.visitInsn(Opcodes.DUP);
-								mv.visitMethodInsn(
-										Opcodes.INVOKESPECIAL,
-										subclassName,
-										"<init>",
-										"()V",
-										false);
-							});
-				},
-				app  -> {
-					List<CcExp> args = app.args();
-					Type funType = getType(app.fun());
-					if(app.fun() instanceof CcVar var) {
-						Id funId = var.id();
+				switchByDecl(funId, descriptor -> {
+					int arity = toplevelDecls.get(funId).arity();
+					if (args.size() >= arity) {
+						for (int i = 0; i < arity; i++) {
+							compile(args.get(i));
+						}
 
-						switchByDecl(funId,
-								descriptor -> {
-									int arity = toplevelDecls.get(funId).arity();
-									if(args.size() >= arity) {
-										for (int i = 0; i < arity; i++) {
-											compile(args.get(i));
-										}
+						mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(),
+								javaMethodName(funId), descriptor, false);
 
-										mv.visitMethodInsn(
-												Opcodes.INVOKESTATIC,
-												module.name(),
-												javaMethodName(funId),
-												descriptor,
-												false);
-
-										for (int i = arity; i < args.size(); i++) {
-											compile(args.get(i));
-											invokeApplyWithBoxing(funType.apply(i).asArrow());
-										}
-									} else {
-										// TODO opt by indy
-										compile(var);
-										for (int i = 0; i < args.size(); i++) {
-											compile(args.get(i));
-											invokeApplyWithBoxing(funType.apply(i).asArrow());
-										}
-
-										todo("partial application");
-									}
-								},
-								builtin -> {
-									int arity = types.get(funId).flatten().size() - 1;
-									if(args.size() == arity) {
-										for (int i = 0; i < arity; i++) {
-											compile(args.get(i));
-										}
-
-										builtin.accept(mv);
-									} else if (args.size() < arity) {
-										todo("partial application");
-									} else {
-										neverHappen("builtins never return function object", app.loc());
-									}
-								},
-								localIndex -> {
-									compile(var);
-									for (int i = 0; i < args.size(); i++) {
-										compile(args.get(i));
-										invokeApplyWithBoxing(funType.apply(i).asArrow());
-									}
-								},
-								ctor -> {
-									if(args.size() != ctor.args().size()) {
-										todo("currying");
-									}
-									String subclassName = classNames.get(ctor.id());
-									mv.visitTypeInsn(Opcodes.NEW, subclassName);
-									mv.visitInsn(Opcodes.DUP);
-									args.forEach(arg -> compile(arg));
-									mv.visitMethodInsn(
-											Opcodes.INVOKESPECIAL,
-											subclassName,
-											"<init>",
-											toDesc(ctor.args(), Type.UNIT),
-											false);
-								});
+						for (int i = arity; i < args.size(); i++) {
+							compile(args.get(i));
+							invokeApplyWithBoxing(funType.apply(i).asArrow());
+						}
 					} else {
-						compile(app.fun());
-
-						// function object remains on stack top
+						// TODO opt by indy
+						compile(var);
 						for (int i = 0; i < args.size(); i++) {
 							compile(args.get(i));
 							invokeApplyWithBoxing(funType.apply(i).asArrow());
 						}
+
+						todo("partial application");
 					}
-				},
-				mkCls -> {
-					Id impl = mkCls.clsFunc();
-					IdList caps = mkCls.caps();
-					List<Type> indyArgTys = caps.stream().map(types::get).toList();
-					Type.Arrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
-
-					if(indyReturnTy == null) {
-						throw new Error(impl.toString());
-					}
-
-					caps.forEach(cap -> {
-						loadLocal(locals.indexOf(cap), types.get(cap));
-					});
-
-					mv.visitInvokeDynamicInsn(
-							"apply",
-							toDesc(indyArgTys, indyReturnTy),
-							new Handle(
-									Opcodes.H_INVOKESTATIC,
-									"java/lang/invoke/LambdaMetafactory",
-									"metafactory",
-									"(Ljava/lang/invoke/MethodHandles$Lookup;"
-									+ "Ljava/lang/String;"
-									+ "Ljava/lang/invoke/MethodType;"
-									+ "Ljava/lang/invoke/MethodType;"
-									+ "Ljava/lang/invoke/MethodHandle;"
-									+ "Ljava/lang/invoke/MethodType;"
-									+ ")Ljava/lang/invoke/CallSite;",
-									false),
-							toMethodType(toFunctionApplyDescErased(indyReturnTy)),
-							new Handle(
-									Opcodes.H_INVOKESTATIC,
-									module.name(),
-									javaMethodName(impl),
-									toplevelDescs.get(impl),
-									false),
-							toMethodType(toBoxedDesc(indyReturnTy)));
-				},
-				ifExp -> {
-					Label l1 = new Label();
-					Label l2 = new Label();
-					compile(ifExp.cond());
-					mv.visitJumpInsn(
-							Opcodes.IFEQ, // = 0; false
-							l1);
-					compile(ifExp.thenExp());
-					mv.visitJumpInsn(Opcodes.GOTO, l2);
-					mv.visitLabel(l1);
-					compile(ifExp.elseExp());
-					mv.visitLabel(l2);
-				},
-				let -> {
-					compile(let.boundExp());
-					Id var = let.var();
-					locals.add(var);
-					storeLocal(locals.size()-1, types.get(var));
-					compile(let.body());
-				},
-				case_ -> {
-					// TODO マッチしないときの例外処理
-					// TODO tableswitchに置き換え（以下のようにしてできるはず）
-					// invokedynamic #0:typeSwitch, 0  2つ目の引数は型リストの前半を無視するとき使う
-					// tableswitch   { // -1 to 0
-					//        0: l1
-					//        1: l2
-					//        2: l3
-					//        default: lerr
-					// }
-					// BootstrapMethods:
-					//  0: REF_invokeStatic java/lang/runtime/SwitchBootstraps.typeSwitch:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;
-					//    Method arguments:
-					//      Type1
-					//      Type2
-					//      Type3
-
-					/*
-					 * case e of
-					 *   pat1 -> exp1
-					 *   pat2 -> exp2
-					 *   pat3 -> exp3
-					 *
-					 * を
-					 *
-					 * e not match pat1 goto l2
-					 * exp1
-					 * goto neck
-					 * :l2
-					 * e not match pat2 goto l3
-					 * exp2
-					 * goto neck
-					 * :l3
-					 * exp3
-					 * goto neck  // stack framesのため
-					 * :neck
-					 *
-					 * にする．
-					 */
-					Type targetTy = getType(case_.target());
-					locals.add(LOCAL_DUMMY_ID);
-					int targetLocalIdx = locals.size()-1;
-					compile(case_.target());
-					storeLocal(targetLocalIdx, targetTy);
-					Label neck = new Label();
-
-					// マッチしないパターンに遭遇したら次の選択肢に進む
-					IdList localsBeforeBranch = new IdList(locals);
-					for(int branchIdx = 0; branchIdx < case_.branches().size(); branchIdx++) {
-						Label nextBranchLabel = (branchIdx < case_.branches().size()-1)
-								? new Label() : null;
-						CcCaseBranch branch = case_.branches().get(branchIdx);
-
-						checkMatchAndStoreLocals(
-								targetLocalIdx,
-								branch.pattern(),
-								nextBranchLabel);
-						compile(branch.body());
-						mv.visitJumpInsn(Opcodes.GOTO, neck);
-
-						if(nextBranchLabel != null) {
-							mv.visitLabel(nextBranchLabel);
+				}, builtin -> {
+					int arity = types.get(funId).flatten().size() - 1;
+					if (args.size() == arity) {
+						for (int i = 0; i < arity; i++) {
+							compile(args.get(i));
 						}
-						locals = localsBeforeBranch;
+
+						builtin.accept(mv);
+					} else if (args.size() < arity) {
+						todo("partial application");
+					} else {
+						neverHappen("builtins never return function object", loc);
 					}
-					mv.visitLabel(neck);
+				}, _ -> {
+					compile(var);
+					for (int i = 0; i < args.size(); i++) {
+						compile(args.get(i));
+						invokeApplyWithBoxing(funType.apply(i).asArrow());
+					}
+				}, ctor -> {
+					if (args.size() != ctor.args().size()) {
+						todo("currying");
+					}
+					String subclassName = classNames.get(ctor.id());
+					mv.visitTypeInsn(Opcodes.NEW, subclassName);
+					mv.visitInsn(Opcodes.DUP);
+					args.forEach(arg -> compile(arg));
+					mv.visitMethodInsn(Opcodes.INVOKESPECIAL, subclassName, "<init>",
+							toDesc(ctor.args(), Type.UNIT), false);
 				});
+			} else {
+				compile(fun);
+
+				// function object remains on stack top
+				for (int i = 0; i < args.size(); i++) {
+					compile(args.get(i));
+					invokeApplyWithBoxing(funType.apply(i).asArrow());
+				}
+			}
+		}
+		case CcMkCls(Id clsFunc, IdList caps, Location _) -> {
+			Id impl = clsFunc;
+			List<Type> indyArgTys = caps.stream().map(types::get).toList();
+			Type.Arrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
+
+			if (indyReturnTy == null) {
+				throw new Error(impl.toString());
+			}
+
+			caps.forEach(cap -> {
+				loadLocal(locals.indexOf(cap), types.get(cap));
+			});
+
+			mv.visitInvokeDynamicInsn("apply", toDesc(indyArgTys, indyReturnTy), new Handle(
+					Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+					"(Ljava/lang/invoke/MethodHandles$Lookup;" + "Ljava/lang/String;"
+							+ "Ljava/lang/invoke/MethodType;" + "Ljava/lang/invoke/MethodType;"
+							+ "Ljava/lang/invoke/MethodHandle;" + "Ljava/lang/invoke/MethodType;"
+							+ ")Ljava/lang/invoke/CallSite;",
+					false), toMethodType(toFunctionApplyDescErased(indyReturnTy)),
+					new Handle(Opcodes.H_INVOKESTATIC, module.name(), javaMethodName(impl),
+							toplevelDescs.get(impl), false),
+					toMethodType(toBoxedDesc(indyReturnTy)));
+		}
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+			Label l1 = new Label();
+			Label l2 = new Label();
+			compile(cond);
+			mv.visitJumpInsn(Opcodes.IFEQ, // = 0; false
+					l1);
+			compile(thenExp);
+			mv.visitJumpInsn(Opcodes.GOTO, l2);
+			mv.visitLabel(l1);
+			compile(elseExp);
+			mv.visitLabel(l2);
+		}
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+			compile(boundExp);
+			locals.add(varName);
+			storeLocal(locals.size() - 1, types.get(varName));
+			compile(body);
+		}
+		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
+			// TODO マッチしないときの例外処理
+			// TODO tableswitchに置き換え（以下のようにしてできるはず）
+			// invokedynamic #0:typeSwitch, 0 2つ目の引数は型リストの前半を無視するとき使う
+			// tableswitch { // -1 to 0
+			// 0: l1
+			// 1: l2
+			// 2: l3
+			// default: lerr
+			// }
+			// BootstrapMethods:
+			// 0: REF_invokeStatic
+			// java/lang/runtime/SwitchBootstraps.typeSwitch:(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;
+			// Method arguments:
+			// Type1
+			// Type2
+			// Type3
+
+			/*
+			 * case e of pat1 -> exp1 pat2 -> exp2 pat3 -> exp3
+			 *
+			 * を
+			 *
+			 * e not match pat1 goto l2 exp1 goto neck :l2 e not match pat2 goto l3 exp2 goto neck
+			 * :l3 exp3 goto neck // stack framesのため :neck
+			 *
+			 * にする．
+			 */
+			Type targetTy = getType(target);
+			locals.add(LOCAL_DUMMY_ID);
+			int targetLocalIdx = locals.size() - 1;
+			compile(target);
+			storeLocal(targetLocalIdx, targetTy);
+			Label neck = new Label();
+
+			// マッチしないパターンに遭遇したら次の選択肢に進む
+			IdList localsBeforeBranch = new IdList(locals);
+			for (int branchIdx = 0; branchIdx < branches.size(); branchIdx++) {
+				Label nextBranchLabel = (branchIdx < branches.size() - 1) ? new Label() : null;
+				CcCaseBranch branch = branches.get(branchIdx);
+
+				checkMatchAndStoreLocals(targetLocalIdx, branch.pattern(), nextBranchLabel);
+				compile(branch.body());
+				mv.visitJumpInsn(Opcodes.GOTO, neck);
+
+				if (nextBranchLabel != null) {
+					mv.visitLabel(nextBranchLabel);
+				}
+				locals = localsBeforeBranch;
+			}
+			mv.visitLabel(neck);
+		}
+		}
 	}
 	/**
 	 * パターンのマッチをチェックする．
@@ -890,7 +832,7 @@ public final class BytecodeGenerator {
 	}
 
 	private static String toFunctionApplyDescErased(Type.Arrow ty) {
-		return toDesc(ty.arg(), ty.ret(), any -> objectDesc);
+		return toDesc(ty.arg(), ty.ret(), _ -> objectDesc);
 	}
 
 	/**
@@ -902,7 +844,7 @@ public final class BytecodeGenerator {
 		return toDesc(ty.arg(), ty.ret(), ty_ -> ty_.isArrow() ? functionDesc : Boxing.of(ty_.asAtom()).boxedClassDesc);
 	}
 
-	private static String getDescription(CcFunc decl, IdMap<Type> types) {
+	private static String getDescription(CcFunDecl decl, IdMap<Type> types) {
 
 		List<Type> argTys = decl.args().stream()
 				.map(pat -> types.get(pat.headId()))
@@ -1011,14 +953,17 @@ public final class BytecodeGenerator {
 	}
 
 	private Type getType(CcExp exp) {
-		return exp.fold(
-				cnst  -> cnst.type(),
-				var   -> types.get(var.id()),
-				call  -> returnType(call),
-				mkCls -> types.get(mkCls.id()),
-				if_   -> getType(if_.thenExp()),
-				let   -> getType(let.body()),
-				case_ -> getType(case_.branches().get(0).body()));
+		return switch (exp) {
+        case CcCnst(ConstValue value, Location _) -> value.type();
+        case CcVar(Id id, Location _) -> types.get(id);
+        case CcApp call -> returnType(call);
+        case CcMkCls(Id id, IdList _, Location _) -> types.get(id);
+        case CcIf(CcExp _, CcExp thenExp, CcExp _, Location _) -> getType(thenExp);
+        case CcLet(Id _, CcExp _, CcExp body, Location _) -> getType(body);
+        case CcCase(CcExp _, List<CcCaseBranch> branches, Location _) -> {
+        	yield getType(branches.get(0).body());
+        }
+		};
 	}
 
 	private static Pattern separatorReplacer = Pattern.compile(Id.SEPARATOR, Pattern.LITERAL);

@@ -14,7 +14,7 @@ import zlk.util.pp.PrettyPrinter;
  *
  * @author YuyaAizawa
  */
-public record CcFunc(
+public record CcFunDecl(
 		Id id,
 		List<IcPattern> args,
 		CcExp body,

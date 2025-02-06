@@ -11,19 +11,19 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
-import zlk.clcalc.CcApp;
-import zlk.clcalc.CcCase;
 import zlk.clcalc.CcCaseBranch;
-import zlk.clcalc.CcCnst;
 import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcExp;
-import zlk.clcalc.CcFunc;
-import zlk.clcalc.CcIf;
-import zlk.clcalc.CcLet;
-import zlk.clcalc.CcMkCls;
+import zlk.clcalc.CcExp.CcApp;
+import zlk.clcalc.CcExp.CcCase;
+import zlk.clcalc.CcExp.CcCnst;
+import zlk.clcalc.CcExp.CcIf;
+import zlk.clcalc.CcExp.CcLet;
+import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcVar;
+import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
-import zlk.clcalc.CcType;
-import zlk.clcalc.CcVar;
+import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -31,7 +31,6 @@ import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
-import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
@@ -43,6 +42,7 @@ import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
+import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
@@ -55,7 +55,7 @@ public final class ClosureConveter {
 	private final IdMap<Type> type; // 変換後のIdの型を追加
 	private final Set<Id> knowns;
 
-	private final List<CcFunc> toplevels;
+	private final List<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
 	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
@@ -74,9 +74,9 @@ public final class ClosureConveter {
 				.stream()
 				.map(decl -> compileFunc(decl.id(), decl.args(), decl.body()))
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
-					throw new RuntimeException("toplevel must not be closure: "+cls.id()); }));
+					throw new RuntimeException("toplevel must not be closure: "+cls.clsFunc()); }));
 
-		List<CcType> types = src.types().stream().map(ty -> convert(ty)).toList();
+		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
 		return new CcModule(src.name(), types, toplevels, src.origin());
 	}
 
@@ -93,12 +93,12 @@ public final class ClosureConveter {
 
 		if(frees.isEmpty()) {
 			System.out.println(id + " is not cloeure.");
-			toplevels.add(new CcFunc(id, args_, ccBody, body.loc()));
+			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
 			System.out.println(id + " is cloeure. frees: "+frees);
-			CcFunc closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
+			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
@@ -115,7 +115,7 @@ public final class ClosureConveter {
 	 * @param loc 元の関数のLocation
 	 * @return
 	 */
-	private CcFunc makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
+	private CcFunDecl makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
 		List<Type> types = new ArrayList<>();
 		frees.forEach(id -> types.add(type.get(id)));
 		args_.forEach(pat -> types.add(type.get(pat.headId())));
@@ -138,7 +138,7 @@ public final class ClosureConveter {
 
 		CcExp clsBody = body.substId(idMap);
 
-		return new CcFunc(clsId, clsArgs, clsBody, loc);
+		return new CcFunDecl(clsId, clsArgs, clsBody, loc);
 	}
 
 	private CcExp compile(IcExp exp) {
@@ -227,43 +227,43 @@ public final class ClosureConveter {
 	}
 
 	private void fv(CcExp exp, Set<Id> bounded, IdList free) {
-		exp.match(
-				_ -> {},
-				var  -> {
-					Id id = var.id();
-					if(!bounded.contains(id) && !free.contains(id)) {
-						free.add(id);
-					}
-				},
-				call  -> {
-					fv(call.fun(), bounded, free);
-					call.args().forEach(arg -> fv(arg, bounded, free));
-				},
-				mkCls -> {
-					if(!bounded.contains(mkCls.clsFunc())) {
-						throw new AssertionError();
-					}
-					mkCls.caps().stream()
-							.filter(id -> !bounded.contains(id) && !free.contains(id))
-							.forEach(free::add);
-				},
-				if_  -> {
-					fv(if_.cond(), bounded, free);
-					fv(if_.thenExp(), bounded, free);
-					fv(if_.elseExp(), bounded, free);
-				},
-				let  -> {
-					bounded.add(let.var());
-					fv(let.boundExp(), bounded, free);
-					fv(let.body(), bounded, free);
-				},
-				case_ -> {
-					fv(case_.target(), bounded, free);
-					for(CcCaseBranch branch: case_.branches()) {
-						branch.pattern().accumulateVars(bounded);
-						fv(branch.body(), bounded, free);
-					}
-				});
+		switch (exp) {
+		case CcCnst _ -> {
+		}
+		case CcVar(Id id, Location _) -> {
+			if (!bounded.contains(id) && !free.contains(id)) {
+				free.add(id);
+			}
+		}
+		case CcApp(CcExp fun, List<CcExp> args, Location _) -> {
+			fv(fun, bounded, free);
+			args.forEach(arg -> fv(arg, bounded, free));
+		}
+		case CcMkCls(Id clsFunc, IdList caps, Location _) -> {
+			if (!bounded.contains(clsFunc)) {
+				throw new AssertionError();
+			}
+			caps.stream().filter(id -> !bounded.contains(id) && !free.contains(id))
+					.forEach(free::add);
+		}
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+			fv(cond, bounded, free);
+			fv(thenExp, bounded, free);
+			fv(elseExp, bounded, free);
+		}
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+			bounded.add(varName);
+			fv(boundExp, bounded, free);
+			fv(body, bounded, free);
+		}
+		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
+			fv(target, bounded, free);
+			for (CcCaseBranch branch : branches) {
+				branch.pattern().accumulateVars(bounded);
+				fv(branch.body(), bounded, free);
+			}
+		}
+		}
 	}
 
 	private Id freshId(Id original) {
@@ -281,8 +281,8 @@ public final class ClosureConveter {
 				+ Id.SEPARATOR + exceptModule);
 	}
 
-	private CcType convert(IcTypeDecl icType) {
-		return new CcType(icType.id(), icType.ctors().stream().map(ctor -> convert(ctor)).toList(), icType.loc());
+	private CcTypeDecl convert(IcTypeDecl icType) {
+		return new CcTypeDecl(icType.id(), icType.ctors().stream().map(ctor -> convert(ctor)).toList(), icType.loc());
 	}
 
 	private CcCtor convert(IcCtor icCtor) {
