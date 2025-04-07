@@ -7,7 +7,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public record Module(
 		String name,
-		List<UnionOrDecl> decls,
+		List<Decl> decls,
 		String origin     // ファイル名
 ) implements PrettyPrintable {
 

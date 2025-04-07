@@ -1,5 +1,7 @@
 package zlk.util.pp;
 
+import java.util.function.Consumer;
+
 public interface PrettyPrinter extends UncheckedAppendable {
 
 	/**
@@ -52,6 +54,21 @@ public interface PrettyPrinter extends UncheckedAppendable {
 
 	default PrettyPrinter append(int i) {
 		return append(Integer.toString(i));
+	}
+
+	/**
+	 * Performs the specified print action with indentation.
+	 *
+	 * A utility method for easily matching the number of inc() and of dec().
+	 *
+	 * @param printAction Print commands to be executed in an indented state.
+	 * @return This PrettyPrinter for fluent interface
+	 */
+	default PrettyPrinter indent(Runnable printAction) {
+		inc();
+		printAction.run();
+		dec();
+		return this;
 	}
 
 	default <EX extends Wrapper> EX wrap(EX wrapper) {
@@ -109,43 +126,17 @@ public interface PrettyPrinter extends UncheckedAppendable {
 		return this;
 	}
 
-	default PrettyPrinter oneline(Iterable<? extends PrettyPrintable> targets, CharSequence delimiter) {
-
-		PrettyPrinter impl = wrap(new Wrapper() {
-			boolean appended = false;
-
-			@Override
-			public PrettyPrinter append(CharSequence cs) {
-				if(cs.isEmpty()) {
-					return this;
-				}
-				appended = true;
-				return super.append(cs);
-			}
-
-			@Override
-			public PrettyPrinter endl() {
-				if(appended) {
-					append(" ");
-					appended = false;
-				}
-				return this;
-			}
-		});
-
-		boolean first = true;
-		for(PrettyPrintable target : targets) {
-			if(!first) {
-				impl.append(delimiter);
-			}
-			impl.append(target);
-			first = false;
-		}
-
+	default PrettyPrinter withoutLineBreak(Consumer<PrettyPrinter> printAction) {
+		PrettyPrinter wolbPrinter = wrap(Wrapper.oneLine());
+		printAction.accept(wolbPrinter);
 		return this;
 	}
 }
 
+/**
+ * Wrapper overrides {@link PrettyPrinter}'s behavior by passing
+ * {@link PrettyPrinter#wrap(Wrapper)}.
+ */
 abstract class Wrapper implements PrettyPrinter {
 	PrettyPrinter parent;
 
@@ -172,4 +163,41 @@ abstract class Wrapper implements PrettyPrinter {
 		parent.dec();
 		return this;
 	}
+
+	/**
+	 * Returns {@link Wrapper} that prints objects in one-line.
+	 *
+	 * It calls {@link PrettyPrintable#mkStringWithoutLineBreak(PrettyPrinter)} instead of
+	 * {@link PrettyPrintable#mkString(PrettyPrinter)}.
+	 *
+	 * @return One-line wrapper
+	 */
+	public static Wrapper oneLine() {
+		return ONE_LINE;
+	}
+
+	/**
+	 * Returns {@link Wrapper} that prints {@link PrettyPrinter#endl()} as one space.
+	 *
+	 * @return Wrapper
+	 * @see #oneLine()
+	 */
+	public static Wrapper spaceEndl() {
+		return SPACE_ENDL;
+	}
+
+	private static final Wrapper ONE_LINE = new Wrapper() {
+		@Override
+		public PrettyPrinter append(PrettyPrintable target) {
+			target.mkStringWithoutLineBreak(this);
+			return this;
+		}
+	};
+
+	private static final Wrapper SPACE_ENDL = new Wrapper() {
+		@Override
+		public PrettyPrinter endl() {
+			return append(" ");
+		}
+	};
 }

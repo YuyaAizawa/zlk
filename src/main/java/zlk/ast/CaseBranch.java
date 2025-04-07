@@ -12,6 +12,8 @@ implements PrettyPrintable {
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(pattern).append(" ->").endl();
-		pp.inc().append(body).dec();
+		pp.indent(() -> {
+			pp.append(body);
+		});
 	}
 }

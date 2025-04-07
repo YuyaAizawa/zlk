@@ -14,7 +14,7 @@ import zlk.util.pp.PrettyPrinter;
  *
  * @author YuyaAizawa
  */
-public record CcDecl(
+public record CcFunDecl(
 		Id id,
 		List<IcPattern> args,
 		CcExp body,
@@ -27,10 +27,16 @@ implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("decl:").endl().inc();
-		pp.field("id", id);
-		pp.append("args: [").oneline(args, ", ").append("]").endl();
-		pp.field("body", body);
-		pp.dec();
+		pp.append("func:").endl();
+		pp.indent(() -> {
+			pp.append("id: ").append(id).endl();
+			pp.append("args: [");
+			pp.append(PrettyPrintable.join(args.iterator(), ", "));
+			pp.append("]").endl();
+			pp.append("body:").endl();
+			pp.indent(() -> {
+				pp.append(body);
+			});
+		});
 	}
 }

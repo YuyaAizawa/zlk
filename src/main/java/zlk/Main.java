@@ -17,10 +17,9 @@ import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
+import zlk.common.Type;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
@@ -75,7 +74,7 @@ public class Main {
 				sum list =
 				  case list of
 				    Nil -> 0
-				    Cons hd tl -> hd
+				    Cons hd tl -> add hd (sum tl)
 
 				ans1 =
 				  sq 42
@@ -109,17 +108,17 @@ public class Main {
 
 		System.out.println("-- EXTRACT CONSTRAINS --");
 		Constraint cint = ConstraintExtractor.extract(idcalc);
-		System.out.println(cint);
+		System.out.println(cint.buildString());
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
 		TypeReconstructor tr = new TypeReconstructor();
 		IdMap<Type> types = tr.run(cint);
-		System.out.println(types);
+		System.out.println(types.buildString());
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new TyAtom(union.id())))));
+			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
 		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- TYPE CHECK --"); // TODO remove
