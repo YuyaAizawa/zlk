@@ -2,6 +2,7 @@ package zlk.common.id;
 
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -52,7 +53,6 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 	public V get(Id id) {
 		V result = getOrNull(id);
 		if(result == null) {
-			System.out.println(this);
 			throw new NoSuchElementException("id: "+id);
 		}
 		return result;
@@ -138,32 +138,18 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("[");
-		boolean first = true;
-		for(Map.Entry<Id, V> e : impl.entrySet()) {
-			if(!first) {
-				pp.append(", ");
-			} else {
-				pp.append(" ");
-				first = false;
-			}
-			pp.append(e.getKey()).append(":");
-			if(e.getValue() instanceof PrettyPrintable p) {
-				pp.append(p);
-			} else {
-				pp.append("--cannot print--");
-			}
-			pp.endl();
-		}
-		pp.append("]");
-	}
+		Function<Map.Entry<Id, V>, PrettyPrintable> entryMapper = entry ->
+				pp_ -> {
+					pp_.append(entry.getKey()).append(": ");
+					if(entry.getValue() instanceof PrettyPrintable pp__) {
+						pp_.append(pp__);
+					} else {
+						pp_.append("--cannot print--");
+					}
+				};
 
-	@Override
-	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
+		Iterator<PrettyPrintable> entryIter = impl.entrySet().stream().map(entryMapper).iterator();
+		pp.append(PrettyPrintable.toElmListStyle(entryIter));
 	}
 }
-
 

@@ -1,43 +1,81 @@
 package zlk.idcalc;
 
+import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.idcalc.IcPattern.Ctor;
+import zlk.idcalc.IcPattern.Var;
+import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcPattern extends PrettyPrintable, LocationHolder
-permits IcPVar, IcPCtor {
+permits Var, Ctor {
 
-	public default <R> R fold(
-			Function<? super IcPVar, ? extends R> forVar,
-			Function<? super IcPCtor, ? extends R> forCtor) {
-		if(this instanceof IcPVar var) {
-			return forVar.apply(var);
-		} else if(this instanceof IcPCtor ctor) {
-			return forCtor.apply(ctor);
-		} else {
-			throw new Error(this.getClass().toString());
+	record Var(
+			Id id,
+			Location loc) implements IcPattern {}
+
+	record Ctor(
+			IcExp.IcVarCtor ctor,
+			List<Arg> args,
+			Location loc) implements IcPattern {
+
+		@Override
+		public Id headId() {
+			return ctor.id();
 		}
 	}
 
-	public default <R> void match(
-			Consumer<? super IcPVar> forVar,
-			Consumer<? super IcPCtor> forCtor) {
-		if(this instanceof IcPVar var) {
-			forVar.accept(var);
-		} else if(this instanceof IcPCtor ctor) {
-			forCtor.accept(ctor);
-		} else {
-			throw new Error(this.getClass().toString());
+	public default Id headId() {
+		return switch(this) {
+		case Var(Id id, Location _) -> {
+			yield id;
+		}
+		case Ctor(IcExp.IcVarCtor ctor, List<Arg> _, Location _) -> {
+			yield ctor.id();
+		}
+		};
+	}
+
+	public default void accumulateVars(Set<Id> known) {
+		switch(this) {
+		case Var(Id id, Location _) -> {
+			known.add(id);
+		}
+		case Ctor(IcExp.IcVarCtor _, List<Arg> args, Location _) -> {
+			args.forEach(arg -> arg.pattern().accumulateVars(known));
+		}
 		}
 	}
 
-	public default void addVars(Set<Id> known) {
-		match(
-				var  -> known.add(var.id()),
-				ctor -> ctor.args().forEach(arg -> arg.pattern().addVars(known)));
+	@Override
+	default void mkString(PrettyPrinter pp) {
+		switch(this) {
+		case Var(Id id, Location _) -> {
+			pp.append(id);
+		}
+		case Ctor(IcExp.IcVarCtor ctor, List<Arg> args, Location _) -> {
+			pp.append(ctor);
+			for(Arg arg: args) {
+				pp.append(" ").append(arg);
+			}
+		}
+		}
+	}
+
+	record Arg(
+			IcPattern pattern,
+			Type type // for cache
+	) implements PrettyPrintable {
+
+		@Override
+		public void mkString(PrettyPrinter pp) {
+			pp.append(pattern);
+		}
 	}
 }
+

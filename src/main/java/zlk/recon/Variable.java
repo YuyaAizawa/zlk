@@ -6,14 +6,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import zlk.common.type.TyAtom;
-import zlk.common.type.TyVar;
-import zlk.common.type.Type;
-import zlk.recon.content.Content;
-import zlk.recon.content.FlexVar;
-import zlk.recon.flattype.FlatType;
+import zlk.common.Type;
+import zlk.common.id.Id;
+import zlk.recon.constraint.Content;
+import zlk.recon.constraint.FlatType;
+import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.Structure;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -27,7 +28,11 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 
 	private static final AtomicInteger idCounter = new AtomicInteger();
 	public static Variable mkFlexVar() {
-		return new Variable(new Descriptor(new FlexVar(idCounter.getAndIncrement()), NO_RANK, NO_MARK));
+		return new Variable(new Descriptor(
+				new FlexVar(idCounter.getAndIncrement()),
+				NO_RANK,
+				NO_MARK
+		));
 	}
 
 	public static Content mkFlexVar(String name) {
@@ -39,40 +44,36 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 	}
 
 	public Type toType() {
-		return get().content.fold(
-				var ->
-					// TODO 別の場所へ
-					new TyVar(var.maybeName() == null
-							? "?"+var.id()+"?"
-							: var.maybeName())
-				,
-				struct -> struct.flatType().toType());
+		return switch(get().content) {
+		case FlexVar(int id, Optional<String> maybeName) ->
+			new Type.Var(maybeName.orElseGet(() -> "?"+id+"?"));
+		case Structure(FlatType flatType) ->
+				flatType.toType();
+		};
 	}
 
-	public zlk.common.type.Type toAnnotation() {
+	public Type toAnnotation() {
 		Map<String, Variable> userNames = new HashMap<>();
 		accumlateVarNames(userNames);
 		return toAnnotation(userNames);
 	}
 
-	private zlk.common.type.Type toAnnotation(Map<String, Variable> userNames) {
-		Descriptor dtor = get();
-		return dtor.content.fold(
-				flex -> {
-					String name = flex.maybeName();
-					if(name == null) {
-						System.out.println(this);
-						name = todo();
-						set(new Descriptor(new FlexVar(flex.id(), name), dtor.rank, dtor.mark));
-					}
-					return new TyVar(name);
-				},
-				sture -> termToAnnotation(sture.flatType(), userNames));
-	}
-	private static zlk.common.type.Type termToAnnotation(FlatType flatType, Map<String, Variable> userNames) {
-		return flatType.fold(
-				app -> new TyAtom(app.id()),
-				fun -> Type.arrow(List.of(fun.arg().toAnnotation(), fun.ret().toAnnotation())));
+	private Type toAnnotation(Map<String, Variable> userNames) {
+		return switch(get().content) {
+		case FlexVar(int id, Optional<String> maybeName) ->
+			maybeName.map(name -> new Type.Var(name))
+					.orElseGet(() -> todo());
+//			if(name == null) {
+//				System.out.println(this);
+//				name = todo();
+//				set(new Descriptor(new FlexVar(flex.id(), name), dtor.rank, dtor.mark));
+//			}
+//			return new TyVar(name);
+		case Structure(FlatType.App1(Id id, _)) ->
+			new Type.Atom(id);
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+			Type.arrow(List.of(arg.toAnnotation(), ret.toAnnotation()));
+		};
 	}
 
 	/**
@@ -86,28 +87,23 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 			return;
 		}
 		set(new Descriptor(dtor.content, dtor.rank, GET_VER_NAMES_MARK));
-		dtor.content.match(
-				flex -> {
-					String maybeName = flex.maybeName();
-					if(maybeName == null) {
-						return;
-					} else {
-						if(takenNames.containsKey(maybeName)) {
-							todo();
-						} else {
-							takenNames.put(maybeName, this);
-						}
-					}
-				},
-				sture -> sture.flatType().match(
-						app ->
-							app.args().forEach(arg -> arg.accumlateVarNames(takenNames)),
-						fun -> {
-							fun.arg().accumlateVarNames(takenNames);
-							fun.ret().accumlateVarNames(takenNames);
-						}
-				)
-		);
+		switch(dtor.content) {
+		case FlexVar(int id, Optional<String> maybeName) -> {
+			maybeName.ifPresent(name -> {
+				if(takenNames.containsKey(name)) {
+					todo();
+				} else {
+					takenNames.put(name, this);
+				}
+			});
+		}
+		case Structure(FlatType.App1(_, List<Variable> args)) ->
+			args.forEach(arg -> arg.accumlateVarNames(takenNames));
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) -> {
+			arg.accumlateVarNames(takenNames);
+			ret.accumlateVarNames(takenNames);
+		}
+		}
 	}
 
 	public boolean occurs() {
@@ -120,17 +116,14 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 		}
 
 		seen.add(this);
-		return get().content.fold(
-				flex -> foundCycle,
-				cture -> cture.flatType().fold(
-						app -> {
-							return app.args().stream()
-									.anyMatch(arg -> arg.occursHelp(seen, foundCycle));
-						},
-						fun -> {
-							return fun.arg().occursHelp(seen,
-									fun.ret().occursHelp(new ArrayList<>(seen), foundCycle));
-						}));
+		return switch(get().content) {
+		case FlexVar _ ->
+			foundCycle;
+		case Structure(FlatType.App1(_, List<Variable> args)) ->
+			args.stream().anyMatch(arg -> arg.occursHelp(seen, foundCycle));
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+			arg.occursHelp(seen, ret.occursHelp(new ArrayList<>(seen), foundCycle));
+		};
 	}
 
 	@Override
