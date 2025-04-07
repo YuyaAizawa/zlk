@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-import zlk.common.type.Type;
+import zlk.common.Type;
 
 public final class TyEnv {
 	private final Map<String, Type> impl;

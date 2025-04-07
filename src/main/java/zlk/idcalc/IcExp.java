@@ -1,15 +1,24 @@
 package zlk.idcalc;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
+import zlk.common.ConstValue;
+import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.common.id.IdList;
+import zlk.idcalc.IcExp.IcAbs;
+import zlk.idcalc.IcExp.IcApp;
+import zlk.idcalc.IcExp.IcCase;
+import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcLetrec;
+import zlk.idcalc.IcExp.IcVarCtor;
+import zlk.idcalc.IcExp.IcVarForeign;
+import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
@@ -18,143 +27,112 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
 permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, IcLetrec, IcCase {
 
-	default <R> R fold(
-			Function<? super IcCnst, R> forCnst,
-			Function<? super IcVarLocal, R> forVar,
-			Function<? super IcVarForeign, R> forForeign,
-			Function<? super IcVarCtor, R> forCtor,
-			Function<? super IcAbs, R> forAbs,
-			Function<? super IcApp, R> forApp,
-			Function<? super IcIf, R> forIf,
-			Function<? super IcLet, R> forLet,
-			Function<? super IcLetrec, R> forLetrec,
-			Function<? super IcCase, R> forCase) {
-		if(this instanceof IcCnst cnst) {
-			return forCnst.apply(cnst);
-		} else if(this instanceof IcVarLocal id) {
-			return forVar.apply(id);
-		} else if(this instanceof IcVarForeign foreign) {
-			return forForeign.apply(foreign);
-		} else if(this instanceof IcVarCtor ctor) {
-			return forCtor.apply(ctor);
-		} else if(this instanceof IcAbs abs) {
-			return forAbs.apply(abs);
-		} else if(this instanceof IcApp app) {
-			return forApp.apply(app);
-		} else if(this instanceof IcIf ifExp) {
-			return forIf.apply(ifExp);
-		} else if(this instanceof IcLet let) {
-			return forLet.apply(let);
-		} else if(this instanceof IcLetrec letrec) {
-			return forLetrec.apply(letrec);
-		} else if(this instanceof IcCase case_) {
-			return forCase.apply(case_);
-		} else {
-			throw new Error(this.getClass().toString());
+	record IcCnst(
+			ConstValue value,
+			Location loc) implements IcExp {
+		Type type() {
+			return value.type();
 		}
 	}
 
-	default void match(
-			Consumer<? super IcCnst> forCnst,
-			Consumer<? super IcVarLocal> forVar,
-			Consumer<? super IcVarForeign> forForeign,
-			Consumer<? super IcVarCtor> forCtor,
-			Consumer<? super IcAbs> forAbs,
-			Consumer<? super IcApp> forApp,
-			Consumer<? super IcIf> forIf,
-			Consumer<? super IcLet> forLet,
-			Consumer<? super IcLetrec> forLetrec,
-			Consumer<? super IcCase> forCase) {
-		if(this instanceof IcCnst cnst) {
-			forCnst.accept(cnst);
-		} else if(this instanceof IcVarLocal id) {
-			forVar.accept(id);
-		} else if(this instanceof IcVarForeign foreign) {
-			forForeign.accept(foreign);
-		} else if(this instanceof IcVarCtor ctor) {
-			forCtor.accept(ctor);
-		} else if(this instanceof IcAbs abs) {
-			forAbs.accept(abs);
-		} else if(this instanceof IcApp app) {
-			forApp.accept(app);
-		} else if(this instanceof IcIf ifExp) {
-			forIf.accept(ifExp);
-		} else if(this instanceof IcLet let) {
-			forLet.accept(let);
-		} else if(this instanceof IcLetrec letrec) {
-			forLetrec.accept(letrec);
-		} else if(this instanceof IcCase case_) {
-			forCase.accept(case_);
-		} else {
-			throw new Error(this.getClass().toString());
-		}
-	}
+	record IcVarLocal(
+			Id id,
+			Location loc) implements IcExp {}
 
-	default List<IcVarLocal> fv(Collection<Id> known) {
-		List<IcVarLocal> acc = new ArrayList<>();
+	record IcVarForeign(
+			Id id,
+			Type type,
+			Location loc) implements IcExp {}
+
+	record IcVarCtor(
+			Id id,
+			Type type,
+			Location loc) implements IcExp {}
+
+	record IcAbs(
+			Id id,
+			Type type,
+			IcExp body,
+			Location loc) implements IcExp {}
+
+	record IcApp(
+			IcExp fun,
+			List<IcExp> args,
+			Location loc) implements IcExp {}
+
+	record IcIf(
+			IcExp cond,
+			IcExp exp1,
+			IcExp exp2,
+			Location loc) implements IcExp {}
+
+	record IcLet(
+			IcFunDecl decl,
+			IcExp body,
+			Location loc) implements IcExp {}
+
+	record IcLetrec(
+			List<IcFunDecl> decls,
+			IcExp body,
+			Location loc) implements IcExp {}
+
+	record IcCase(
+			IcExp target,
+			List<IcCaseBranch> branches,
+			Location loc) implements IcExp {}
+
+	default IdList fv(Collection<Id> known) {
+		IdList acc = new IdList();
 		Set<Id> knownSet = new HashSet<>(known);
 		fv(acc, knownSet);
-		return Collections.unmodifiableList(acc);
+		return acc;
 	}
 
-	private void fv(List<IcVarLocal> acc, Set<Id> known) {
-		match(
-				cnst -> {},
-				var -> {
-					if(!known.contains(var.id())) {
-						acc.add(var);
-					}},
-				foreign -> {},
-				ctor -> {},
-				abs -> {
-					known.add(abs.id());
-					abs.body().fv(acc, known);
-				},
-				app -> {
-					app.fun().fv(acc, known);
-					app.args().forEach(arg -> arg.fv(acc, known));
-				},
-				if_ -> {
-					if_.cond().fv(acc, known);
-					if_.exp1().fv(acc, known);
-					if_.exp2().fv(acc, known);
-				},
-				let -> {
-					known.add(let.decl().id());
-					let.decl().args().forEach(pat -> pat.addVars(known));
-					let.decl().body().fv(acc, known);
-					let.body().fv(acc, known);
-				},
-				letrec -> {
-					letrec.decls().forEach(decl -> {
-						decl.args().forEach(pat -> pat.addVars(known));
-						decl.body().fv(acc, known);
-					});
-					letrec.body().fv(acc, known);
-				},
-				case_ -> {
-					case_.target().fv(acc, known);
-					for(IcCaseBranch branch: case_.branches()) {
-						branch.pattern().addVars(known);
-						branch.body().fv(acc, known);
-					}
-				});
+	private void fv(IdList acc, Set<Id> known) {
+		switch (this) {
+		case IcCnst(ConstValue _, Location _) -> {}
+		case IcVarLocal(Id id, Location _) -> {
+			if (!known.contains(id)) {
+				acc.add(id);
+			}
+		}
+		case IcVarForeign(Id _, Type _, Location _) -> {}
+		case IcVarCtor(Id _, Type _, Location _) -> {}
+		case IcAbs(Id id, Type _, IcExp body, Location _) -> {
+			known.add(id);
+			body.fv(acc, known);
+		}
+		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
+			fun.fv(acc, known);
+			args.forEach(arg -> arg.fv(acc, known));
+		}
+		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
+			cond.fv(acc, known);
+			thenExp.fv(acc, known);
+			elseExp.fv(acc, known);
+		}
+		case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+			known.add(decl.id());
+			decl.args().forEach(pat -> pat.accumulateVars(known));
+			decl.body().fv(acc, known);
+			body.fv(acc, known);
+		}
+		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
+			decls.forEach(decl -> {
+				decl.args().forEach(pat -> pat.accumulateVars(known));
+				decl.body().fv(acc, known);
+			});
+			body.fv(acc, known);
+		}
+		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+			target.fv(acc, known);
+			branches.forEach(branch -> {
+				branch.pattern().accumulateVars(known);
+				branch.body().fv(acc, known);
+			});
+		}
+		}
 	}
-
-	static boolean isVar(IcExp exp) {
-		return exp instanceof IcVarLocal;
-	}
-
-	static boolean isIf(IcExp exp) {
-		return exp instanceof IcIf;
-	}
-
-	static boolean isLet(IcExp exp) {
-		return exp instanceof IcLet;
-	}
-
-	@Override
-	Location loc();
 
 	/**
 	 * Appends the string representation of this expression to specified printer.
@@ -162,11 +140,106 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 	 * @param pp printer to append string.
 	 */
 	@Override
-	void mkString(PrettyPrinter pp);
-
-	public static String buildString(IcExp exp) {
-		StringBuilder sb = new StringBuilder();
-		exp.pp(sb);
-		return sb.toString();
+	default void mkString(PrettyPrinter pp) {
+		switch (this) {
+		case IcCnst(ConstValue value, Location _) -> {
+			pp.append(value);
+		}
+		case IcVarLocal(Id id, Location _) -> {
+			pp.append(id);
+		}
+		case IcVarForeign(Id id, Type _, Location _) -> {
+			pp.append(id);
+		}
+		case IcVarCtor(Id id, Type _, Location _) -> {
+			pp.append(id);
+		}
+		case IcAbs(Id id, Type type, IcExp body, Location _) -> {
+			pp.append("\\").append(id).append(":").append(type).append(".").append(body);
+		}
+		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
+			switch(fun) {
+			case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcApp _ -> {
+				pp.append(fun);
+			}
+			case IcAbs _ -> {
+				pp.append("(").append(fun).append(")");
+			}
+			case IcIf _, IcLet _, IcLetrec _, IcCase _ -> {
+				pp.append("(").endl();
+				pp.indent(() -> pp.append(fun).endl());
+				pp.append(")");
+			}
+			}
+			args.forEach(arg -> {
+				pp.append(" ");
+				switch(arg) {
+				case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _ -> {
+					pp.append(fun);
+				}
+				case IcAbs _, IcApp _ -> {
+					pp.append("(").append(fun).append(")");
+				}
+				case IcIf _, IcLet _, IcLetrec _, IcCase _ -> {
+					pp.append("(").endl();
+					pp.indent(() -> pp.append(fun).endl());
+					pp.append(")");
+				}
+				}
+			});
+		}
+		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
+			pp.append("if ").append(cond).append(" then").endl();
+			pp.indent(() -> {
+				pp.append(thenExp).endl();
+			});
+			pp.append("else");
+			if(elseExp instanceof IcIf) {
+				pp.append(" ").append(elseExp);
+			} else {
+				pp.indent(() -> {
+					pp.endl().append(elseExp);
+				});
+			}
+		}
+		case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+			pp.append("let").endl();
+			pp.indent(() -> {
+				pp.append(decl).endl();
+			});
+			pp.append("in");
+			if(body instanceof IcLet | body instanceof IcLetrec) {
+				pp.append(" ").append(body);
+			} else {
+				pp.indent(() -> {
+					pp.endl().append(body);
+				});
+			}
+		}
+		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
+			pp.append("letrec").endl();
+			pp.indent(() -> {
+				decls.forEach(decl -> {
+					pp.append(decl).endl();
+				});
+			});
+			pp.append("in");
+			if(body instanceof IcLet | body instanceof IcLetrec) {
+				pp.append(" ").append(body);
+			} else {
+				pp.indent(() -> {
+					pp.endl().append(body);
+				});
+			}
+		}
+		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+			pp.append("case ").append(target).append(" of");
+			pp.indent(() -> {
+				branches.forEach(branch -> {
+					pp.endl().append(branch);
+				});
+			});
+		}
+		}
 	}
 }

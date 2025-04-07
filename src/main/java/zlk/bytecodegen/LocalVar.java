@@ -1,6 +1,6 @@
 package zlk.bytecodegen;
 
-import zlk.common.type.Type;
+import zlk.common.Type;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

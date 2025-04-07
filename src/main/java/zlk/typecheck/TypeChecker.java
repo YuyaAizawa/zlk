@@ -2,16 +2,24 @@ package zlk.typecheck;
 
 import java.util.List;
 
+import zlk.common.ConstValue;
+import zlk.common.Type;
+import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.common.type.TyArrow;
-import zlk.common.type.TyAtom;
-import zlk.common.type.Type;
-import zlk.idcalc.IcApp;
 import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcDecl;
+import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcExp;
+import zlk.idcalc.IcExp.IcAbs;
+import zlk.idcalc.IcExp.IcApp;
+import zlk.idcalc.IcExp.IcCase;
+import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcLetrec;
+import zlk.idcalc.IcExp.IcVarCtor;
+import zlk.idcalc.IcExp.IcVarForeign;
+import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
-import zlk.idcalc.IcPCtorArg;
 import zlk.idcalc.IcPattern;
 import zlk.util.Location;
 
@@ -29,15 +37,15 @@ public final class TypeChecker {
 	}
 
 	public void check(IcModule module) {
-		for(IcDecl decl : module.decls()) {
+		for(IcFunDecl decl : module.decls()) {
 			check(decl);
 		}
 	}
 
-	public Type check(IcDecl decl) {
+	public Type check(IcFunDecl decl) {
 		Type ret = check(decl.body());
 		for(IcPattern arg : decl.args()) {
-			ret = new TyArrow(check(arg), ret);
+			ret = new Type.Arrow(check(arg), ret);
 		}
 
 		try {
@@ -49,72 +57,79 @@ public final class TypeChecker {
 	}
 
 	private Type check(IcPattern pattern) {
-		return pattern.fold(
-				var -> env.get(var.id()),
-				ctor -> {
-					Type ctorType = env.get(ctor.ctor().id());
-					List<Type> argTypes = ctorType.flatten();
+		return switch(pattern) {
+		case IcPattern.Var(Id id, Location _) -> {
+			yield env.get(id);
+		}
+		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+			Type ctorType = env.get(ctor.id());
+			List<Type> argTypes = ctorType.flatten();
 
-					for (int i = 0; i < ctor.args().size(); i++) {
-						IcPCtorArg arg = ctor.args().get(i);
-						typeAssertion(arg.pattern(), arg.type());
-						assertEqual(arg.type(), argTypes.get(i), arg.pattern().loc());
-					}
-					return argTypes.get(argTypes.size()-1);
-				});
+			for (int i = 0; i < args.size(); i++) {
+				IcPattern.Arg arg = args.get(i);
+				typeAssertion(arg.pattern(), arg.type());
+				assertEqual(arg.type(), argTypes.get(i), arg.pattern().loc());
+			}
+			yield argTypes.get(argTypes.size()-1);
+		}
+		};
 	}
 
 	public Type check(IcExp exp) {
 		try {
-			return exp.fold(
-					cnst    -> cnst.type(),
-					var     -> env.get(var.id()),
-					foreign -> env.get(foreign.id()),
-					ctor    -> env.get(ctor.id()),
-					abs     -> Type.arrow(env.get(abs.id()), check(abs.body())),
-					app     -> {
-						List<Type> funTy = check(app.fun()).flatten();
-						List<IcExp> args = app.args();
+			return switch (exp) {
+			case IcCnst(ConstValue value, Location _) -> value.type();
+			case IcVarLocal(Id id, Location _) -> env.get(id);
+			case IcVarForeign(Id id, Type _, Location _) -> env.get(id);
+			case IcVarCtor(Id id, Type _, Location _) -> env.get(id);
+			case IcAbs(Id id, Type _, IcExp body, Location _) -> {
+				yield Type.arrow(env.get(id), check(body));
+			}
+			case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
+				List<Type> funTy = check(fun).flatten();
 
-						if(args.size() != funTy.size()-1) {
-							throw new AssertionError(String.format(
-								"%s takes %d arguments but applied %d.",
-								app.fun().loc(),
-								funTy.size()-1,
-								args.size()));
-						}
+				if(args.size() != funTy.size()-1) {
+					throw new AssertionError(String.format(
+						"%s takes %d arguments but applied %d.",
+						fun.loc(),
+						funTy.size()-1,
+						args.size()));
+				}
 
-						for(int i = 0; i < args.size(); i++) {
-							typeAssertion(args.get(i), funTy.get(i));
-						}
+				for(int i = 0; i < args.size(); i++) {
+					typeAssertion(args.get(i), funTy.get(i));
+				}
 
-						return funTy.get(funTy.size()-1);
-					},
-					ifExp   -> {
-						typeAssertion(ifExp.cond(), TyAtom.BOOL);
-						Type exp1Type = check(ifExp.exp1());
-						typeAssertion(ifExp.exp2(), exp1Type);
-						return exp1Type;
-					},
-					let     -> {
-						check(let.decl());
-						return check(let.body());
-					},
-					letrec  -> {
-						letrec.decls().forEach(this::check);
-						return check(letrec.body());
-					},
-					case_  -> {
-						Type target = check(case_.target());
-						Type patternType = check(case_.branches().get(0).pattern());
-						assertEqual(patternType, target, case_.branches().get(0).pattern().loc());
-						Type bodyType = check(case_.branches().get(0).body());
-						for(IcCaseBranch branch: case_.branches()) {
-							typeAssertion(branch.pattern(), patternType);
-							typeAssertion(branch.body(), bodyType);
-						}
-						return bodyType;
-					});
+				yield funTy.get(funTy.size()-1);
+			}
+			case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
+				typeAssertion(cond, Type.BOOL);
+				Type thenType = check(thenExp);
+				typeAssertion(elseExp, thenType);
+				yield thenType;
+			}
+			case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+				check(decl);
+				yield check(body);
+			}
+			case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
+				for(IcFunDecl decl : decls) {
+					check(decl);
+				}
+				yield check(body);
+			}
+			case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+				Type targetType = check(target);
+				Type patternType = check(branches.get(0).pattern());
+				assertEqual(patternType, targetType, branches.get(0).pattern().loc());
+				Type bodyType = check(branches.get(0).body());
+				for(IcCaseBranch branch: branches) {
+					typeAssertion(branch.pattern(), patternType);
+					typeAssertion(branch.body(), bodyType);
+				}
+				yield bodyType;
+			}
+			};
 		} catch(NullPointerException e) {
 			throw new RuntimeException("on "+exp.loc(), e);
 		}

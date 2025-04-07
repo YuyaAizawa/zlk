@@ -12,15 +12,27 @@ import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.common.type.Type;
 import zlk.recon.constraint.Constraint;
-import zlk.recon.constraint.Constraint.Category;
+import zlk.recon.constraint.Constraint.CAnd;
+import zlk.recon.constraint.Constraint.CEqual;
+import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CLet;
+import zlk.recon.constraint.Constraint.CLocal;
+import zlk.recon.constraint.Constraint.CPattern;
+import zlk.recon.constraint.Constraint.CSaveTheEnvironment;
+import zlk.recon.constraint.Constraint.CTrue;
+import zlk.recon.constraint.Content;
+import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.Structure;
+import zlk.recon.constraint.FlatType;
 import zlk.recon.constraint.IdVar;
-import zlk.recon.content.Content;
-import zlk.recon.content.Structure;
-import zlk.recon.flattype.FlatType;
+import zlk.recon.constraint.RcType;
+import zlk.recon.constraint.RcType.AppN;
+import zlk.recon.constraint.RcType.FunN;
+import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Stack;
 
 // unifyがList<Variable>に値を入れるのはレコードのときだけ
@@ -52,117 +64,97 @@ public class TypeReconstructor {
 	}
 
 	public State solve(IdMap<Variable> env, int rank, State state, Constraint constraint) {
-		return constraint.fold(
-				// CTrue
-				() -> state,
-
-				// CEqual
-				(ty, expectation) -> {
-					Variable actual = typeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-
-				},
-
-				// CLocal
-				(id, expectation) -> {
-					// env内の変数は再利用する
-					Variable actual = makeCopy(rank, env.get(id));
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CForeign
-				(id, ty, expectation) -> {
-					Variable actual = srcTypeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CPattern
-				(ty, expectation) -> {
-					Variable actual = typeToVariable(rank, ty);
-					Variable expected = expectedToVariable(rank, expectation);
-					Unify.unify(actual, expected);
-					return state;
-				},
-
-				// CAnd,
-				list -> {
-					State result = state;
-					for(Constraint c : list) {
-						result = solve(env, rank, state, c);
-					}
-					return result;
-				},
-
-				// CLet
-				cint -> {
-					if(cint.ridids().isEmpty()) {
-						if(cint.bodyCon().category == Category.CTrue) {
-							introduce(rank, cint.flexes());
-							return solve(env, rank, state, cint.headerCon());
-						} else if(cint.flexes().isEmpty()) {
-							State state1 =
-									solve(env, rank, state, cint.headerCon());
-							IdMap<Variable> locals =
-									cint.headers().traverse(ty -> typeToVariable(rank, ty));
-							IdMap<Variable> newEnv = IdMap.union(env, locals);
-							State state2 =
-									solve(newEnv, rank, state1, cint.bodyCon());
-							locals.forEach((id, var) -> state2.occurs(id, var));
-
-							// record reconstructed types
-							locals.forEach((id, var) -> reconed.put(id, var.toType()));
-							return state2;
-						}
-					}
-
-					int nextRank = rank + 1;
-					pool.ensureCapasity(nextRank);
-
-					List<Variable> vars = new ArrayList<>();
-					vars.addAll(cint.ridids());
-					vars.addAll(cint.flexes());
-					vars.forEach(v -> {
-						Descriptor d = v.get();
-						Descriptor d_ = new Descriptor(d.content, nextRank, d.mark);
-						v.set(d_);
-					});
-					pool.clear(nextRank);
-					pool.addAll(vars, nextRank);
-
-					IdMap<Variable> locals = cint.headers().traverse(ty -> typeToVariable(nextRank, ty));
-					State state_ = solve(env, nextRank, state, cint.headerCon());
-
-					int youngMark = state_.mark;
-					int visitMark = youngMark + 1;
-					int finalMark = visitMark + 1;
-
-					generalize(youngMark, visitMark, nextRank);
-					pool.clear(nextRank);
-
-					// check
-					cint.ridids().forEach(var -> checkGeneric(var));
+		return switch (constraint) {
+		case CTrue() -> state;
+		case CEqual(RcType type, RcType expected) -> {
+			Variable actual = typeToVariable(rank, type);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CLocal(Id id, RcType expected) -> {
+			Variable actual = makeCopy(rank, env.get(id));
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CForeign(Id id, zlk.common.Type anno, RcType expected) -> {
+			Variable actual = srcTypeToVariable(rank, anno);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CPattern(RcType type, RcType expected) -> {
+			Variable actual = typeToVariable(rank, type);
+			Variable expected_ = expectedToVariable(rank, expected);
+			Unify.unify(actual, expected_);
+			yield state;
+		}
+		case CAnd(List<Constraint> constraints) -> {
+			State result = state;
+			for (Constraint c : constraints) {
+				result = solve(env, rank, state, c);
+			}
+			yield result;
+		}
+		case CLet(List<Variable> ridids, List<Variable> flexes, IdMap<RcType> headerAnno, Constraint headerCon, Constraint bodyCon) -> {
+			if (ridids.isEmpty()) {
+				if (bodyCon instanceof CTrue) {
+					introduce(rank, flexes);
+					yield solve(env, rank, state, headerCon);
+				} else if (flexes.isEmpty()) {
+					State state1 = solve(env, rank, state, headerCon);
+					IdMap<Variable> locals = headerAnno.traverse(ty -> typeToVariable(rank, ty));
+					IdMap<Variable> newEnv = IdMap.union(env, locals);
+					State state2 = solve(newEnv, rank, state1, bodyCon);
+					locals.forEach((id, var) -> state2.occurs(id, var));
 
 					// record reconstructed types
-					// is it really correct to record here?
-					locals.forEach((id, var) -> reconed.putOrConfirm(id, var.toType()));
+					locals.forEach((id, var) -> reconed.put(id, var.toType()));
+					yield state2;
+				}
+			}
 
-					IdMap<Variable> newEnv = IdMap.union(env, locals);
-					State tmpState = new State(state_.env, finalMark);
-					State newState = solve(newEnv, rank, tmpState, cint.bodyCon());
+			int nextRank = rank + 1;
+			pool.ensureCapasity(nextRank);
 
-					locals.forEach((id, var) -> newState.occurs(id, var));
-					return newState;
-				},
+			List<Variable> vars = new ArrayList<>();
+			vars.addAll(ridids);
+			vars.addAll(flexes);
+			vars.forEach(v -> {
+				Descriptor d = v.get();
+				Descriptor d_ = new Descriptor(d.content, nextRank, d.mark);
+				v.set(d_);
+			});
+			pool.clear(nextRank);
+			pool.addAll(vars, nextRank);
 
-				// SaveTheEnvironment
-				() -> state.saveTheEnvironment(env)
-		);
+			IdMap<Variable> locals = headerAnno.traverse(ty -> typeToVariable(nextRank, ty));
+			State state_ = solve(env, nextRank, state, headerCon);
+
+			int youngMark = state_.mark;
+			int visitMark = youngMark + 1;
+			int finalMark = visitMark + 1;
+
+			generalize(youngMark, visitMark, nextRank);
+			pool.clear(nextRank);
+
+			// check
+			ridids.forEach(var -> checkGeneric(var));
+
+			// record reconstructed types
+			// is it really correct to record here?
+			locals.forEach((id, var) -> reconed.putOrConfirm(id, var.toType()));
+
+			IdMap<Variable> newEnv = IdMap.union(env, locals);
+			State tmpState = new State(state_.env, finalMark);
+			State newState = solve(newEnv, rank, tmpState, bodyCon);
+
+			locals.forEach((id, var) -> newState.occurs(id, var));
+			yield newState;
+		}
+		case CSaveTheEnvironment() -> state.saveTheEnvironment(env);
+		};
 	}
 
 	private void checkGeneric(Variable var) {
@@ -172,7 +164,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable expectedToVariable(int rank, zlk.recon.constraint.type.Type expectation) {
+	private Variable expectedToVariable(int rank, RcType expectation) {
 		return typeToVariable(rank, expectation);
 	}
 
@@ -245,19 +237,18 @@ public class TypeReconstructor {
 
 	private int adjustRankContent(Content content, int youngMark, int visitMark, int groupRank) {
 		ToIntFunction<Variable> go = var -> adjustRank(var, youngMark, visitMark, groupRank);
-		return content.fold(
-				flex -> groupRank,
-				cture -> cture.flatType().fold(
-						app -> {
-							int tmp = app.args().stream()
-									.mapToInt(go)
-									.max()
-									.orElse(Variable.OUTERMOST_RANK);
-							return Math.max(tmp, Variable.OUTERMOST_RANK);
-							},
-						fun -> Math.max(
-								go.applyAsInt(fun.arg()),
-								go.applyAsInt(fun.ret()))));
+		return switch(content) {
+		case FlexVar _ -> groupRank;
+		case Structure(FlatType.App1(_, List<Variable> args)) -> {
+			int tmp = args.stream()
+					.mapToInt(go)
+					.max()
+					.orElse(Variable.OUTERMOST_RANK);
+			yield Math.max(tmp, Variable.OUTERMOST_RANK);
+		}
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
+		};
 	}
 
 	private void introduce(int rank, List<Variable> vars) {
@@ -268,24 +259,25 @@ public class TypeReconstructor {
 		}
 	}
 
-	private Variable typeToVariable(int rank, zlk.recon.constraint.type.Type ty) {
+	private Variable typeToVariable(int rank, RcType ty) {
 		return typeToVar(rank, new IdMap<>(), ty);
 	}
 
-	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, zlk.recon.constraint.type.Type ty) {
-		Function<zlk.recon.constraint.type.Type, Variable> go = t -> typeToVar(rank, aliasDict, t);
+	private Variable typeToVar(int rank, IdMap<Variable> aliasDict, RcType ty) {
+		Function<RcType, Variable> go = t -> typeToVar(rank, aliasDict, t);
 
-		return ty.fold(
-				var -> var.var(),
-				app -> {
-					List<Variable> argVars = app.args().stream().map(go).toList();
-					return register(rank, Content.app(app.id(), argVars));
-				},
-				fun -> {
-					Variable aVar = go.apply(fun.arg());
-					Variable bVar = go.apply(fun.ret());
-					return register(rank, Content.fun(aVar, bVar));
-				});
+		return switch(ty) {
+		case VarN(Variable var) -> var;
+		case AppN(Id id, var args) -> {
+			List<Variable> argVars = args.stream().map(go).toList();
+			yield register(rank, Content.app(id, argVars));
+		}
+		case FunN(var arg, var ret) -> {
+			Variable aVar = go.apply(arg);
+			Variable bVar = go.apply(ret);
+			yield register(rank, Content.fun(aVar, bVar));
+		}
+		};
 	}
 
 	private Variable register(int rank, Content content) {
@@ -299,11 +291,12 @@ public class TypeReconstructor {
 				new Descriptor(Variable.mkFlexVar(name), rank, Variable.NO_MARK));
 
 		Map<String, Variable> flexVars = ty.flatten().stream()
-				.flatMap(t -> t.fold(
-						a -> Stream.of(),
-						(ar, rt) -> Stream.of(),
-						v -> Stream.of(v)))
-				.collect(Collectors.toMap(v -> v, makeVar));
+				.flatMap(t ->
+					switch(t) {
+					case Type.Var(String name) -> Stream.of(name);
+					default -> Stream.of();
+					}
+				).collect(Collectors.toMap(v -> v, makeVar));
 
 		pool.addAll(flexVars.values(), rank);
 		return srcTypeToVar(rank, flexVars, ty);
@@ -311,14 +304,17 @@ public class TypeReconstructor {
 
 	private Variable srcTypeToVar(int rank, Map<String, Variable> flexVars, Type ty) {
 		Function<Type, Variable> go = t -> srcTypeToVar(rank, flexVars, t);
-		return ty.fold(
-				atom -> register(rank, Content.app(atom.id(), List.of())),
-				(arg, ret) -> {
-					Variable argVar = go.apply(arg);
-					Variable retVar = go.apply(ret);
-					return register(rank, Content.fun(argVar, retVar));
-				},
-				name -> Objects.requireNonNull(flexVars.get(name)));
+		return switch(ty) {
+		case Type.Atom(Id id) ->
+			register(rank, Content.app(id, List.of()));
+		case Type.Arrow(Type arg, Type ret) -> {
+			Variable argVar = go.apply(arg);
+			Variable retVar = go.apply(ret);
+			yield register(rank, Content.fun(argVar, retVar));
+		}
+		case Type.Var(String name) ->
+			Objects.requireNonNull(flexVars.get(name));
+		};
 	}
 
 	private Variable makeCopy(int rank, Variable target) {
@@ -345,12 +341,10 @@ public class TypeReconstructor {
 		pool.add(copy, rank);
 		copieds.add(target, copy);
 
-		descriptor.content.match(
-				flex -> {},
-				cture -> {
-					FlatType newTerm = cture.flatType().traverse(v -> makeCopy(rank, v, copieds));
-					copy.set(md.apply(new Structure(newTerm)));
-				});
+		if(descriptor.content instanceof Structure(FlatType flatType)) {
+			FlatType newTerm = flatType.traverse(v -> makeCopy(rank, v, copieds));
+			copy.set(md.apply(new Structure(newTerm)));
+		}
 
 		return copy;
 	}

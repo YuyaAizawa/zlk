@@ -4,9 +4,9 @@ import static zlk.util.ErrorUtils.todo;
 
 import java.util.NoSuchElementException;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.common.type.Type;
 
 public class LocalEnv {
 	IdMap<LocalVar> impl = new IdMap<>();
@@ -15,13 +15,14 @@ public class LocalEnv {
 		int idx = impl.size();
 		LocalVar localVar = new LocalVar(idx, type);
 
-		return type.fold(
-				forBase -> {
-					impl.put(idInfo, localVar);
-					return localVar;
-				},
-				todo(),
-				todo());
+		return switch(type) {
+		case Type.Atom _ -> {
+			impl.put(idInfo, localVar);
+			yield localVar;
+		}
+		default ->
+			todo();
+		};
 	}
 
 	public LocalVar find(Id idInfo) {
