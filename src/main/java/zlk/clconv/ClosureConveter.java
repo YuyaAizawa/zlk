@@ -92,12 +92,12 @@ public final class ClosureConveter {
 		IdList frees = fvFunc(ccBody, args_);
 
 		if(frees.isEmpty()) {
-			System.out.println(id + " is not cloeure.");
+//			System.out.println(id + " is not cloeure.");
 			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
-			System.out.println(id + " is cloeure. frees: "+frees);
+//			System.out.println(id + " is cloeure. frees: "+frees);
 			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
