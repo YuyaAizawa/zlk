@@ -142,7 +142,7 @@ public class Main {
 							new TraceClassVisitor(
 									new PrintWriter(System.out)), 0);
 					classBins.put(name_.split("\\.")[0], bin);
-					Files.write(Paths.get(name_), bin);
+					Files.write(Paths.get(name_ + ".class"), bin);
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
 				}
