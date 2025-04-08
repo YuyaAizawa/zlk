@@ -69,6 +69,12 @@ public final class BytecodeGenerator {
 		this.pendings = new Stack<>();
 	}
 
+	/**
+	 * Output the compilation result to the specified BiConsumer as pairs of
+	 * class name and byte sequence.
+	 *
+	 * @param fileWriter
+	 */
 	public void compile(BiConsumer<String, byte[]> fileWriter) {
 		module.types().forEach(union -> {
 			classNames.put(union.id(), unionSuperName(union));
@@ -97,12 +103,12 @@ public final class BytecodeGenerator {
 	private void genUnionClass(CcTypeDecl union, BiConsumer<String, byte[]> fileWriter) {
 		// super class
 		genUnionSuperClass(union);
-		fileWriter.accept(classNames.get(union.id()) + ".class", cw.toByteArray());
+		fileWriter.accept(classNames.get(union.id()), cw.toByteArray());
 
 		// sub classes
 		for(CcCtor ctor : union.ctors()) {
 			genUnionSubClass(ctor, union);
-			fileWriter.accept(classNames.get(ctor.id()) + ".class", cw.toByteArray());
+			fileWriter.accept(classNames.get(ctor.id()), cw.toByteArray());
 		}
 	}
 
@@ -218,7 +224,7 @@ public final class BytecodeGenerator {
 
 		cw.visitEnd();
 
-		fileWriter.accept(module.origin() + ".class", cw.toByteArray());
+		fileWriter.accept(module.origin(), cw.toByteArray());
 	}
 
 	private void genConstructor() {
