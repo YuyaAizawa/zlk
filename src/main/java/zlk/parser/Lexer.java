@@ -55,12 +55,13 @@ public class Lexer {
 	}
 
 	public Token nextToken() {
-		skipWhitespace();
+		skipIgnoringChars();
 
 		Position pos = new Position(currentLine, currentColumn);
 		Token token = switch(current) {
 
 		case '|' -> new Token(Token.Kind.BAR, pos);
+		case LF  -> new Token(Token.Kind.BR, pos);
 		case ':' -> new Token(Token.Kind.COLON, pos);
 		case '=' -> new Token(Token.Kind.EQUAL, pos);
 		case '(' -> new Token(Token.Kind.LPAREN, pos);
@@ -143,8 +144,8 @@ public class Lexer {
 		}
 	}
 
-	private void skipWhitespace() {
-		while (isWhitespace(current)) {
+	private void skipIgnoringChars() {
+		while (isIgnoringChar(current)) {
 			next();
 		}
 	}
@@ -164,8 +165,8 @@ public class Lexer {
 		}
 	}
 
-	private static boolean isWhitespace(int cp) {
-		return cp == '\s' || cp == CR || cp == LF;
+	private static boolean isIgnoringChar(int cp) {
+		return cp == '\s' || cp == '\t' || cp == CR;
 	}
 
 	private static boolean isLetterOrDigit(int cp) {

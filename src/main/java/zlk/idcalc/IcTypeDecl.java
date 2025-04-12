@@ -16,10 +16,12 @@ public record IcTypeDecl(
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("type ").append(id).endl().inc();
-		pp.append("= ").append(ctors.get(0));
-		ctors.subList(1, ctors.size())
-				.forEach(ctor -> pp.endl().append("| ").append(ctor));
+		pp.append("type ").append(id).append(" =").inc();
+		if(ctors.size() == 1) {
+			pp.endl().append(ctors.get(0));
+		} else {
+			ctors.forEach(ctor -> pp.endl().append("| ").append(ctor));
+		}
 		pp.dec();
 	}
 }

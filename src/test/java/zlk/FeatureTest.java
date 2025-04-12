@@ -8,13 +8,13 @@ public class FeatureTest {
 	@Test
 	void selfRecursiveFunction() {
 		String src ="""
-		val fact n =
+		fact n =
 		  if isZero n then
 		    1
 		  else
 		    let
-		      val one = 1
-		      val nn = sub n one
+		      one = 1
+		      nn = sub n one
 		    in
 		      mul n (fact nn)
 		""";
@@ -28,11 +28,11 @@ public class FeatureTest {
 	@Test
 	void closuerConversion() {
 		String src ="""
-		val make_adder x =
+		make_adder x =
 		  let
-		    val adder y =
+		    adder y =
 		      let
-		        val adder2 z = add (add x y) z
+		        adder2 z = add (add x y) z
 		      in
 		        adder2
 		  in
@@ -48,12 +48,12 @@ public class FeatureTest {
 		String src="""
 		type IntList = Nil | Cons I32 IntList
 
-		val sum list =
+		sum list =
 		  case list of
 		    | Nil -> 0
 		    | Cons hd tl -> add hd (sum tl)
 
-		val ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
+		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";
 		var module = new ModuleTester(src);
 		var ans = module.getValue("ans");
