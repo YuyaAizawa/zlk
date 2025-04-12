@@ -7,7 +7,7 @@ import java.util.Optional;
 import zlk.ast.AType;
 import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
-import zlk.ast.Decl.FunDecl;
+import zlk.ast.Decl.ValDecl;
 import zlk.ast.Decl.TypeDecl;
 import zlk.ast.Exp;
 import zlk.ast.Exp.App;
@@ -84,7 +84,7 @@ public final class NameEvaluator {
 			case TypeDecl(String name, List<Constructor> ctors, _) -> {
 				ctors.forEach(ctor -> registerCtor(ctor, tyEnv.get(name)));
 			}
-			case FunDecl(String name, _, _, _, _) -> {
+			case ValDecl(String name, _, _, _, _) -> {
 				env.registerVar(name);
 			}
 			}
@@ -96,7 +96,7 @@ public final class NameEvaluator {
 		module.decls().forEach(def -> {
 			switch(def) {
 			case TypeDecl ty -> icTypes.add(eval(ty));
-			case FunDecl fun -> icDecls.add(eval(fun));
+			case ValDecl fun -> icDecls.add(eval(fun));
 			}
 		});
 
@@ -125,7 +125,7 @@ public final class NameEvaluator {
 		return new IcTypeDecl(id, ctors, union.loc());
 	}
 
-	public IcFunDecl eval(FunDecl decl) {
+	public IcFunDecl eval(ValDecl decl) {
 		try {
 			String declName = decl.name();
 			env.push(declName);
@@ -185,7 +185,7 @@ public final class NameEvaluator {
 		case If(Exp cond, Exp exp1, Exp exp2, Location loc): {
 			return new IcIf(eval(cond), eval(exp1), eval(exp2), loc);
 		}
-		case Let(List<FunDecl> decls, Exp body, _): {
+		case Let(List<ValDecl> decls, Exp body, _): {
 			return eval(decls, body);
 		}
 		case Case(Exp exp_, List<CaseBranch> branches, Location loc): {
@@ -199,12 +199,12 @@ public final class NameEvaluator {
 		}
 	}
 
-	private IcExp eval(List<FunDecl> decls, Exp body) {
+	private IcExp eval(List<ValDecl> decls, Exp body) {
 		if(decls.isEmpty()) {
 			return eval(body);
 		}
 
-		FunDecl decl = decls.get(0);
+		ValDecl decl = decls.get(0);
 
 		Position end = body.loc().end();
 		env.registerVar(decl.name());

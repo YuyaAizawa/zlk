@@ -40,7 +40,9 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList = Nil | Cons I32 IntList
+				type IntList =
+				| Nil
+				| Cons I32 IntList
 
 				sq a  =
 				  let
@@ -73,8 +75,8 @@ public class Main {
 
 				sum list =
 				  case list of
-				    Nil -> 0
-				    Cons hd tl -> add hd (sum tl)
+				  | Nil -> 0
+				  | Cons hd tl -> add hd (sum tl)
 
 				ans1 =
 				  sq 42
@@ -142,7 +144,7 @@ public class Main {
 							new TraceClassVisitor(
 									new PrintWriter(System.out)), 0);
 					classBins.put(name_.split("\\.")[0], bin);
-					Files.write(Paths.get(name_), bin);
+					Files.write(Paths.get(name_ + ".class"), bin);
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
 				}
