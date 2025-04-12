@@ -50,8 +50,8 @@ public class FeatureTest {
 
 		sum list =
 		  case list of
-		    Nil -> 0
-		    Cons hd tl -> add hd (sum tl)
+		    | Nil -> 0
+		    | Cons hd tl -> add hd (sum tl)
 
 		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";

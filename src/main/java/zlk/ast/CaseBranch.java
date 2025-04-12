@@ -11,7 +11,7 @@ public record CaseBranch(
 implements PrettyPrintable {
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(pattern).append(" ->").endl();
+		pp.append("| ").append(pattern).append(" ->").endl();
 		pp.indent(() -> {
 			pp.append(body);
 		});
