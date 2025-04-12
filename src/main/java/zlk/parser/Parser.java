@@ -2,6 +2,7 @@ package zlk.parser;
 
 import static zlk.parser.Token.Kind.ARROW;
 import static zlk.parser.Token.Kind.BAR;
+import static zlk.parser.Token.Kind.BR;
 import static zlk.parser.Token.Kind.CASE;
 import static zlk.parser.Token.Kind.COLON;
 import static zlk.parser.Token.Kind.DIGITS;
@@ -22,13 +23,16 @@ import static zlk.parser.Token.Kind.UCID;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
 import zlk.ast.AType;
 import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
-import zlk.ast.Decl.FunDecl;
+import zlk.ast.Decl;
+import zlk.ast.Decl.TypeDecl;
+import zlk.ast.Decl.ValDecl;
 import zlk.ast.Exp;
 import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
@@ -38,8 +42,6 @@ import zlk.ast.Exp.Let;
 import zlk.ast.Exp.Var;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
-import zlk.ast.Decl.TypeDecl;
-import zlk.ast.Decl;
 import zlk.common.ConstValue;
 import zlk.parser.Token.Kind;
 import zlk.util.Location;
@@ -49,55 +51,55 @@ import zlk.util.Position;
  * 構文解析器.
  * <h2>文法</h2>
  * <pre>{@code
- * <module>     ::= module <ucid> $(<topDecl>*)
- * $ The all decls start in the same column. This column called offside column.
- *   Offside column of the topDecl is 1. The elements other than "type" keyword or the declared
- *   identifiers appear to the right of the offside column.
+ * <h3>コンパイル単位</h3>
+ * <module>   ::= module <ucid> <topDecl>*
  *
- * <topDecl>    ::= <union>
- *                | <decl>
+ * <topDecl>  ::= <typeDecl>
+ *              | <funDecl>
  *
- * <union>      ::= type <ucid> = <ctor> (| <ctor>)*
+ * <h3>宣言</h3>
+ * <typeDecl> ::= type <ucid> = <ctor> (| <ctor>)*
  *
- * <ctor>       ::= <ucid> <aType>*
+ * <ctor>     ::= <ucid> <aType>*
  *
- * <decl>       ::= ($<lcid> : <type>)? $<lcid>+ = <exp> ;
- * $ type annotation and decl pair starts in the same column.
+ * <funDecl>  ::= (val <lcid> : <type>)? val <lcid>+ = <exp>
  *
- * <exp>        ::= <aExp>+
- *                | let $<declList> in <exp>
- *                | if <exp> then <exp> else <exp>
- *                | case <exp> of $<caseBranch>+
- * $ The declList starts to the right column of the "let" keyword.
+ * <h3>式
+ * <exp>      ::= <aExp>+
+ *              | let <funDecl>+ in <exp>
+ *              | if <exp> then <exp> else <exp>
+ *              | case <exp> of (| <pattern> -> <exp>)+
  *
- * <declList>   ::= $(<decl>+)
- * $ The elements other than the declared identifiers appear to the right of the offside column.
+ * <aExp>     ::= ( <exp> )
+ *              | <aLiteral>
+ *              | <lcid>
  *
- * <aExp>       ::= ( <exp> )
- *                | <constant>
- *                | <lcid>
+ * <h3>パターン</h3>
+ * <pattern>  ::= <ucid> <aPattern>*
+ *              | <aPattern>
  *
- * <caseBranch> ::= <pattern> -> <exp>
+ * <aPattern> ::= ( <pattern> )
+ *              | <lcid>
  *
- * <pattern>    ::= <ucid> <aPattern>*
+ * <h3>型注釈</h3>
+ * <type>     ::= <aType> (-> <aType>)*
  *
- * <aPattern>   ::= (<pattern>)
- *                | <lcid>
- *
- * <type>       ::= <aType> (-> <type>)?
- *
- * <aType>      ::= ( <type> )
- *                | <ucid>
+ * <aType>    ::= ( <type> )
+ *              | <ucid>
  * }</pre>
  */
 public class Parser {
+
+	private static final EnumSet<Kind> cancelBr = EnumSet.of(
+			BAR,
+			THEN,
+			ELSE,
+			ARROW);
 
 	private final Lexer lexer;
 
 	private Token current;
 	private Token next;
-
-	private int offsideColumn;
 
 	private Position end;
 
@@ -105,7 +107,6 @@ public class Parser {
 		this.lexer = lexer;
 		this.current = lexer.nextToken();
 		this.next = lexer.nextToken();
-		this.offsideColumn = 1;
 	}
 
 	public Parser(String fileName) throws IOException {
@@ -121,37 +122,35 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		List<Decl> topDecls = new ArrayList<>();
+		consume(BR);
+		while(maybeConsume(BR));
 
-		this.offsideColumn = 1;
+		List<Decl> topDecls = new ArrayList<>();
 		while(current.kind() != EOF) {
 			if(current.kind() == TYPE) {
 				topDecls.add(parseTypeDecl());
 			} else {
-				topDecls.add(parseFunDecl());
+				topDecls.add(parseValDecl());
 			}
+			consume(BR);
+			while(maybeConsume(BR));
 		}
 
 		return new Module(name, topDecls, fileName);
 	}
 
 	public TypeDecl parseTypeDecl() {
-		if(current.column() != 1) {
-			throw new RuntimeException("type declaration must starts column 1");
-		}
-
 		Position start = current.pos();
 
 		consume(TYPE);
 
 		String name = parse(UCID);
 
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
-		}
+		consume(EQUAL);
+
+		maybeConsume(BAR);
 
 		List<Constructor> ctors = new ArrayList<>();
-		consume(EQUAL);
 		ctors.add(parseConstructor());
 		while(current.kind() == BAR) {
 			consume(BAR);
@@ -167,7 +166,7 @@ public class Parser {
 		String name = parse(UCID);
 
 		List<AType> args = new ArrayList<>();
-		while(aTypeStartToken(current) && current.column() > offsideColumn) {
+		while(aTypeStartToken(current)) {
 			args.add(parseAType());
 		}
 
@@ -178,31 +177,17 @@ public class Parser {
 		return token.kind() == UCID || token.kind() == LPAREN;
 	}
 
-	public FunDecl parseFunDecl() {
-		if(current.column() != offsideColumn) {
-			throw new RuntimeException(
-					current.pos() + " declaration must starts to the right column of the \"let\"");
-		}
-
+	public ValDecl parseValDecl() {
 		Position start = current.pos();
 
 		String name = parse(LCID);
 
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing \":\" or \"=\" on \"" + name + "\"@" + start);
-		}
-
 		Optional<AType> anno;
-		if(current.kind() == COLON) {
-			nextToken();
-			if(current.column() <= offsideColumn) {
-				throw new RuntimeException(current.pos() + " missing type on \"" + name + "\"@" + start);
-			}
+		if(maybeConsume(COLON)) {
 			anno = Optional.of(parseType());
-			if(current.column() != offsideColumn) {
-				throw new RuntimeException(
-						current.pos() + " declaration must starts to the right column of the \"let\"");
-			}
+
+			consume(BR);
+
 			if(!parse(LCID).equals(name)) {
 				throw new RuntimeException(
 						current.pos() + " declatarion must have the same name with annotation");
@@ -211,23 +196,18 @@ public class Parser {
 			anno = Optional.empty();
 		}
 
-		// TODO parse pattern
 		List<Var> args = new ArrayList<>();
-		while(current.kind() == LCID && current.column() > offsideColumn) {
+		while(current.kind() == LCID) {
 			args.add(new Var(parse(LCID), location(start, end)));
 		}
 
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing \"=\" on \"" + name + "\"@" + start);
-		}
 		consume(EQUAL);
 
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing body on \"" + name + "\"@" + start);
-		}
+		maybeConsume(BR);
+
 		Exp body = parseExp();
 
-		return new FunDecl(name, anno, args, body, location(start, end));
+		return new ValDecl(name, anno, args, body, location(start, end));
 	}
 
 	public Exp parseExp() {
@@ -235,11 +215,11 @@ public class Parser {
 		if(aExpStartToken(current)) {
 			Exp first = parseAExp();
 
-			if(aExpStartToken(current) && current.column() > offsideColumn) {
+			if(aExpStartToken(current)) {
 				List<Exp> exps = new ArrayList<>();
 				exps.add(first);
 
-				while(aExpStartToken(current) && current.column() > offsideColumn) {
+				while(aExpStartToken(current)) {
 					exps.add(parseAExp());
 				}
 				return new App(exps, location(start, end));
@@ -256,119 +236,18 @@ public class Parser {
 		};
 	}
 
-	private Exp parseLetExp() {
-		Position start = current.pos();
-		consume(LET);
-
-		List<FunDecl> declList;
-		if(current.kind() != IN) {
-			if(current.column() <= offsideColumn) {
-				throw new RuntimeException(current.pos() + " declaration list must be indented");
-			}
-
-			int oldOffsideColumn = offsideColumn;
-			offsideColumn = current.column();
-			declList = parseDeclList();
-			offsideColumn = oldOffsideColumn;
-
-		} else {
-			declList = List.of();
+	private static boolean aExpStartToken(Token token) {
+		switch (token.kind()) {
+		case LCID:
+		case UCID:
+		case DIGITS:
+		case TRUE:
+		case FALSE:
+		case LPAREN:
+			return true;
+		default:
+			return false;
 		}
-
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing \"in\" for \"let\"@" + start);
-		}
-		consume(IN);
-
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " missing body for \"let\"@" + start);
-		}
-		Exp body = parseExp();
-
-		return new Let(declList, body, location(start, end));
-	}
-
-	private Exp parseIfExp() {
-		Position start = current.pos();
-		consume(IF);
-
-		Exp c = parseExp();
-
-		consume(THEN);
-
-		Exp t = parseExp();
-
-		consume(ELSE);
-
-		Exp e = parseExp();
-
-		return new If(c, t, e, location(start, end));
-	}
-
-	private Exp parseCaseExp() {
-		Position start = current.pos();
-		consume(CASE);
-
-		Exp exp = parseExp();
-
-		consume(OF);
-
-		if(current.column() <= offsideColumn) {
-			throw new RuntimeException(current.pos() + " case branches must be indented");
-		}
-		int oldOffsideColumn = offsideColumn;
-		offsideColumn = current.column();
-		List<CaseBranch> caseBranches = parseCaseBranches();
-		offsideColumn = oldOffsideColumn;
-
-		return new Case(exp, caseBranches, location(start, end));
-	}
-
-	private List<CaseBranch> parseCaseBranches() {
-		List<CaseBranch> branches = new ArrayList<>();
-		while(current.column() == offsideColumn) {
-			branches.add(parseCaseBranch());
-		}
-		return branches;
-	}
-
-	private CaseBranch parseCaseBranch() {
-		Position start = current.pos();
-		Pattern pattern = parsePattern();
-
-		consume(ARROW);
-
-		// TODO check indent
-		Exp body = parseExp();
-
-		return new CaseBranch(pattern, body, location(start, end));
-	}
-
-	private Pattern parsePattern() {
-		Position start = current.pos();
-
-		String name = parse(UCID);
-
-		List<Pattern> args = new ArrayList<>();
-		while(current.kind() != ARROW) {
-			args.add(parseAPattern());
-		}
-
-		return new Pattern.Ctor(name, args, location(start, end));
-	}
-
-	private Pattern parseAPattern() {
-		Position start = current.pos();
-		Pattern result;
-
-		if(current.kind() == LPAREN) {
-			consume(LPAREN);
-			result = parsePattern();
-			consume(RPAREN);
-		} else {
-			result = new Pattern.Var(parse(LCID), location(start, end));
-		}
-		return result;
 	}
 
 	private Exp parseAExp() {
@@ -396,18 +275,121 @@ public class Parser {
 		};
 	}
 
-	private static boolean aExpStartToken(Token token) {
-		switch (token.kind()) {
-		case LCID:
-		case UCID:
-		case DIGITS:
-		case TRUE:
-		case FALSE:
-		case LPAREN:
-			return true;
-		default:
-			return false;
+	private Exp parseLetExp() {
+		Position start = current.pos();
+
+		consume(LET);
+
+		List<ValDecl> declList = new ArrayList<>();
+		if(maybeConsume(BR)) {
+			do {
+				declList.add(parseValDecl());
+
+				consume(BR);
+			} while(current.kind() != IN);
+
+			consume(IN);
+
+			consume(BR);
+		} else {
+			declList.add(parseValDecl());
+
+			consume(IN);
+
+			maybeConsume(BR);
 		}
+
+		Exp body = parseExp();
+
+		return new Let(declList, body, location(start, end));
+	}
+
+	private Exp parseIfExp() {
+		Position start = current.pos();
+		consume(IF);
+
+		maybeConsume(BR);
+
+		Exp c = parseExp();
+
+		consume(THEN);
+
+		maybeConsume(BR);
+
+		Exp t = parseExp();
+
+		consume(ELSE);
+
+		maybeConsume(BR);
+
+		Exp e = parseExp();
+
+		return new If(c, t, e, location(start, end));
+	}
+
+	private Exp parseCaseExp() {
+		Position start = current.pos();
+
+		consume(CASE);
+
+		Exp exp = parseExp();
+
+		consume(OF);
+
+		List<CaseBranch> caseBranches = new ArrayList<>();
+		do {
+			caseBranches.add(parseCaseBranch());
+		} while(current.kind() == BAR);
+
+		return new Case(exp, caseBranches, location(start, end));
+	}
+
+	private CaseBranch parseCaseBranch() {
+		Position start = current.pos();
+
+		consume(BAR);
+
+		Pattern pattern = parsePattern();
+
+		consume(ARROW);
+
+		maybeConsume(BR);
+
+		Exp body = parseExp();
+
+		return new CaseBranch(pattern, body, location(start, end));
+	}
+
+	private Pattern parsePattern() {
+		Position start = current.pos();
+
+		if(current.kind() == UCID) {
+			String name = parse(UCID);
+
+			List<Pattern> args = new ArrayList<>();
+			while(current.kind() != ARROW) {
+				args.add(parseAPattern());
+			}
+			return new Pattern.Ctor(name, args, location(start, end));
+		}
+
+		return parseAPattern();
+	}
+
+	private Pattern parseAPattern() {
+		Position start = current.pos();
+		Pattern result;
+
+		if(current.kind() == LPAREN) {
+			consume(LPAREN);
+
+			result = parsePattern();
+
+			consume(RPAREN);
+		} else {
+			result = new Pattern.Var(parse(LCID), location(start, end));
+		}
+		return result;
 	}
 
 	private Exp parseParenExp() {
@@ -418,14 +400,6 @@ public class Parser {
 		consume(RPAREN);
 
 		return exp;
-	}
-
-	private List<FunDecl> parseDeclList() {
-		List<FunDecl> decls = new ArrayList<>();
-		while(current.kind() == LCID) {
-			decls.add(parseFunDecl());
-		}
-		return decls;
 	}
 
 	private AType parseType() {
@@ -468,6 +442,11 @@ public class Parser {
 		end = current.endPos();
 		current = next;
 		next = lexer.nextToken();
+
+		if(current.kind()==BR && cancelBr.contains(next.kind())) {
+			current = next;
+			next = lexer.nextToken();
+		}
 	}
 
 	private String parse(Kind expected) {
@@ -478,7 +457,7 @@ public class Parser {
 		} else {
 			throw new RuntimeException(
 					current.pos() + " cannot parse. "
-					+ ", expected: " + expected
+					+ "expected: " + expected
 					+ ", actual: " + current.kind());
 		}
 	}
@@ -492,6 +471,14 @@ public class Parser {
 					+ "expected: " + expected
 					+ ", actual: " + current.kind());
 		}
+	}
+
+	private boolean maybeConsume(Kind expected) {
+		if(current.kind() == expected) {
+			nextToken();
+			return true;
+		}
+		return false;
 	}
 
 	private Location location(Position start, Position end) {
