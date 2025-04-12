@@ -2,7 +2,7 @@ package zlk.ast;
 
 import java.util.List;
 
-import zlk.ast.Decl.FunDecl;
+import zlk.ast.Decl.ValDecl;
 import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
 import zlk.ast.Exp.Cnst;
@@ -33,7 +33,7 @@ permits Cnst, Var, App, If, Let, Case {
 	record Var(String name, Location loc) implements Exp {}
 	record App(List<Exp> exps, 	Location loc) implements Exp {}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
-	record Let(List<FunDecl> decls, Exp body, Location loc) implements Exp {}
+	record Let(List<ValDecl> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, List<CaseBranch> branches, Location loc) implements Exp {}
 
 	static boolean isIf(Exp exp) {
@@ -93,11 +93,11 @@ permits Cnst, Var, App, If, Let, Case {
 				pp.inc().append(exp2).dec();
 			}
 		}
-		case Let(List<FunDecl> decls, Exp body, _) -> {
+		case Let(List<ValDecl> decls, Exp body, _) -> {
 			pp.append("let").endl();
 
 			pp.inc();
-			for(FunDecl decl : decls) {
+			for(ValDecl decl : decls) {
 				pp.append(decl).endl();
 			}
 			pp.dec();
@@ -107,16 +107,16 @@ permits Cnst, Var, App, If, Let, Case {
 				pp.append(" ").append(body);
 			} else {
 				pp.endl();
-				pp.inc().append(body).dec();
+				pp.indent(() -> {
+					pp.append(body);
+				});
 			}
 		}
 		case Case(Exp exp, List<CaseBranch> branches, _) -> {
-			pp.append("case ").append(exp).append(" of").inc();
+			pp.append("case ").append(exp).append(" of");
 			for(CaseBranch branch : branches) {
-				pp.endl();
-				pp.append(branch);
+				pp.endl().append(branch);
 			}
-			pp.dec();
 		}
 		}
 	}
