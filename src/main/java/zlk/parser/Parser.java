@@ -52,23 +52,24 @@ import zlk.util.Position;
  * <h2>文法</h2>
  * <pre>{@code
  * <h3>コンパイル単位</h3>
- * <module>   ::= module <ucid> <topDecl>*
+ * <module>   ::= module <ucid> <br>+ (<topDecl> <br>+)*
  *
  * <topDecl>  ::= <typeDecl>
- *              | <funDecl>
+ *              | <valDecl>
  *
  * <h3>宣言</h3>
- * <typeDecl> ::= type <ucid> = <ctor> (| <ctor>)*
+ * <typeDecl> ::= type <ucid> = (<br>? `|`)? <ctor> (<br>? `|` <ctor>)*
  *
  * <ctor>     ::= <ucid> <aType>*
  *
- * <funDecl>  ::= (val <lcid> : <type>)? val <lcid>+ = <exp>
+ * <valDecl>  ::= (<lcid> : <type> <br>)? <lcid>+ = <br>? <exp>
  *
  * <h3>式
  * <exp>      ::= <aExp>+
- *              | let <funDecl>+ in <exp>
- *              | if <exp> then <exp> else <exp>
- *              | case <exp> of (| <pattern> -> <exp>)+
+ *              | let <valDecl>+ in <br>? <exp>
+ *              | let <br> (<valDecl> <br>)+ in <br> <exp>
+ *              | if <br>? <exp> <br>? then <br>? <exp> <br>? else <br>? <exp>
+ *              | case <exp> of (<br>? `|` <pattern> -> <br>? <exp>)+
  *
  * <aExp>     ::= ( <exp> )
  *              | <aLiteral>
@@ -82,7 +83,7 @@ import zlk.util.Position;
  *              | <lcid>
  *
  * <h3>型注釈</h3>
- * <type>     ::= <aType> (-> <aType>)*
+ * <type>     ::= <aType> (<br>? -> <aType>)*
  *
  * <aType>    ::= ( <type> )
  *              | <ucid>
