@@ -1,5 +1,7 @@
 package zlk.common.id;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import zlk.util.pp.PrettyPrintable;
@@ -11,13 +13,15 @@ import zlk.util.pp.PrettyPrinter;
  * @author YuyaAizawa
  *
  */
-public final class Id implements PrettyPrintable {
+public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	public static final String SEPARATOR = ".";
 	private static final Pattern SEPARATOR_REGEX = Pattern.compile("\\.");
 
 	private final Id parent; // nullable
 	private final String simple;
+
+	// TODO: Idもinternできるように
 
 	/**
 	 * 識別子を新しく生成する
@@ -111,5 +115,33 @@ public final class Id implements PrettyPrintable {
 	@Override
 	public String toString() {
 		return canonicalName();
+	}
+
+	@Override
+	public int compareTo(Id o) {
+		List<String> ts = this.list();
+		List<String> os = o.list();
+
+		int i = 0;
+		while(ts.size() > i && os.size() > i) {
+			int cmp = ts.get(i).compareTo(os.get(i));
+			if(cmp != 0) {
+				return cmp;
+			}
+			i++;
+		}
+		return ts.size() - os.size();
+	}
+
+	private List<String> list() {
+		List<String> result = new ArrayList<>();
+		listHelp(result);
+		return result;
+	}
+	private void listHelp(List<String> acc) {
+		if(parent != null) {
+			parent.listHelp(acc);
+		}
+		acc.add(simple);
 	}
 }

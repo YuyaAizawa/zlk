@@ -906,7 +906,7 @@ public final class BytecodeGenerator {
 		if(ty == Type.BOOL) { return "Z";}
 		if(ty == Type.I32)  { return "I";}
 		if(ty == Type.UNIT) { return "V";}
-		return "L"+toClassName(ty.id())+";";
+		return "L"+toClassName(ty.ctor())+";";
 	}
 
 	private static String toClassName(Id id) {
