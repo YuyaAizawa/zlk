@@ -26,6 +26,7 @@ import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
+import zlk.recon.FreshFlex;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.typecheck.TypeChecker;
@@ -40,52 +41,13 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList =
-				| Nil
-				| Cons I32 IntList
-
-				sq a  =
+				c = 1
+				fun =
 				  let
-				    pow b c =
-				      if isZero c
-				      then 1
-				      else mul b (pow b (sub c 1))
+				    f = c
 				  in
-				    pow a 2
+				    f
 
-				fact n =
-				  if isZero n then
-				    1
-				  else
-				    let
-				      one = 1
-				      nn = sub n one
-				    in
-				      mul n (fact nn)
-
-				make_adder x =
-				  let
-				    adder y =
-				      let
-				        adder2 z = add (add x y) z
-				      in
-				        adder2
-				  in
-				    adder
-
-				sum list =
-				  case list of
-				  | Nil -> 0
-				  | Cons hd tl -> add hd (sum tl)
-
-				ans1 =
-				  sq 42
-
-				ans2 =
-				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
-
-				ans3 =
-				  make_adder 3 4 5
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -98,32 +60,28 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");
-		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
-		NameEvaluator ne = new NameEvaluator(ast, Builtin.builtins());
+		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
+		NameEvaluator ne = new NameEvaluator(ast);
 		IcModule idcalc = ne.eval();
 		idcalc.pp(System.out);
 		System.out.println();
 
-//		System.out.println("-- UNCURRY --");
-//		idcalc = null;
-//		System.out.println();
-
-		System.out.println("-- EXTRACT CONSTRAINS --");
-		Constraint cint = ConstraintExtractor.extract(idcalc);
+		System.out.println("-- CONSTRAIN EXTRACTION --");
+		FreshFlex freshFlex = new FreshFlex();
+		Constraint cint = ConstraintExtractor.extract(idcalc, freshFlex);
 		System.out.println(cint.buildString());
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		TypeReconstructor tr = new TypeReconstructor();
-		IdMap<Type> types = tr.run(cint);
+		IdMap<Type> types = TypeReconstructor.recon(cint, freshFlex).unwrap();
 		System.out.println(types.buildString());
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
-		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
+		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
-		System.out.println("-- TYPE CHECK --"); // TODO remove
+		System.out.println("-- TYPE CHECK --");  // TODO remove
 		TypeChecker typeChecker = new TypeChecker(types);
 		typeChecker.check(idcalc);
 		System.out.println(types);
@@ -150,7 +108,7 @@ public class Main {
 				}
 			};
 
-		new BytecodeGenerator(clconv, types, Builtin.builtins()).compile(fileWriter);
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(fileWriter);
 
 		System.out.println();
 		System.out.println("-- EXECUTE --");

@@ -10,6 +10,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public record IcTypeDecl(
 	Id id,
+	// TODO: 型変数
 	List<IcCtor> ctors,
 	Location loc
 ) implements PrettyPrintable, LocationHolder {

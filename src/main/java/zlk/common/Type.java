@@ -12,15 +12,48 @@ import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * 型
+ * 主に型注釈などで利用する
+ *
+ * <ul>
+ *   <li> {@link Atom} -- 関数型以外の型
+ *   <li> {@link Arrow} -- 関数型
+ *   <li> {@link Var} -- 型変数
+ * </ul>
+ */
 public sealed interface Type extends PrettyPrintable
 permits Atom, Arrow, Var {
-	record Atom(Id id) implements Type {}
+
+	/**
+	 * 関数型以外の型
+	 * @param ctor 型構築子
+	 * @param args 型パラメータ
+	 */
+	record Atom(Id ctor, List<Type> args) implements Type {
+		public Atom(Id id) {
+			this(id, List.of());
+		}
+	}
+
+	/**
+	 * 関数型
+	 * @param arg 引数の型
+	 * @param ret 戻り値の型
+	 */
 	record Arrow(Type arg, Type ret) implements Type {}
+
+	/**
+	 * 型変数
+	 * @param name 変数名
+	 */
 	record Var(String name) implements Type {}
 
 	public static final Atom UNIT = new Atom(Id.fromCanonicalName("Unit"));
 	public static final Atom BOOL = new Atom(Id.fromCanonicalName("Bool"));
 	public static final Atom I32  = new Atom(Id.fromCanonicalName("I32"));
+
+	public static final List<Atom> BUILTIN = List.of(UNIT, BOOL, I32);
 
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -137,11 +170,43 @@ permits Atom, Arrow, Var {
 		return result;
 	}
 
+	default List<String> getVarNames() {
+		List<String> result = new ArrayList<>();
+		getVarNamesHelp(result);
+		return result;
+	}
+	default void getVarNamesHelp(List<String> acc) {
+		switch(this) {
+		case Atom(_, List<Type> typeArguments) -> {
+			for(Type arg : typeArguments) {
+				arg.getVarNamesHelp(acc);
+			}
+		}
+		case Arrow(Type arg, Type ret) -> {
+			arg.getVarNamesHelp(acc);
+			ret.getVarNamesHelp(acc);
+		}
+		case Var(String name) -> {
+			if(!acc.contains(name)) {
+				acc.add(name);
+			}
+		}
+		}
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case Atom(Id id) -> {
+		case Atom(Id id, List<Type> typeArguments) -> {
 			pp.append(id);
+			typeArguments.forEach(a -> {
+				if(a instanceof Arrow ||
+						(a instanceof Atom(_, List<Type> args) && !args.isEmpty())) {
+					pp.append(" (").append(a).append(")");
+				} else {
+					pp.append(" ").append(a);
+				}
+			});
 		}
 		case Arrow(Type arg, Type ret) -> {
 			if(arg.isArrow()) {
@@ -152,7 +217,7 @@ permits Atom, Arrow, Var {
 			pp.append(" -> ").append(ret);
 		}
 		case Var(String name) -> {
-			pp.append("[").append(name).append("]");
+			pp.append(name);
 		}
 		}
 	}

@@ -1,43 +1,44 @@
-package zlk.recon.constraint;
-
-import static zlk.util.ErrorUtils.todo;
+package zlk.recon;
 
 import java.util.List;
 import java.util.function.Function;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.recon.Variable;
-import zlk.recon.constraint.FlatType.App1;
-import zlk.recon.constraint.FlatType.Fun1;
+import zlk.recon.FlatType.CtorApp1;
+import zlk.recon.FlatType.Fun1;
+import zlk.recon.constraint.Content;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * 単一化後の型
+ */
 public sealed interface FlatType extends PrettyPrintable
-permits App1, Fun1 {
-	record App1(Id id, List<Variable> args) implements FlatType {}
+permits CtorApp1, Fun1 {
+	record CtorApp1(Id id, List<Variable> args) implements FlatType {} // TODO: App1?
 	record Fun1(Variable arg, Variable ret) implements FlatType {}
 
 	default FlatType traverse(Function<Variable, Variable> f) {
 		return switch(this) {
-		case App1(Id id, List<Variable> args) -> new App1(id, args.stream().map(f).toList());
+		case CtorApp1(Id id, List<Variable> args) -> new CtorApp1(id, args.stream().map(f).toList());
 		case Fun1(Variable arg, Variable ret) -> new Fun1(f.apply(arg), f.apply(ret));
 		};
 	}
 
 	default Type toType() {
 		return switch(this) {
-		case App1(Id id, List<Variable> args) -> {
-			if(id.equals(Type.BOOL.id())) {
+		case CtorApp1(Id id, List<Variable> args) -> {
+			if(id.equals(Type.BOOL.ctor())) {
 				yield Type.BOOL;
 			}
-			if(id.equals(Type.I32.id())) {
+			if(id.equals(Type.I32.ctor())) {
 				yield Type.I32;
 			}
 			// TODO: user defined type
 
 			yield Type.arrow(
-					args.stream().map(Variable::toAnnotation).toList(),
+					args.stream().map(Variable::toType).toList(),
 					new Type.Atom(id));
 		}
 		case Fun1(Variable arg, Variable ret) ->
@@ -48,16 +49,19 @@ permits App1, Fun1 {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case App1(Id id, _) -> {
-			if(id.equals(Type.BOOL.id())) {
-				pp.append(Type.BOOL);
-				return;
+		case CtorApp1(Id id, List<Variable> args) -> {
+			pp.append(id);
+			for(Variable arg : args) {
+				pp.append(" ");
+				if(arg.get().content instanceof Content.Structure structure
+						&& structure.flatType() instanceof CtorApp1 ctorApp
+						&& ctorApp.args.size() > 0) {
+					// 複数トークンはカッコが要る
+					pp.append("(").append(arg).append(")");
+				} else {
+					pp.append(arg);
+				}
 			}
-			if(id.equals(Type.I32.id())) {
-				pp.append(Type.I32);
-				return;
-			}
-			todo();
 		}
 		case Fun1(Variable arg, Variable ret) -> {
 			pp.append(arg).append(" -> ").append(ret);

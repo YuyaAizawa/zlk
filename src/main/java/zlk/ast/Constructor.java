@@ -9,7 +9,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public record Constructor(
 		String name,
-		List<AType> args,
+		List<AnType> args,
 		Location loc
 ) implements PrettyPrintable, LocationHolder {
 
