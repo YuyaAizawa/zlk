@@ -12,13 +12,13 @@ import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Decl extends PrettyPrintable, LocationHolder
 permits ValDecl, TypeDecl {
-	record ValDecl(String name, Optional<AType> anno, List<Exp.Var> args, Exp body, Location loc) implements Decl {}
+	record ValDecl(String name, Optional<AnType> anno, List<Pattern> args, Exp body, Location loc) implements Decl {}
 	record TypeDecl(String name, List<Constructor> ctors, Location loc) implements Decl {}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case ValDecl(String name, Optional<AType> anno, List<Exp.Var> args, Exp body, _) -> {
+		case ValDecl(String name, Optional<AnType> anno, List<Pattern> args, Exp body, _) -> {
 			anno.ifPresent(ty -> pp.append(name).append(" : ").append(ty).endl());
 			pp.append(name);
 			args.forEach(arg -> {

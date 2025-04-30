@@ -1,5 +1,8 @@
 package zlk.core;
 
+import static zlk.common.Type.BOOL;
+import static zlk.common.Type.I32;
+
 import java.util.List;
 
 import org.objectweb.asm.MethodVisitor;
@@ -15,9 +18,9 @@ public record Builtin(
 		Instructions insn)
 implements Instructions
 {
-	public static List<Builtin> builtins(){
-		Type i32i32i32 = Type.arrow(Type.I32, Type.arrow(Type.I32, Type.I32));
-		Type i32bool = Type.arrow(Type.I32, Type.BOOL);
+	public static List<Builtin> functions(){
+		Type i32i32i32 = Type.arrow(I32, I32, I32);
+		Type i32bool = Type.arrow(I32, BOOL);
 
 		return List.of(
 				new Builtin("Basic.isZero", i32bool, mv -> {

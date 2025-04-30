@@ -1,5 +1,6 @@
 package zlk.util.pp;
 
+import java.util.Map;
 import java.util.function.Consumer;
 
 public interface PrettyPrinter extends UncheckedAppendable {
@@ -129,6 +130,32 @@ public interface PrettyPrinter extends UncheckedAppendable {
 	default PrettyPrinter withoutLineBreak(Consumer<PrettyPrinter> printAction) {
 		PrettyPrinter wolbPrinter = wrap(Wrapper.oneLine());
 		printAction.accept(wolbPrinter);
+		return this;
+	}
+
+	default <V> PrettyPrinter appendStyled(Map<? extends PrettyPrintable, V> map) {
+		switch(map.size()) {
+		case 0:
+			append("{}");
+			break;
+		case 1:
+			append("{ ").appendStyled(map.entrySet().iterator().next()).append(" }");
+			break;
+		default:
+			append("{").indent(() -> {
+				map.entrySet().forEach(entry -> endl().appendStyled(entry).append(","));
+			}).endl().append("}");
+		}
+		return this;
+	}
+
+	default <V> PrettyPrinter appendStyled(Map.Entry<? extends PrettyPrintable, V> entry) {
+		append(entry.getKey()).append(": ");
+		if(entry.getValue() instanceof PrettyPrintable value) {
+			append(value);
+		} else {
+			append("--cannot print--");
+		}
 		return this;
 	}
 }

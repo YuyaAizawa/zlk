@@ -42,7 +42,7 @@ import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
-import zlk.idcalc.IcFunDecl;
+import zlk.idcalc.IcValDecl;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
@@ -172,7 +172,7 @@ public final class ClosureConveter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(IcFunDecl decl, IcExp body, Location loc) -> {
+		case IcLet(IcValDecl decl, IcExp body, Location loc) -> {
 			Id id = decl.id();
 			List<IcPattern> args = decl.args();
 			IcExp bounded = decl.body();
@@ -186,11 +186,11 @@ public final class ClosureConveter {
 				yield new CcLet(id, compile(bounded), letBody, loc);
 			}
 		}
-		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location loc) -> {
+		case IcLetrec(List<IcValDecl> decls, IcExp body, Location loc) -> {
 			if(decls.size() != 1) {
 				todo();
 			}
-			IcFunDecl decl = decls.get(0);
+			IcValDecl decl = decls.get(0);
 			Id id = decl.id();
 			List<IcPattern> args = decl.args();
 			IcExp bounded = decl.body();

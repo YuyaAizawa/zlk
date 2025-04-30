@@ -20,8 +20,10 @@ public record Token(Kind kind, String value, Position pos) {
 		BAR       ("|"),
 		COLON     (":"),
 		EQUAL     ("="),
+		LAMBDA    ("\\"),
 		LPAREN    ("("),
 		RPAREN    (")"),
+		UNIT      ("()"),
 
 		TRUE("true"),
 		FALSE("false"),

@@ -98,8 +98,8 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");
-		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
-		NameEvaluator ne = new NameEvaluator(ast, Builtin.builtins());
+		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
+		NameEvaluator ne = new NameEvaluator(ast);
 		IcModule idcalc = ne.eval();
 		idcalc.pp(System.out);
 		System.out.println();
@@ -114,14 +114,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		TypeReconstructor tr = new TypeReconstructor();
-		IdMap<Type> types = tr.run(cint);
+		IdMap<Type> types = TypeReconstructor.recon(cint).unwrap();
 		System.out.println(types.buildString());
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
-		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
+		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- TYPE CHECK --"); // TODO remove
 		TypeChecker typeChecker = new TypeChecker(types);
@@ -150,7 +149,7 @@ public class Main {
 				}
 			};
 
-		new BytecodeGenerator(clconv, types, Builtin.builtins()).compile(fileWriter);
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(fileWriter);
 
 		System.out.println();
 		System.out.println("-- EXECUTE --");

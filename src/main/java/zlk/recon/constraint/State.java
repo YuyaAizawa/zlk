@@ -10,22 +10,15 @@ import zlk.idcalc.IcExp;
 import zlk.idcalc.IcPattern;
 import zlk.recon.Variable;
 import zlk.util.Location;
-import zlk.util.Stack;
 
 public final class State {
 	public IdMap<RcType> headers;
-	public Stack<Variable> vars;
-	public List<Constraint> cons; // revCon but not reversed
+	public List<Variable> vars;
+	public List<Constraint> cons;
 
 	public State() {
 		headers = new IdMap<>();
-		vars = new Stack<>();
-		cons = new ArrayList<>();
-	}
-
-	public State(List<Variable> flexes) {
-		headers = new IdMap<>();
-		vars = new Stack<>(flexes);
+		vars = new ArrayList<>();
 		cons = new ArrayList<>();
 	}
 
@@ -55,6 +48,6 @@ public final class State {
 			add(arg.pattern(), RcType.from(arg.type())));
 
 		RcType ctorType = RcType.from(ty);
-		cons.add(new Constraint.CPattern(ctorType, expected));
+		cons.add(new Constraint.CPattern(ctorId, ctorType, expected));
 	}
 }

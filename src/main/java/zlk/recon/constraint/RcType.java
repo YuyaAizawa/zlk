@@ -22,11 +22,11 @@ permits VarN, AppN, FunN {
 	record AppN(Id id, List<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
 
-	public static final RcType BOOL = datatype(zlk.common.Type.BOOL.id(), List.of());
-	public static final RcType I32  = datatype(zlk.common.Type.I32.id() , List.of());
+	public static final RcType BOOL = new AppN(zlk.common.Type.BOOL.ctor(), List.of());
+	public static final RcType I32  = new AppN(zlk.common.Type.I32.ctor() , List.of());
 
-	public static RcType datatype(Id id, List<RcType> args) {
-		return new AppN(id, args);
+	public static RcType unbounded() {
+		return new VarN(Variable.unbounded());
 	}
 
 	public static RcType from(zlk.common.Type ty) {
@@ -36,7 +36,7 @@ permits VarN, AppN, FunN {
 			return I32;
 
 		return switch(ty) {
-		case Atom(Id id) ->
+		case Atom(Id id, _) ->
 			new AppN(id, List.of());
 		case Arrow(var arg, var ret) ->
 			new FunN(from(arg), from(ret));
@@ -65,3 +65,4 @@ permits VarN, AppN, FunN {
 		}
 	}
 }
+

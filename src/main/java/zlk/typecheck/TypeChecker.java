@@ -7,7 +7,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcFunDecl;
+import zlk.idcalc.IcValDecl;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
@@ -37,12 +37,12 @@ public final class TypeChecker {
 	}
 
 	public void check(IcModule module) {
-		for(IcFunDecl decl : module.decls()) {
+		for(IcValDecl decl : module.decls()) {
 			check(decl);
 		}
 	}
 
-	public Type check(IcFunDecl decl) {
+	public Type check(IcValDecl decl) {
 		Type ret = check(decl.body());
 		for(IcPattern arg : decl.args()) {
 			ret = new Type.Arrow(check(arg), ret);
@@ -108,12 +108,12 @@ public final class TypeChecker {
 				typeAssertion(elseExp, thenType);
 				yield thenType;
 			}
-			case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+			case IcLet(IcValDecl decl, IcExp body, Location _) -> {
 				check(decl);
 				yield check(body);
 			}
-			case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
-				for(IcFunDecl decl : decls) {
+			case IcLetrec(List<IcValDecl> decls, IcExp body, Location _) -> {
+				for(IcValDecl decl : decls) {
 					check(decl);
 				}
 				yield check(body);

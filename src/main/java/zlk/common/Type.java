@@ -14,13 +14,19 @@ import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Type extends PrettyPrintable
 permits Atom, Arrow, Var {
-	record Atom(Id id) implements Type {}
+	record Atom(Id ctor, List<Type> args) implements Type {
+		public Atom(Id id) {
+			this(id, List.of());
+		}
+	}
 	record Arrow(Type arg, Type ret) implements Type {}
 	record Var(String name) implements Type {}
 
 	public static final Atom UNIT = new Atom(Id.fromCanonicalName("Unit"));
 	public static final Atom BOOL = new Atom(Id.fromCanonicalName("Bool"));
 	public static final Atom I32  = new Atom(Id.fromCanonicalName("I32"));
+
+	public static final List<Atom> BUILTIN = List.of(UNIT, BOOL, I32);
 
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -137,11 +143,43 @@ permits Atom, Arrow, Var {
 		return result;
 	}
 
+	default List<String> getVerNames() {
+		List<String> result = new ArrayList<>();
+		getVerNamesHelp(result);
+		return result;
+	}
+	default void getVerNamesHelp(List<String> acc) {
+		switch(this) {
+		case Atom(_, List<Type> typeArguments) -> {
+			for(Type arg : typeArguments) {
+				arg.getVerNamesHelp(acc);
+			}
+		}
+		case Arrow(Type arg, Type ret) -> {
+			arg.getVerNamesHelp(acc);
+			ret.getVerNamesHelp(acc);
+		}
+		case Var(String name) -> {
+			if(!acc.contains(name)) {
+				acc.add(name);
+			}
+		}
+		}
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case Atom(Id id) -> {
+		case Atom(Id id, List<Type> typeArguments) -> {
 			pp.append(id);
+			typeArguments.forEach(a -> {
+				if(a instanceof Arrow ||
+						(a instanceof Atom(_, List<Type> args) && !args.isEmpty())) {
+					pp.append(" (").append(a).append(")");
+				} else {
+					pp.append(" ").append(a);
+				}
+			});
 		}
 		case Arrow(Type arg, Type ret) -> {
 			if(arg.isArrow()) {

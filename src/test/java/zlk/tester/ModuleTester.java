@@ -33,8 +33,8 @@ public class ModuleTester {
 
 		// TODO コンパイラのデザイン
 		Module ast = new Parser(new Lexer(TARGET_MODULE_NAME + ".zlk", this.src)).parse();
-		IdList builtinIds = Builtin.builtins().stream().map(b -> b.id()).collect(IdList.collector());
-		IcModule idcalc = new NameEvaluator(ast, Builtin.builtins()).eval();
+		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
+		IcModule idcalc = new NameEvaluator(ast, Builtin.functions()).eval();
 		Constraint cint = ConstraintExtractor.extract(idcalc);
 		IdMap<Type> types = new TypeReconstructor().run(cint);
 
@@ -42,11 +42,11 @@ public class ModuleTester {
 		idcalc.types().forEach(union ->
 			union.ctors().forEach(ctor ->
 				types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
-		Builtin.builtins().forEach(b -> types.put(b.id(), b.type()));
+		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		new TypeChecker(types).check(idcalc);
 		CcModule clconv = new ClosureConveter(idcalc, types, builtinIds).convert();
-		new BytecodeGenerator(clconv, types, Builtin.builtins()).compile(this::addClass);
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(this::addClass);
 	}
 
 	public void addClass(String className, byte[] bytecode) {

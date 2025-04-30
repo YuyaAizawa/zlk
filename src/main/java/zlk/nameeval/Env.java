@@ -2,9 +2,7 @@ package zlk.nameeval;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.NoSuchElementException;
-import java.util.function.Function;
 
 import zlk.common.id.Id;
 import zlk.util.Stack;
@@ -12,61 +10,78 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public final class Env {
-	Stack<Scope> scopeStack;
+	Map<String, Id> global;
+	Stack<Scope> scoped;
 
 	public Env() {
-		scopeStack = new Stack<>();
-		scopeStack.push(new Scope(null));
+		global = new HashMap<>();
+		scoped = new Stack<>();
 	}
 
-	public void push(String scopeSimpleName) {
-		scopeStack.push(new Scope(
-				Id.fromParentAndSimpleName(scopeStack.peek().name(), scopeSimpleName)));
+	public void pushScope(String scopeSimpleName) {
+		Id scopeName = scoped.isEmpty()
+				? Id.fromCanonicalName(scopeSimpleName)
+				: Id.fromParentAndSimpleName(scoped.peek().name(), scopeSimpleName);
+		scoped.push(new Scope(scopeName));
 	}
 
-	public void pop() {
-		scopeStack.pop();
+	public void popScope() {
+		scoped.pop();
 	}
 
 	public Id getOrNull(String name) {
-		for(var scope : scopeStack) {
+		for(var scope : scoped) {
 			Id id = scope.ids().get(name);
 			if(id != null) {
 				return id;
 			}
 		}
-		return null;
+		return global.get(name);
 	}
 
 	public Id get(String name) {
 		Id id = getOrNull(name);
 		if(id == null) {
-			for(Scope scope: scopeStack) {
-				scope.pp(System.out);
-				System.out.println();
-			}
 			throw new NoSuchElementException(name);
-		} else {
-			return id;
 		}
-	}
-
-	private void put(String name, Id id) {
-		Id old = getOrNull(name);
-		if(old != null) {
-			throw new RuntimeException("already exist: "+old);
-		}
-		scopeStack.peek().ids().put(name, id);
-	}
-
-	public Id registerVar(String simpleName) {
-		Id id = Id.fromParentAndSimpleName(scopeStack.peek().name(), simpleName);
-		put(simpleName, id);
 		return id;
 	}
 
-	public Id registerBuiltinVar(Id id) {
-		put(id.simpleName(), id);
+	/**
+	 * この環境に現在のスコープを基準に名前を登録し，生成した{@link Id}を返す.
+	 *
+	 * @param name
+	 * @return 生成したID
+	 * @throws DuplicatedNameException
+	 */
+	public Id register(String name) throws DuplicatedNameException {
+		if(name.contains(".")) {
+			throw new Error("name cannot contain '.': "+name);
+		}
+
+		Scope topScope = scoped.peek();
+		Id id = Id.fromParentAndSimpleName(topScope.name(), name);
+		Id orig = topScope.ids().put(name, id);
+
+		if(orig != null) {
+			throw new DuplicatedNameException(topScope.name(), name);
+		}
+		return id;
+	}
+
+	/**
+	 * この環境の大域に指定した{@link Id}をその{@link Id#simpleName()}}で登録し，Idを返す.
+	 *
+	 * @param name
+	 * @return 生成したID
+	 * @throws DuplicatedNameException
+	 */
+	public Id registerGlobal(Id id) throws DuplicatedNameException {
+		String name = id.simpleName();
+		Id orig = global.put(name, id);
+		if(orig != null) {
+			throw new DuplicatedNameException(null, name);
+		}
 		return id;
 	}
 }
@@ -82,10 +97,23 @@ record Scope(
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		Function<Entry<String, Id>, PrettyPrintable> entryMapper = entry ->
-		(pp_ -> pp_.append(entry.getKey()).append(": ").append(entry.getValue().canonicalName()));
+		pp.append(name).append(": ").append(PrettyPrintable.from(
+				ids,
+				s -> pp_ -> pp_.append(s),
+				i -> i
+		));
+	}
+}
 
-		pp.append(PrettyPrintable.toElmListStyle(
-				ids.entrySet().stream().map(entryMapper).iterator()));
+class DuplicatedNameException extends Exception {
+	private static final long serialVersionUID = 1L;
+
+	public final Id scopeId;
+	public final String name;
+
+	public DuplicatedNameException(Id scopeId, String name) {
+		super("scope: "+scopeId+", name: "+name);
+		this.scopeId = scopeId;
+		this.name = name;
 	}
 }

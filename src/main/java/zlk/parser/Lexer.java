@@ -64,7 +64,10 @@ public class Lexer {
 		case LF  -> new Token(Token.Kind.BR, pos);
 		case ':' -> new Token(Token.Kind.COLON, pos);
 		case '=' -> new Token(Token.Kind.EQUAL, pos);
-		case '(' -> new Token(Token.Kind.LPAREN, pos);
+		case '\\' -> new Token(Token.Kind.LAMBDA, pos);
+		case '(' -> ifNext(')')
+				? new Token(Token.Kind.UNIT, pos)
+				: new Token(Token.Kind.LPAREN, pos);
 		case ')' -> new Token(Token.Kind.RPAREN, pos);
 
 		case '-' -> ifNext('>')

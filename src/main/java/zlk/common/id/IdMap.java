@@ -2,7 +2,6 @@ package zlk.common.id;
 
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -138,18 +137,13 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		Function<Map.Entry<Id, V>, PrettyPrintable> entryMapper = entry ->
-				pp_ -> {
-					pp_.append(entry.getKey()).append(": ");
-					if(entry.getValue() instanceof PrettyPrintable pp__) {
-						pp_.append(pp__);
-					} else {
-						pp_.append("--cannot print--");
-					}
-				};
-
-		Iterator<PrettyPrintable> entryIter = impl.entrySet().stream().map(entryMapper).iterator();
-		pp.append(PrettyPrintable.toElmListStyle(entryIter));
+			pp.append(PrettyPrintable.from(impl, id -> id, v -> {
+				if(v instanceof PrettyPrintable p) {
+					return p;
+				} else {
+					return pp_ -> pp_.append("--cannot print--");
+				}
+			}));
 	}
 }
 

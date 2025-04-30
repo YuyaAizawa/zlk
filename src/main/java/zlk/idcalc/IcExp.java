@@ -3,17 +3,18 @@ package zlk.idcalc;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
-import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
 import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
@@ -25,7 +26,7 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, IcLetrec, IcCase {
+permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet, IcLetrec, IcCase {
 
 	record IcCnst(
 			ConstValue value,
@@ -49,9 +50,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			Type type,
 			Location loc) implements IcExp {}
 
-	record IcAbs(
-			Id id,
-			Type type,
+	record IcLamb(
+			List<IcPattern> args,
 			IcExp body,
 			Location loc) implements IcExp {}
 
@@ -67,12 +67,12 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			Location loc) implements IcExp {}
 
 	record IcLet(
-			IcFunDecl decl,
+			IcValDecl decl,
 			IcExp body,
 			Location loc) implements IcExp {}
 
 	record IcLetrec(
-			List<IcFunDecl> decls,
+			List<IcValDecl> decls,
 			IcExp body,
 			Location loc) implements IcExp {}
 
@@ -88,6 +88,23 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 		return acc;
 	}
 
+	public default Optional<Id> getName() {
+		switch (this) {
+		case IcVarLocal(Id id, Location _) -> {
+			return Optional.of(id);
+		}
+		case IcVarForeign(Id id, Type _, Location _) -> {
+			return Optional.of(id);
+		}
+		case IcVarCtor(Id id, Type _, Location _) -> {
+			return Optional.of(id);
+		}
+		default -> {
+			return Optional.empty();
+		}
+		}
+	}
+
 	private void fv(IdList acc, Set<Id> known) {
 		switch (this) {
 		case IcCnst(ConstValue _, Location _) -> {}
@@ -98,8 +115,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 		}
 		case IcVarForeign(Id _, Type _, Location _) -> {}
 		case IcVarCtor(Id _, Type _, Location _) -> {}
-		case IcAbs(Id id, Type _, IcExp body, Location _) -> {
-			known.add(id);
+		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
+			args.forEach(pat -> pat.accumulateVars(known));
 			body.fv(acc, known);
 		}
 		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
@@ -111,13 +128,13 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 			thenExp.fv(acc, known);
 			elseExp.fv(acc, known);
 		}
-		case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+		case IcLet(IcValDecl decl, IcExp body, Location _) -> {
 			known.add(decl.id());
 			decl.args().forEach(pat -> pat.accumulateVars(known));
 			decl.body().fv(acc, known);
 			body.fv(acc, known);
 		}
-		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
+		case IcLetrec(List<IcValDecl> decls, IcExp body, Location _) -> {
 			decls.forEach(decl -> {
 				decl.args().forEach(pat -> pat.accumulateVars(known));
 				decl.body().fv(acc, known);
@@ -154,15 +171,20 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 		case IcVarCtor(Id id, Type _, Location _) -> {
 			pp.append(id);
 		}
-		case IcAbs(Id id, Type type, IcExp body, Location _) -> {
-			pp.append("\\").append(id).append(":").append(type).append(".").append(body);
+		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
+			pp.append("\\");
+			args.forEach(arg -> {
+				pp.append(arg).append(" ");
+			});
+			pp.append("-> ");
+			pp.append(body);
 		}
 		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
 			switch(fun) {
 			case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcApp _ -> {
 				pp.append(fun);
 			}
-			case IcAbs _ -> {
+			case IcLamb _ -> {
 				pp.append("(").append(fun).append(")");
 			}
 			case IcIf _, IcLet _, IcLetrec _, IcCase _ -> {
@@ -175,14 +197,14 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 				pp.append(" ");
 				switch(arg) {
 				case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _ -> {
-					pp.append(fun);
+					pp.append(arg);
 				}
-				case IcAbs _, IcApp _ -> {
-					pp.append("(").append(fun).append(")");
+				case IcLamb _, IcApp _ -> {
+					pp.append("(").append(arg).append(")");
 				}
 				case IcIf _, IcLet _, IcLetrec _, IcCase _ -> {
 					pp.append("(").endl();
-					pp.indent(() -> pp.append(fun).endl());
+					pp.indent(() -> pp.append(arg).endl());
 					pp.append(")");
 				}
 				}
@@ -202,7 +224,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 				});
 			}
 		}
-		case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
+		case IcLet(IcValDecl decl, IcExp body, Location _) -> {
 			pp.append("let").endl();
 			pp.indent(() -> {
 				pp.append(decl).endl();
@@ -216,7 +238,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcAbs, IcApp, IcIf, IcLet, 
 				});
 			}
 		}
-		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
+		case IcLetrec(List<IcValDecl> decls, IcExp body, Location _) -> {
 			pp.append("letrec").endl();
 			pp.indent(() -> {
 				decls.forEach(decl -> {

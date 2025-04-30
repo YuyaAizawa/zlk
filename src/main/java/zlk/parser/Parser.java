@@ -27,7 +27,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
-import zlk.ast.AType;
+import zlk.ast.AnType;
 import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
 import zlk.ast.Decl;
@@ -38,6 +38,7 @@ import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
 import zlk.ast.Exp.Cnst;
 import zlk.ast.Exp.If;
+import zlk.ast.Exp.Lamb;
 import zlk.ast.Exp.Let;
 import zlk.ast.Exp.Var;
 import zlk.ast.Module;
@@ -55,17 +56,18 @@ import zlk.util.Position;
  * <module>   ::= module <ucid> <topDecl>*
  *
  * <topDecl>  ::= <typeDecl>
- *              | <funDecl>
+ *              | <valDecl>
  *
  * <h3>宣言</h3>
- * <typeDecl> ::= type <ucid> = <ctor> (| <ctor>)*
+ * <typeDecl> ::= type <ucid> <aType>* = <ctor> (| <ctor>)*
  *
  * <ctor>     ::= <ucid> <aType>*
  *
- * <funDecl>  ::= (val <lcid> : <type>)? val <lcid>+ = <exp>
+ * <valDecl>  ::= (<lcid> : <type> <br>)? <lcid> <pattern>* = <br>? <exp>
  *
  * <h3>式
  * <exp>      ::= <aExp>+
+ *              | \ <pattern>+ <br>? -> <exp>
  *              | let <funDecl>+ in <exp>
  *              | if <exp> then <exp> else <exp>
  *              | case <exp> of (| <pattern> -> <exp>)+
@@ -82,9 +84,14 @@ import zlk.util.Position;
  *              | <lcid>
  *
  * <h3>型注釈</h3>
- * <type>     ::= <aType> (-> <aType>)*
+ * <type>     ::= <bType> (-> <type>)?
+ *
+ * <bType>    ::= <ucid> <aType>+
+ *              | <aType>
  *
  * <aType>    ::= ( <type> )
+ *              | ()
+ *              | <lcid>
  *              | <ucid>
  * }</pre>
  */
@@ -165,7 +172,7 @@ public class Parser {
 
 		String name = parse(UCID);
 
-		List<AType> args = new ArrayList<>();
+		List<AnType> args = new ArrayList<>();
 		while(aTypeStartToken(current)) {
 			args.add(parseAType());
 		}
@@ -182,7 +189,7 @@ public class Parser {
 
 		String name = parse(LCID);
 
-		Optional<AType> anno;
+		Optional<AnType> anno;
 		if(maybeConsume(COLON)) {
 			anno = Optional.of(parseType());
 
@@ -196,9 +203,9 @@ public class Parser {
 			anno = Optional.empty();
 		}
 
-		List<Var> args = new ArrayList<>();
-		while(current.kind() == LCID) {
-			args.add(new Var(parse(LCID), location(start, end)));
+		List<Pattern> args = new ArrayList<>();
+		while(current.kind() != EQUAL) {
+			args.add(parsePattern());
 		}
 
 		consume(EQUAL);
@@ -229,6 +236,7 @@ public class Parser {
 		}
 
 		return switch(current.kind()) {
+		case LAMBDA -> parseLambdaExp();
 		case LET -> parseLetExp();
 		case IF -> parseIfExp();
 		case CASE -> parseCaseExp();
@@ -273,6 +281,21 @@ public class Parser {
 
 		default -> throw new RuntimeException("not a exp");
 		};
+	}
+
+	private Exp parseLambdaExp() {
+		Position start = current.pos();
+
+		List<Pattern> args = new ArrayList<>();
+		do {
+			args.add(parsePattern());
+		} while(current.kind() != ARROW);
+
+		consume(ARROW);
+
+		Exp body = parseExp();
+
+		return new Lamb(args, body, location(start, end));
 	}
 
 	private Exp parseLetExp() {
@@ -402,36 +425,55 @@ public class Parser {
 		return exp;
 	}
 
-	private AType parseType() {
+	private AnType parseType() {
 		Position start = current.pos();
 
-		AType ty = parseAType();
+		AnType ty = parseBType();
 
-		if(current.kind() == ARROW) {
-			nextToken();
-			return new AType.Arrow(ty, parseType(), location(start, end));
-		} else {
-			return ty;
+		if(maybeConsume(ARROW)) {
+			return new AnType.Arrow(ty, parseType(), location(start, end));
 		}
+		return ty;
 	}
 
-	private AType parseAType() {
+	private AnType parseBType() {
+		if(current.kind() == UCID) {
+			Position start = current.pos();
+			String ctor = parse(UCID);
+			List<AnType> args = new ArrayList<>();
+			while(isATypeStartToken(current)) {
+				args.add(parseAType());
+			}
+			return new AnType.Type(ctor, args, location(start, end));
+		}
+		return parseAType();
+	}
+
+	private AnType parseAType() {
 		Position start = current.pos();
 		return switch(current.kind()) {
 		case LPAREN -> parseParenType();
-		case UCID -> {
-			AType type = new AType.Atom(current.value(), location(start, end));
+		case UNIT -> {
+			AnType type = new AnType.Unit(location(start, end));
 			nextToken();
 			yield type;
 		}
+		case UCID ->  new AnType.Type(parse(UCID), List.of(), location(start, end));
 		default -> throw new RuntimeException("type expected");
 		};
 	}
 
-	private AType parseParenType() {
+	private static boolean isATypeStartToken(Token token) {
+		return switch(token.kind()) {
+		case LPAREN, UNIT, UCID, LCID -> true;
+		default -> false;
+		};
+	}
+
+	private AnType parseParenType() {
 		consume(LPAREN);
 
-		AType type = parseAType();
+		AnType type = parseAType();
 
 		consume(RPAREN);
 

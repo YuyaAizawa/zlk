@@ -7,6 +7,7 @@ import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
 import zlk.ast.Exp.Cnst;
 import zlk.ast.Exp.If;
+import zlk.ast.Exp.Lamb;
 import zlk.ast.Exp.Let;
 import zlk.ast.Exp.Var;
 import zlk.common.ConstValue;
@@ -16,12 +17,10 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 /**
- * 式を表すインターフェース．イミュータブル．
- * @author YuyaAizawa
- *
+ * パースした構文木の式を表す
  */
 public sealed interface Exp extends PrettyPrintable, LocationHolder
-permits Cnst, Var, App, If, Let, Case {
+permits Cnst, Var, Lamb, App, If, Let, Case {
 	record Cnst(ConstValue value, Location loc) implements Exp {
 			public Cnst(boolean value, Location loc) {
 				this(value ? ConstValue.TRUE : ConstValue.FALSE, loc);
@@ -31,6 +30,7 @@ permits Cnst, Var, App, If, Let, Case {
 			}
 	}
 	record Var(String name, Location loc) implements Exp {}
+	record Lamb(List<Pattern> args, Exp body, Location loc) implements Exp {}
 	record App(List<Exp> exps, 	Location loc) implements Exp {}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
 	record Let(List<ValDecl> decls, Exp body, Location loc) implements Exp {}
@@ -58,11 +58,18 @@ permits Cnst, Var, App, If, Let, Case {
 		case Var(String name, _) -> {
 			pp.append(name);
 		}
+		case Lamb(List<Pattern> args, Exp body, _) -> {
+			pp.append("\\");
+			args.forEach(arg ->
+					pp.append(arg).append(" "));
+			pp.append("-> ");
+			pp.append(body);
+		}
 		case App(List<Exp> exps, _) -> {
 			Exp hd = exps.get(0);
 			switch(hd) {
 			case Cnst _, Var _, App _ -> pp.append(hd);
-			case If _, Let _, Case _ -> { pp
+			case Lamb _, If _, Let _, Case _ -> { pp
 						.append("(").endl()
 						.inc().append(hd).endl()
 						.dec().append(")");
@@ -74,7 +81,7 @@ permits Cnst, Var, App, If, Let, Case {
 				switch(exp) {
 				case Cnst _, Var _ -> pp.append(exp);
 				case App _ -> pp.append("(").append(exp).append(")");
-				case If _, Let _, Case _ -> { pp
+				case Lamb _, If _, Let _, Case _ -> { pp
 					.append("(").endl()
 					.inc().append(exp).endl()
 					.dec().append(")");
