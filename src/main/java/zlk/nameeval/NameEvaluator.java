@@ -22,6 +22,7 @@ import zlk.ast.Pattern;
 import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcCaseBranch;
@@ -33,7 +34,6 @@ import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
 import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
@@ -42,7 +42,6 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
 import zlk.util.Location;
-import zlk.util.Position;
 
 public final class NameEvaluator {
 
@@ -51,12 +50,16 @@ public final class NameEvaluator {
 	private final IdMap<Builtin> builtins;
 	private final IdMap<Type> types;
 	private final IdMap<Type> ctors;
+	private final IdList sccDeclsInModule;
+	private final IdToIds sccRef;
 
 	public NameEvaluator(Module module) {
 		this.module = module;
 		this.builtins = Builtin.functions().stream().collect(IdMap.collector(b -> b.id(), b -> b));
 		this.types = new IdMap<>();
 		this.ctors = new IdMap<>();
+		this.sccDeclsInModule = new IdList();
+		this.sccRef = new IdToIds();
 
 		env = new Env();
 		Type.BUILTIN.stream().forEach(ty -> {
@@ -119,7 +122,8 @@ public final class NameEvaluator {
 			}
 			case ValDecl(String name, _, _, _, _) -> {
 				try {
-					env.register(name);
+					Id id = env.register(name);
+					sccDeclsInModule.add(id);
 				} catch (DuplicatedNameException e) {
 					// TODO コンパイルメッセージに追加
 					throw new RuntimeException(e);
@@ -141,7 +145,25 @@ public final class NameEvaluator {
 		if(env.scoped.size() != 0) {
 			throw new AssertionError();
 		}
-		return new IcModule(module.name(), icTypes, icDecls, module.origin());
+
+		// decomp recursion scc
+		List<IdList> scc = Scc.decomp(sccRef);
+		IdList empty = new IdList();
+		IdMap<IdList> recscc = new IdMap<>();
+		scc.forEach(vs -> {
+			if(vs.size() == 1) {
+				Id v = vs.get(0);
+				if(sccRef.get(v).contains(v)) {
+					recscc.put(v, vs);
+				} else {
+					recscc.put(v, empty);
+				}
+			} else {
+				vs.forEach(v -> recscc.put(v, vs));
+			}
+		});
+
+		return new IcModule(module.name(), icTypes, icDecls, recscc, module.origin());
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {
@@ -164,103 +186,87 @@ public final class NameEvaluator {
 			Id id = env.get(declName);
 			Optional<Type> anno = decl.anno().map(a -> eval(a));
 			List<IcPattern> args = decl.args().stream().map(a -> eval(a)).toList();
-			IcExp body = eval(decl.body());
+			IcExp body = eval(decl.body(), id);
 
 			env.popScope();
 
-			return new IcValDecl(
-					id,
-					anno,
-					args,
-					body.fv(List.of())
-						.contains(id) ?
-								Optional.of(List.of()) : // TODO 再帰関数の強連結成分を求めるコンパイルフェーズを作る
-									Optional.empty(),
-					body,
-					decl.loc());
+			return new IcValDecl(id, anno, args, body, decl.loc());
 		} catch(RuntimeException e) {
 			throw new RuntimeException("in "+decl.name(), e);
 		}
 	}
 
-	public IcExp eval(Exp exp) {
-		return switch(exp) {
-		case Cnst(ConstValue value, Location loc)
-				-> new IcCnst(value, loc);
-		case Var(String name, Location loc) -> {
+	private IcExp eval(Exp exp, Id scope) {
+		switch(exp) {
+		case Cnst(ConstValue value, Location loc):
+			return new IcCnst(value, loc);
+		case Var(String name, Location loc): {
 			Id id = env.get(name);
 
 			Builtin builtin = builtins.getOrNull(id);
 			if(builtin != null) {
-				yield new IcVarForeign(id, builtin.type(), loc);
+				return new IcVarForeign(id, builtin.type(), loc);
 			}
 
 			Type ctor = ctors.getOrNull(id);
 			if(ctor != null) {
-				yield new IcVarCtor(id, ctor, loc);
+				return new IcVarCtor(id, ctor, loc);
+			}
+			if(sccDeclsInModule.contains(id)) {
+				sccRef.add(scope, id);
 			}
 
-			yield new IcVarLocal(id, loc);
+			return new IcVarLocal(id, loc);
 		}
-		case Lamb(List<Pattern> patterns, Exp body, Location loc) -> {
+		case Lamb(List<Pattern> patterns, Exp body, Location loc): {
 			List<IcPattern> args = patterns.stream().map(a -> eval(a)).toList();
-			IcExp body_ = eval(body);
-			yield new IcLamb(args, body_, loc);
+			IcExp body_ = eval(body, scope);
+			return new IcLamb(args, body_, loc);
 		}
-		case App(List<Exp> exps, Location loc) -> {
-			IcExp fun = eval(exps.get(0));
+		case App(List<Exp> exps, Location loc): {
+			IcExp fun = eval(exps.get(0), scope);
 			List<IcExp> args = exps.subList(1, exps.size()).stream()
-					.map(arg -> eval(arg))
+					.map(arg -> eval(arg, scope))
 					.toList();
-			yield new IcApp(fun, args, loc);
+			return new IcApp(fun, args, loc);
 		}
-		case If(Exp cond, Exp exp1, Exp exp2, Location loc)
-				-> new IcIf(eval(cond), eval(exp1), eval(exp2), loc);
-		case Let(List<ValDecl> decls, Exp body, _)
-				-> eval(decls, body);
-		case Case(Exp exp_, List<CaseBranch> branches, Location loc) -> {
-			IcExp target = eval(exp_);
+		case If(Exp cond, Exp exp1, Exp exp2, Location loc):
+			return new IcIf(eval(cond, scope), eval(exp1, scope), eval(exp2, scope), loc);
+		case Let(List<ValDecl> decls, Exp body, Location loc): {
+			if(decls.isEmpty()) {
+				return eval(body, scope);
+			} else {
+				for(ValDecl decl: decls) {
+					try {
+						Id id = env.register(decl.name());
+						sccDeclsInModule.add(id);
+					} catch (DuplicatedNameException e) {
+						// TODO コンパイルメッセージに追加
+						throw new RuntimeException(e);
+					}
+				}
+				return new IcLet(
+						decls.stream().map(decl -> eval(decl)).toList(),
+						eval(body, scope),
+						loc
+				);
+			}
+		}
+		case Case(Exp exp_, List<CaseBranch> branches, Location loc): {
+			IcExp target = eval(exp_, scope);
 			List<IcCaseBranch> branches_ = new ArrayList<>();
 			for (int i = 0; i < branches.size(); i++) {
-				branches_.add(eval(branches.get(i), i));
+				branches_.add(eval(branches.get(i), i, scope));
 			}
-			yield new IcCase(target, branches_, loc);
+			return new IcCase(target, branches_, loc);
 		}
-		};
-	}
-
-	private IcExp eval(List<ValDecl> decls, Exp body) {
-		if(decls.isEmpty()) {
-			return eval(body);
-		}
-
-		ValDecl decl = decls.get(0);
-
-		Position end = body.loc().end();
-		try {
-			env.register(decl.name());
-		} catch (DuplicatedNameException e) {
-			// TODO コンパイルメッセージに追加
-			throw new RuntimeException(e);
-		}
-
-		// TODO 再帰関数の強連結成分を求めるコンパイルフェーズを作る
-		IcLet tmpLet = new IcLet(eval(decl), eval(decls.subList(1, decls.size()), body),
-				new Location(module.origin(), decl.loc().start(), end));
-
-		if(tmpLet.decl().body()
-				.fv(List.of())
-				.contains(tmpLet.decl().id())) {
-			return new IcLetrec(List.of(tmpLet.decl().norec()), tmpLet.body(), tmpLet.loc());
-		} else {
-			return tmpLet;
 		}
 	}
 
-	private IcCaseBranch eval(CaseBranch branch, int branchIdx) {
+	private IcCaseBranch eval(CaseBranch branch, int branchIdx, Id scope) {
 		env.pushScope("_" + branchIdx);
 		IcPattern pat = eval(branch.pattern());
-		IcExp body = eval(branch.body());
+		IcExp body = eval(branch.body(), scope);
 		env.popScope();
 		return new IcCaseBranch(pat, body, branch.loc());
 	}

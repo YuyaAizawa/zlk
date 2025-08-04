@@ -24,7 +24,11 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcValDecl;
 import zlk.recon.constraint.Constraint;
-import zlk.recon.constraint.Constraint.*;
+import zlk.recon.constraint.Constraint.CEqual;
+import zlk.recon.constraint.Constraint.CExists;
+import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CLet;
+import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Context;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
@@ -64,7 +68,7 @@ public final class ConstraintExtractor {
 			acc.add(new CForeign(id, type, expected, reason));
 		}
 
-		case IcLamb(List<IcPattern> args, IcExp body, Location loc) -> {
+		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
 			Args args_ = extractFromArgs(args);
 
 			List<Constraint> bodyCons = new ArrayList<>();
@@ -279,7 +283,7 @@ public final class ConstraintExtractor {
 	 * @param acc 追加先
 	 */
 	public static void exists(List<Variable> var, List<Constraint> cons, List<Constraint> acc) {
-		acc.add(new CExists(var, acc));
+		acc.add(new CExists(var, cons));
 	}
 
 	public static Args extractFromArgs(List<IcPattern> args) {

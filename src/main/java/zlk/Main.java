@@ -44,6 +44,12 @@ public class Main {
 				| Nil
 				| Cons I32 IntList
 
+				f x =
+				  g (sub x 1)
+
+				g x =
+				  f (sub x 1)
+
 				sq a  =
 				  let
 				    pow b c =
@@ -104,11 +110,7 @@ public class Main {
 		idcalc.pp(System.out);
 		System.out.println();
 
-//		System.out.println("-- UNCURRY --");
-//		idcalc = null;
-//		System.out.println();
-
-		System.out.println("-- EXTRACT CONSTRAINS --");
+		System.out.println("-- CONSTRAIN EXTRACTION --");
 		Constraint cint = ConstraintExtractor.extract(idcalc);
 		System.out.println(cint.buildString());
 		System.out.println();
@@ -122,7 +124,7 @@ public class Main {
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
-		System.out.println("-- TYPE CHECK --"); // TODO remove
+		System.out.println("-- TYPE CHECK --");  // TODO remove
 		TypeChecker typeChecker = new TypeChecker(types);
 		typeChecker.check(idcalc);
 		System.out.println(types);

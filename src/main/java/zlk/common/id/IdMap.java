@@ -145,5 +145,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 				}
 			}));
 	}
+
+	@Override
+	public String toString() {
+		return buildString();
+	}
 }
 

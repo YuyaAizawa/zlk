@@ -143,21 +143,21 @@ permits Atom, Arrow, Var {
 		return result;
 	}
 
-	default List<String> getVerNames() {
+	default List<String> getVarNames() {
 		List<String> result = new ArrayList<>();
-		getVerNamesHelp(result);
+		getVarNamesHelp(result);
 		return result;
 	}
-	default void getVerNamesHelp(List<String> acc) {
+	default void getVarNamesHelp(List<String> acc) {
 		switch(this) {
 		case Atom(_, List<Type> typeArguments) -> {
 			for(Type arg : typeArguments) {
-				arg.getVerNamesHelp(acc);
+				arg.getVarNamesHelp(acc);
 			}
 		}
 		case Arrow(Type arg, Type ret) -> {
-			arg.getVerNamesHelp(acc);
-			ret.getVerNamesHelp(acc);
+			arg.getVarNamesHelp(acc);
+			ret.getVarNamesHelp(acc);
 		}
 		case Var(String name) -> {
 			if(!acc.contains(name)) {

@@ -13,7 +13,6 @@ import zlk.common.Type.Atom;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.core.Builtin;
 import zlk.recon.TypeError.InfinitType;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
@@ -39,7 +38,7 @@ public class TypeReconstructor {
 	 * 量化判定待ちの型変数をletのネスト深さ毎に分類
 	 */
 	private ArrayList<List<Variable>> pools;
-	
+
 	/**
 	 * 汎化するときに使う
 	 */
@@ -59,6 +58,7 @@ public class TypeReconstructor {
 		pools = new ArrayList<>();
 		result = new IdMap<>();
 		errors = new ArrayList<>();
+		pools.add(new ArrayList<>());
 	}
 
 	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con) {
@@ -70,7 +70,7 @@ public class TypeReconstructor {
 			return new Result.Err<>(reconstructor.errors);
 		}
 	}
-	
+
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {
 		switch(con) {
 		case CEqual(RcType type, RcType expectation, _) -> {
@@ -85,7 +85,7 @@ public class TypeReconstructor {
 		}
 		case CForeign(Id id, Type type, RcType expectation, Reason reason) -> {
 			Map<String, Variable> typeVars =
-					type.getVerNames()
+					type.getVarNames()
 							.stream()
 							.collect(Collectors.toMap(
 									name -> name,
@@ -124,7 +124,7 @@ public class TypeReconstructor {
 
 				// 一段深いスコープ用のpoolを用意
 				int nextRank = letRank + 1;
-				if(pools.size() + 1 < nextRank) {
+				if(pools.size() <= nextRank) {
 					pools.add(new ArrayList<>());
 				}
 				List<Variable> nextPool = pools.get(nextRank);
@@ -144,10 +144,11 @@ public class TypeReconstructor {
 
 				// 参照用型環境を生成
 				IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));
-				
+				System.out.println("locals: "+locals);
+
 				// 前提制約のsolve
 				solve(headerCons, nextRank, env);
-				
+
 				// 汎化
 				int youngMark = gMarkCounter++;
 				int visitMark = gMarkCounter++;
@@ -161,11 +162,12 @@ public class TypeReconstructor {
 						throw new Error("it might be a bug");
 					}
 				});
-				
+
 				// 導入された型を追加した型環境を生成
 				IdMap<Variable> newEnv = IdMap.union(env, locals);
+				System.out.println("newEnv: "+newEnv);
 				solve(bodyCons, letRank, newEnv);
-				
+
 				locals.forEach((id, var) -> occurCheck(id, var));
 			}
 		}
@@ -178,7 +180,7 @@ public class TypeReconstructor {
 		}
 		}
 	}
-	
+
 	private void solve(List<Constraint> cons, int letRank, IdMap<Variable> env) {
 		for(Constraint con : cons) {
 			solve(con, letRank, env);
@@ -303,10 +305,10 @@ public class TypeReconstructor {
 			errors.add(new InfinitType(id));
 		}
 	}
-	
+
 	private void generalize(int youngMark, int visitMark, int youngRank) {
 		List<Variable> youngVars = pools.get(youngRank);
-		
+
 		// rank毎に型変数を分類
 		ArrayList<List<Variable>> rankTable = new ArrayList<>();
 		for(int i = 0; i < youngRank + 1; i++) {
@@ -317,14 +319,14 @@ public class TypeReconstructor {
 			state.gMark = youngMark; //  ついでにマークする
 			rankTable.get(state.rank).add(var);
 		});
-		
+
 		// rankをletのネスト数からもっとも外側の出現に補正
 		for(int rank = 0; rank < rankTable.size(); rank++) {
 			for(Variable var : rankTable.get(rank)) {
 				adjustRank(youngMark, visitMark, rank, var);
 			};
 		}
-		
+
 		// letの外側に漏れた型変数をpoolsに戻す
 		for(int rank = 0; rank < rankTable.size(); rank++) {
 			for(Variable var : rankTable.get(rank)) {
@@ -342,7 +344,7 @@ public class TypeReconstructor {
 		}
 		youngVars.clear();
 	}
-	
+
 	/**
 	 * 型変数の結びつきをたどり，最も高いものにrankを合わせる．
 	 * 修正後のrankを返す．
@@ -365,7 +367,7 @@ public class TypeReconstructor {
 	}
 	private int adjustRankContent(int youngMark, int visitMark, int groupRank, Content content) {
 		ToIntFunction<Variable> go = c -> adjustRank(youngMark, visitMark, groupRank, c);
-		
+
 		switch(content) {
 		case Content.FlexVar _:
 			return groupRank;
@@ -377,7 +379,7 @@ public class TypeReconstructor {
 			return groupRank;
 		}
 	}
-	
+
 	private void introduce(List<Variable> vars, int letRank) {
 		pools.get(letRank).addAll(vars);
 		for(Variable var : vars) {

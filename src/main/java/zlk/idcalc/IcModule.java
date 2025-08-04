@@ -2,15 +2,18 @@ package zlk.idcalc;
 
 import java.util.List;
 
+import zlk.common.id.IdList;
+import zlk.common.id.IdMap;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcModule(
 		String name,
 		List<IcTypeDecl> types,
-		List<IcValDecl> decls,  // TODO IcRecGroupとして
-		String origin)
-implements PrettyPrintable{
+		List<IcValDecl> decls,
+		IdMap<IdList> recscc,
+		String origin
+) implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
