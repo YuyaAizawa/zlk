@@ -66,7 +66,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			Location loc) implements IcExp {}
 
 	record IcLet(
-			List<IcValDecl> decl,
+			List<IcValDecl> defs,
 			IcExp body,
 			Location loc) implements IcExp {}
 

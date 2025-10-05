@@ -11,6 +11,11 @@ import zlk.common.id.IdList;
 public class Scc {
 	private Scc() {}
 
+	/**
+	 * 強連結成分分解を行う
+	 * @param graph 依存関係の有向グラフ
+	 * @return 強連結成分のリスト
+	 */
 	public static List<IdList> decomp(IdToIds graph) {
 
 		Set<Id> seen = new HashSet<>();

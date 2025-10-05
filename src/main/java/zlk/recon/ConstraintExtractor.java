@@ -7,6 +7,7 @@ import java.util.Optional;
 import zlk.common.ConstValue;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcExp;
@@ -16,7 +17,6 @@ import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
 import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
@@ -39,8 +39,23 @@ import zlk.util.Location;
 import zlk.util.Stack;
 
 public final class ConstraintExtractor {
+	private final IdMap<IdList> recscc;
+	private final List<Constraint> result;
 
-	// TODO ArrayListか何かを継承して，インスタンスメソッドにする
+	private ConstraintExtractor(IcModule module) {
+		this.recscc = module.recscc();
+	}
+
+
+	public static Constraint extract(IcModule module) {
+		ConstraintExtractor extractor = new ConstraintExtractor(module);
+		List<Constraint> cons = new ArrayList<>();
+		for(IcValDecl decl : module.decls()) {
+			extractFromDef(decl, List.of(), cons);  // TODO 関数の依存関係とか再帰とか
+		}
+		return new CLet(List.of(), List.of(), IdMap.of(), cons, List.of());  // 組込み関数とか
+	}
+
 
 	/**
 	 * 指定された式の制約を抽出し，指定されたリストに追加する
@@ -156,17 +171,14 @@ public final class ConstraintExtractor {
 			}
 		}
 
-		case IcLet(IcValDecl decl, IcExp body, Location _) -> {
+		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
 			List<Constraint> bodyCons = new ArrayList<>();
 			extract(body, expected, reason, bodyCons);
-			extractFromDef(decl, bodyCons, acc);
+			for(IcValDecl decl : decls) {
+				extractFromDef(decl, bodyCons, acc);
+			}
 		}
 
-		case IcLetrec(List<IcValDecl> decls, IcExp body, Location _) -> {
-			List<Constraint> bodyCons = new ArrayList<>();
-			extract(body, expected, reason, bodyCons);
-			extractFromRecDef(decls, bodyCons, acc);
-		}
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
 			Variable patVar = Variable.unbounded();
 			RcType patTy = new VarN(patVar);
@@ -209,14 +221,6 @@ public final class ConstraintExtractor {
 			RcType funTy,
 			RcType resultTy,
 			State state) {}
-
-	public static Constraint extract(IcModule module) {
-		List<Constraint> cons = new ArrayList<>();
-		for(IcValDecl decl : module.decls()) {
-			extractFromDef(decl, List.of(), cons);  // TODO 関数の依存関係とか再帰とか
-		}
-		return new CLet(List.of(), List.of(), IdMap.of(), cons, List.of());  // 組込み関数とか
-	}
 
 	public static void extractFromDef(IcValDecl decl, List<Constraint> bodyCons, List<Constraint> acc) {
 		Args args = extractFromArgs(decl.args());

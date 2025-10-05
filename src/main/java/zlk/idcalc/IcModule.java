@@ -7,6 +7,14 @@ import zlk.common.id.IdMap;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * 名前解決したモジュール
+ * @param name モジュール名
+ * @param types 型の定義
+ * @param decls トップレベルの関数の定義
+ * @param recscc 関数の含まれる強連結成分
+ * @param origin ソースコード名
+ */
 public record IcModule(
 		String name,
 		List<IcTypeDecl> types,
@@ -27,6 +35,11 @@ public record IcModule(
 		decls.forEach(decl -> {
 			pp.endl();
 			pp.append(decl).endl();
+		});
+
+		recscc.forEach((k,v) ->{
+			pp.endl();
+			pp.append(k).append(": ").append(v);
 		});
 	}
 }
