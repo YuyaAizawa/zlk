@@ -27,17 +27,12 @@ import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
-import zlk.recon.constraint.Reason;
 import zlk.util.Result;
 
 public class TypeReconstructor {
 
 	// TODO 型が付かなかったときは例外でなくResultの方が扱いやすそう
-
-	/**
-	 * 量化判定待ちの型変数をletのネスト深さ毎に分類
-	 */
-	private ArrayList<List<Variable>> pools;
+	// TODO 例外が起きたら，それに関する型はダミーの型に確定したとして続けたらいいか？
 
 	/**
 	 * 汎化するときに使う
@@ -55,15 +50,19 @@ public class TypeReconstructor {
 	private List<TypeError> errors;
 
 	public TypeReconstructor() {
-		pools = new ArrayList<>();
 		result = new IdMap<>();
 		errors = new ArrayList<>();
-		pools.add(new ArrayList<>());
 	}
 
 	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con) {
 		TypeReconstructor reconstructor = new TypeReconstructor();
 		reconstructor.solve(con, 0, new IdMap<>());
+
+		// TODO: 暫定確認用消す
+		IdMap<Type> test = new IdMap<>();
+		reconstructor.result.forEach((id, v) -> test.put(id, toType(v)));
+		System.out.println(test.buildString());
+
 		if(reconstructor.errors.isEmpty()) {
 			return new Result.Ok<>(reconstructor.result.traverse(v -> v.toType()));
 		} else {
@@ -73,25 +72,22 @@ public class TypeReconstructor {
 
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {
 		switch(con) {
-		case CEqual(RcType type, RcType expectation, _) -> {
+		case CEqual(RcType type, RcType expectation) -> {
 			Variable actual = typeToVar(letRank, type, IdMap.of());
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
 			Unify.unify(actual, expected);
 		}
-		case CLocal(Id id, RcType expectation, Reason reason) -> {
-			Variable actual = makeCopy(letRank, env.get(id));
+		case CLocal(Id id, RcType expectation) -> {
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected);
+			Unify.unify(env.get(id), expected);
 		}
-		case CForeign(Id id, Type type, RcType expectation, Reason reason) -> {
+		case CForeign(Id id, Type type, RcType expectation) -> {
 			Map<String, Variable> typeVars =
 					type.getVarNames()
 							.stream()
 							.collect(Collectors.toMap(
 									name -> name,
 									name -> new Variable(name, letRank)));
-			List<Variable> pool = pools.get(letRank);
-			pool.addAll(typeVars.values());
 
 			Variable actual = annoTypeToVar(letRank, typeVars, type);
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
@@ -107,76 +103,43 @@ public class TypeReconstructor {
 				List<Variable> flexes,
 				IdMap<RcType> header,
 				List<Constraint> headerCons,
-				List<Constraint> bodyCons
-		) -> {
-			if(rigids.isEmpty() && flexes.isEmpty()) {
-				solve(headerCons, letRank, env);
+				List<Constraint> bodyCons)
+		-> {
+			final int nextRank = letRank + 1;
 
-				// 導入された型を型変数に変換
-				IdMap<Variable> locals = header.traverse(ty -> typeToVar(letRank, ty, IdMap.of()));
+			// rigidとflexを導入
+			introduce(rigids, nextRank);
+			introduce(flexes, nextRank);
 
-				// 導入された型を追加した型環境を生成
-				IdMap<Variable> newEnv = IdMap.union(env, locals);
+			// 新たに導入された変数のためのアンカー
+			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
 
-				solve(bodyCons, letRank, newEnv);
-				locals.forEach((id, var) -> occurCheck(id, var));
-			} else {
+			// 定義部を解く（SCCもこの中）
+			IdMap<Variable> newEnv = IdMap.union(env, locals);
+			solve(headerCons, nextRank, newEnv);
 
-				// 一段深いスコープ用のpoolを用意
-				int nextRank = letRank + 1;
-				if(pools.size() <= nextRank) {
-					pools.add(new ArrayList<>());
-				}
-				List<Variable> nextPool = pools.get(nextRank);
-				nextPool.clear();
+			// 一般化
+			// youngRankはnextRankのプールを一般化判定
+			final int youngMark = gMarkCounter++;
+			final int visitMark = gMarkCounter++;
+			generalizeAnchors(youngMark, visitMark, nextRank, locals.values());
 
-				// 導入された型変数のランクを更新してpoolに追加
-				rigids.forEach(v -> {
-					TypeVarState state = v.get();
-					state.rank = nextRank;
-					nextPool.add(v);
-				});
-				flexes.forEach(v -> {
-					TypeVarState state = v.get();
-					state.rank = nextRank;
-					nextPool.add(v);
-				});
+			// let宣言の結果を保存
+			locals.forEach((id, v) -> result.put(id, v));
 
-				// 参照用型環境を生成
-				IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));
-				System.out.println("locals: "+locals);
+			// 本体を解く
+			solve(bodyCons, letRank, newEnv);
 
-				// 前提制約のsolve
-				solve(headerCons, nextRank, env);
-
-				// 汎化
-				int youngMark = gMarkCounter++;
-				int visitMark = gMarkCounter++;
-				int finalMark = gMarkCounter++;
-				generalize(youngMark, visitMark, letRank);
-
-				// 汎化できたか念のため確認
-				rigids.forEach(var -> {
-					TypeVarState state = var.get();
-					if(state.rank != 0) {
-						throw new Error("it might be a bug");
-					}
-				});
-
-				// 導入された型を追加した型環境を生成
-				IdMap<Variable> newEnv = IdMap.union(env, locals);
-				System.out.println("newEnv: "+newEnv);
-				solve(bodyCons, letRank, newEnv);
-
-				locals.forEach((id, var) -> occurCheck(id, var));
-			}
+			locals.forEach(this::occurCheck);
 		}
 		case CExists(
 			List<Variable> vars,
-			List<Constraint> cons
-		) -> {
-			introduce(vars, letRank);
-			solve(cons, letRank, env);
+			List<Constraint> cons)
+		-> {
+			final int nextRank = letRank + 1;
+			introduce(vars, nextRank);
+			solve(cons, nextRank, env);
+			// assert vars.stream().allMatch(var->!var.occurs());
 		}
 		}
 	}
@@ -230,45 +193,9 @@ public class TypeReconstructor {
 
 	private Variable register(int letRank, Content content) {
 		Variable var = new Variable(content, letRank);
-		pools.get(letRank).add(var);
 		return var;
 	}
 
-	// TODO instantiateの方がいいか？
-	private Variable makeCopy(int letRank, Variable var) {
-		Variable copy = makeCopyHelp(letRank, var);
-		restore(var);
-		return copy;
-	}
-	private Variable makeCopyHelp(int maxRank, Variable var) {
-		TypeVarState state = var.get();
-
-		if(state.cacheOnCopy!=null) {
-			return state.cacheOnCopy;
-		}
-
-		if(state.rank != 0) {
-			return var;
-		}
-
-		Variable copy = new Variable(state.content, maxRank);
-		pools.get(maxRank).add(copy);
-		state.cacheOnCopy = copy;
-
-		switch(state.content) {
-		case Content.FlexVar _ -> {
-			return copy;
-		}
-		case Content.Structure term -> {
-			Structure term_ = term.traverse(v -> makeCopyHelp(maxRank, v));
-			copy.set(new TypeVarState(term_, maxRank));
-			return copy;
-		}
-		case Content.Error() -> {
-			return copy;
-		}
-		}
-	}
 	private void restore(Variable var) {
 		TypeVarState state = var.get();
 
@@ -280,8 +207,8 @@ public class TypeReconstructor {
 	}
 	private void restoreContent(Content content) {
 		switch(content) {
-		case Content.FlexVar _ -> {
-		}
+		case Content.FlexVar _ -> {}
+		case Content.RigidVar _ -> {}
 		case Content.Structure(FlatType term) -> {
 			switch(term) {
 			case FlatType.CtorApp1(_, List<Variable> args) -> {
@@ -294,8 +221,7 @@ public class TypeReconstructor {
 			default -> throw new IllegalArgumentException("Unexpected value: " + term);
 			}
 		}
-		case Content.Error() -> {
-		}
+		case Content.Error() -> {}
 		}
 	}
 
@@ -306,43 +232,25 @@ public class TypeReconstructor {
 		}
 	}
 
-	private void generalize(int youngMark, int visitMark, int youngRank) {
-		List<Variable> youngVars = pools.get(youngRank);
+	private void generalizeAnchors(int youngMark, int visitMark, int youngRank, List<Variable> anchors) {
+		// 外部に触れていたらrankを下げる
+		anchors.forEach(anchor -> anchor.markAndWalk(visitMark,
+				v -> adjustRank(youngMark, visitMark, youngRank, v)));
 
-		// rank毎に型変数を分類
-		ArrayList<List<Variable>> rankTable = new ArrayList<>();
-		for(int i = 0; i < youngRank + 1; i++) {
-			rankTable.add(new ArrayList<>());
-		}
-		youngVars.forEach(var -> {
-			TypeVarState state = var.get();
-			state.gMark = youngMark; //  ついでにマークする
-			rankTable.get(state.rank).add(var);
-		});
-
-		// rankをletのネスト数からもっとも外側の出現に補正
-		for(int rank = 0; rank < rankTable.size(); rank++) {
-			for(Variable var : rankTable.get(rank)) {
-				adjustRank(youngMark, visitMark, rank, var);
-			};
-		}
-
-		// letの外側に漏れた型変数をpoolsに戻す
-		for(int rank = 0; rank < rankTable.size(); rank++) {
-			for(Variable var : rankTable.get(rank)) {
-				if(!var.isRedundant()) {  // rootだけで充分
-					TypeVarState state = var.get();
-					if(state.rank < youngRank) {
-						// 外に漏れているので上のプールへ登録
-						pools.get(state.rank).add(var);
-					} else {
-						// 内側なら汎化
-						state.rank = 0;
+		// 一般化できるものをする
+		anchors.forEach(anchor -> anchor.markAndWalk(youngMark,
+				v -> {
+					TypeVarState s = v.get();
+					if(s.content instanceof Content.RigidVar) {
+						return;
 					}
-				}
-			};
-		}
-		youngVars.clear();
+					if(s.rank < youngRank) {
+						System.out.println("scope leaked: "+s.content.buildString());
+					} else if (s.rank == youngRank) {
+						s.rank = 0; // TODO: 一般化された形にしてresultに追加
+						System.out.println("generalized: "+s.content.buildString());
+					}
+				}));
 	}
 
 	/**
@@ -351,7 +259,7 @@ public class TypeReconstructor {
 	 */
 	private int adjustRank(int youngMark, int visitMark, int groupRank, Variable var) {
 		TypeVarState state = var.get();
-		if(state.rank == youngMark) {
+		if(state.gMark == youngMark) {
 			state.gMark = visitMark;
 			int maxRank = adjustRankContent(youngMark, visitMark, groupRank, state.content);
 			state.rank = maxRank;
@@ -368,22 +276,68 @@ public class TypeReconstructor {
 	private int adjustRankContent(int youngMark, int visitMark, int groupRank, Content content) {
 		ToIntFunction<Variable> go = c -> adjustRank(youngMark, visitMark, groupRank, c);
 
-		switch(content) {
-		case Content.FlexVar _:
-			return groupRank;
-		case Structure(FlatType.CtorApp1(_, List<Variable> args)):
-			return args.stream().mapToInt(go).max().orElse(0);
-		case Structure(FlatType.Fun1(Variable arg, Variable ret)):
-			return Math.max(go.applyAsInt(ret), go.applyAsInt(arg));
-		case Content.Error():
-			return groupRank;
-		}
+		return switch(content) {
+		case Content.RigidVar _ -> groupRank;
+		case Content.FlexVar _ -> groupRank;
+		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
+			args.stream().mapToInt(go).max().orElse(0);
+		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+			Math.max(go.applyAsInt(ret), go.applyAsInt(arg));
+		case Content.Error() -> groupRank;
+		};
 	}
 
-	private void introduce(List<Variable> vars, int letRank) {
-		pools.get(letRank).addAll(vars);
+	private static void introduce(List<Variable> vars, int letRank) {
 		for(Variable var : vars) {
 			var.get().rank = letRank;
 		}
+	}
+
+	// TODO: 表示用の暫定なので処遇を考える
+	private static Type toType(Variable root) {
+		// rank==0 の TVar を ∀ で束縛。発見順で a, b, c...
+		  Map<TypeVarState, String> names = new java.util.HashMap<>();
+		  var next = new Object(){ int i=0; };
+		  Function<TypeVarState,String> freshName = v -> {
+		    return names.computeIfAbsent(v, _ -> {
+		      int n = next.i++;
+		      // a,b,c,...,z, a1,b1,...
+		      char base = (char)('a' + (n % 26));
+		      int k = n / 26;
+		      return k==0 ? String.valueOf(base) : (""+base+k);
+		    });
+		  };
+
+		  Function<Variable, Type> go = new Function<>() {
+		    public Type apply(Variable v) {
+		      var s = v.get();
+		      return switch (s.content) {
+		        case Content.FlexVar flexId -> {
+		          if (s.rank == 0) { // ★ 多相変数
+		            yield new Type.Var(freshName.apply(s));
+		          } else {
+		            // ここに来るのは原則 let 抜け直後のアンカーでは無いはずだが、
+		            // 念のため mono として匿名名にする or エラー
+		            yield new Type.Var("_t" + System.identityHashCode(v));
+		          }
+		        }
+		        case Content.RigidVar r -> {
+		          // rigid がスキームに現れるのは注釈破りなので通常は起きない。念のため停止または匿名化。
+		          throw new IllegalStateException("Rigid leaked into scheme: " + r.name());
+		        }
+		        case Content.Structure(FlatType.CtorApp1(Id id, List<Variable> args)) -> {
+		          var ts = args.stream().map(this::apply).toList();
+		          yield new Type.Atom(id, ts);
+		        }
+		        case Content.Structure(FlatType.Fun1(Variable a, Variable b)) -> {
+		          yield new Type.Arrow(apply(a), apply(b));
+		        }
+		        case Content.Error _ -> throw new RuntimeException();
+		      };
+		    }
+		  };
+
+		  Type body = go.apply(root);
+		  return body;
 	}
 }

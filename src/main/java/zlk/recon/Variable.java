@@ -8,11 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -24,8 +26,6 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 	public Variable(TypeVarState state) {
 		super(state);
 	}
-
-
 
 	public static Variable unbounded() {
 		return new Variable(
@@ -44,28 +44,11 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 				letRank));
 	}
 
-//	public Variable instanciate(int letRank) {
-//		Variable result = makeCopy(letRank);
-//		clearCache();
-//		return result;
-//	}
-//	private Variable makeCopy(int maxRank) {
-//		TypeVarState s = get();
-//
-//		if(s.cacheOnCopy != null) {
-//			return s.cacheOnCopy;
-//		}
-//		if(!s.isQuantified()) {
-//			return this;
-//		}
-//
-//		Function<Co
-//	}
-
 	public Type toType() {
 		return switch(get().content) {
 		case FlexVar(int id, Optional<String> maybeName) ->
 			new Type.Var(maybeName.orElseGet(() -> "?"+id+"?"));
+		case RigidVar(String name) -> new Type.Var(name);
 		case Structure(FlatType flatType) ->
 			flatType.toType();
 		case Content.Error _ ->
@@ -90,6 +73,7 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 //				set(new Descriptor(new FlexVar(flex.id(), name), dtor.rank, dtor.mark));
 //			}
 //			return new TyVar(name);
+		case RigidVar(String name) -> new Type.Var(name);
 		case Structure(FlatType.CtorApp1(Id id, _)) ->
 			new Type.Atom(id);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
@@ -106,13 +90,9 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 	 */
 	private void accumlateVarNames(Map<String, Variable> takenNames) {
 		switch(get().content) {
-		case FlexVar(int _, Optional<String> maybeName) -> {
-			maybeName.ifPresent(name -> {
-				if(!takenNames.containsKey(name)) {
-					takenNames.put(name, this);
-				}
-			});
-		}
+		case FlexVar(int _, Optional<String> maybeName) ->
+			maybeName.ifPresent(name -> takenNames.putIfAbsent(name, this));
+		case RigidVar(String name) -> takenNames.putIfAbsent(name, this);
 		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
 			args.forEach(arg -> arg.accumlateVarNames(takenNames));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) -> {
@@ -136,15 +116,40 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 
 		seen.add(this);
 		return switch(get().content) {
-		case FlexVar _ ->
-			foundCycle;
+		case FlexVar _ -> foundCycle;
+		case RigidVar _ -> foundCycle;
 		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
 			args.stream().anyMatch(arg -> arg.occursHelp(seen, foundCycle));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			arg.occursHelp(seen, ret.occursHelp(new ArrayList<>(seen), foundCycle));
-		case Content.Error() ->
-			foundCycle;
+		case Content.Error() -> foundCycle;
 		};
+	}
+
+	/**
+	 * この変数の内部を再帰的に訪問し，各部分に対してactionを行う．
+	 * 訪問の判定にgMarkをmarkする．
+	 *
+	 * @param mark
+	 * @param action
+	 */
+	public void markAndWalk(int mark, Consumer<Variable> action) {
+		TypeVarState s = get();
+		if(s.gMark == mark) {
+			return;
+		}
+		s.gMark = mark;
+		action.accept(this);
+		switch(s.content) {
+		case Content.Structure(FlatType.CtorApp1(_, List<Variable> args)) -> {
+			args.forEach(arg -> arg.markAndWalk(mark, action));
+		}
+		case Content.Structure(FlatType.Fun1(Variable a, Variable b)) -> {
+			a.markAndWalk(mark, action);
+			b.markAndWalk(mark, action);
+		}
+		default -> {}
+		}
 	}
 
 	@Override

@@ -40,58 +40,22 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList =
-				| Nil
-				| Cons I32 IntList
-
-				f x =
-				  g (sub x 1)
-
-				g x =
-				  f (sub x 1)
-
-				sq a  =
+				adddd x y z =
 				  let
-				    pow b c =
-				      if isZero c
-				      then 1
-				      else mul b (pow b (sub c 1))
+				    addd i j = add i j
 				  in
-				    pow a 2
+				    addd x (addd y z)
 
-				fact n =
-				  if isZero n then
-				    1
-				  else
-				    let
-				      one = 1
-				      nn = sub n one
-				    in
-				      mul n (fact nn)
-
-				make_adder x =
-				  let
-				    adder y =
-				      let
-				        adder2 z = add (add x y) z
-				      in
-				        adder2
-				  in
-				    adder
-
-				sum list =
-				  case list of
-				  | Nil -> 0
-				  | Cons hd tl -> add hd (sum tl)
+				f x y = x y
 
 				ans1 =
-				  sq 42
+				  adddd 1 2 3
 
 				ans2 =
-				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
+				  adddd 2 3 4
 
 				ans3 =
-				  make_adder 3 4 5
+				  adddd 3 4 5
 				""";
 
 		System.out.println("-- SOURCE --");

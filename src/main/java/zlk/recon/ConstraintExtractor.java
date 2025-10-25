@@ -2,7 +2,7 @@ package zlk.recon;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.NoSuchElementException;
 
 import zlk.common.ConstValue;
 import zlk.common.Type;
@@ -29,77 +29,77 @@ import zlk.recon.constraint.Constraint.CExists;
 import zlk.recon.constraint.Constraint.CForeign;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
-import zlk.recon.constraint.Context;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
-import zlk.recon.constraint.Reason;
 import zlk.recon.constraint.State;
 import zlk.util.Location;
 import zlk.util.Stack;
 
-public final class ConstraintExtractor {
-	private final IdMap<IdList> recscc;
-	private final List<Constraint> result;
-
-	private ConstraintExtractor(IcModule module) {
-		this.recscc = module.recscc();
+record Env(Env parent, IdMap<Variable> table) {
+	static Env empty() {
+		return new Env(null, new IdMap<>());
 	}
 
+	Variable get(Id id) {
+		for(Env e = this; e != null; e = e.parent) {
+			Variable result = e.table.getOrNull(id);
+			if(result != null) {
+				return result;
+			}
+		}
+		throw new NoSuchElementException(id.buildString());
+	}
+
+	Env extend(IdMap<Variable> adds) {
+		return new Env(this, adds); // TODO: copyOf(adds)?
+	}
+}
+
+public final class ConstraintExtractor {
 
 	public static Constraint extract(IcModule module) {
-		ConstraintExtractor extractor = new ConstraintExtractor(module);
-		List<Constraint> cons = new ArrayList<>();
-		for(IcValDecl decl : module.decls()) {
-			extractFromDef(decl, List.of(), cons);  // TODO 関数の依存関係とか再帰とか
-		}
-		return new CLet(List.of(), List.of(), IdMap.of(), cons, List.of());  // 組込み関数とか
+		IdMap<IdList> sccs = module.recscc();
+
+		// TODO: enumのコンストラクタとか
+		// TODO: 組込み関数どうするの？
+		return extractFromDef(module.decls(),
+				new CExists(  // TODO: main関数のletにする
+						List.of(),
+						List.of()));
 	}
 
-
 	/**
-	 * 指定された式の制約を抽出し，指定されたリストに追加する
+	 * 指定された式の制約を抽出して返す．
 	 * @param exp 式
 	 * @param expected 期待される型
-	 * @param reason 期待される理由
-	 * @param acc リスト
 	 */
-	public static void extract(IcExp exp, RcType expected, Reason reason, List<Constraint> acc) {
-		switch (exp) {
+	public static Constraint extract(IcExp exp, RcType expected) {
+		return switch (exp) {
 
-		case IcCnst(ConstValue value, Location _) -> {
-			acc.add(new CEqual(RcType.from(value.type()), expected, reason));
-		}
+		case IcCnst(ConstValue value, Location _) ->
+			new CEqual(RcType.from(value.type()), expected);
 
-		case IcVarLocal(Id id, Location _) -> {
-			acc.add(new CLocal(id, expected, reason));
-		}
+		case IcVarLocal(Id id, Location _) ->
+			new CLocal(id, expected);
 
-		case IcVarForeign(Id id, Type type, Location _) -> {
-			acc.add(new CForeign(id, type, expected, reason));
-		}
+		case IcVarForeign(Id id, Type type, Location _) ->
+			new CForeign(id, type, expected);
 
-		case IcVarCtor(Id id, Type type, Location _) -> {
-			acc.add(new CForeign(id, type, expected, reason));
-		}
+		case IcVarCtor(Id id, Type type, Location _) ->
+			new CForeign(id, type, expected);
 
 		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
 			Args args_ = extractFromArgs(args);
-
-			List<Constraint> bodyCons = new ArrayList<>();
-			extract(body, args_.resultTy, Reason.NO_EXPECTATION, bodyCons);
-
-			exists(
-					args_.vars,
-					List.of(
-							new CLet(
-									List.of(),
-									args_.state.vars,
-									args_.state.headers,
-									args_.state.cons,
-									bodyCons),
-							new CEqual(args_.funTy, expected, reason)),
-					acc);
+			List<Constraint> argsCons = List.of(
+				new CLet(
+					List.of(),
+					args_.state.vars,
+					args_.state.headers,
+					args_.state.cons,
+					extract(body, args_.resultTy)),
+				new CEqual(args_.funTy, expected));
+			yield new CExists(args_.vars, argsCons);
 		}
 
 		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
@@ -113,100 +113,72 @@ public final class ConstraintExtractor {
 			List<Variable> vars = new ArrayList<>();
 			List<Constraint> cons = new ArrayList<>();
 
-			Optional<Id> funName = fun.getName();
-
 			Variable funVar = Variable.unbounded();
 			vars.add(funVar);
 			RcType funTy = new VarN(funVar);
-			extract(fun, funTy, Reason.NO_EXPECTATION, cons);
+			cons.add(extract(fun, funTy));
 
 			List<Constraint> argCons = new ArrayList<>();
-			Stack<RcType> argTys = new Stack<>();
+			List<RcType> argTys = new ArrayList<>();
 			for(IcExp arg : args) {
 				Variable argVar = Variable.unbounded();
 				vars.add(argVar);
 				RcType argTy = new VarN(argVar);
-				Reason reason_ = new Reason.FromContext(
-						new Context.CallArg(funName, argTys.size()),
-						fun.loc());
-				extract(arg, argTy, reason_, argCons);
-				argTys.push(argTy);
+				argCons.add(extract(arg, argTy));
+				argTys.add(argTy);
 			}
 
 			Variable resultVar = Variable.unbounded();
 			vars.add(resultVar);
 			RcType resultType = new VarN(resultVar);
 			RcType arityType = resultType;
-			for(RcType ty : argTys) {
+			for(RcType ty : argTys.reversed()) {
 				arityType = new FunN(ty, arityType);
 			}
 
-			Reason reason_ = new Reason.FromContext(
-					new Context.CallArity(funName, args.size()), fun.loc());
-			cons.add(new CEqual(funTy, arityType, reason_));
+			cons.add(new CEqual(funTy, arityType));
 			cons.addAll(argCons);  // アリティの後にしないと引数の数のチェックができない
-			cons.add(new CEqual(resultType, expected, reason));
+			cons.add(new CEqual(resultType, expected));
 
-			exists(vars, cons, acc);
+			yield new CExists(vars, cons);
 		}
 
 		case IcIf(IcExp condExp, IcExp thenExp, IcExp elseExp, Location _) -> {
-			Reason boolExpect = new Reason.FromContext(Context.IF_CONDITION, condExp.loc());
+			// TODO expectedに型注釈を入れたら展開して対応させる
 
-			if(reason instanceof Reason.FromAnnotation anno) {
-				// TODO 正しいreasonをつける
-				extract(condExp, RcType.BOOL, boolExpect, acc);
-				extract(thenExp, RcType.from(anno.type()), reason, acc);
-				extract(elseExp, RcType.from(anno.type()), reason, acc);
-			} else {
-				Variable branchVar = Variable.unbounded();
-				RcType branchTy = new VarN(branchVar);
+			Variable branchVar = Variable.unbounded();
+			RcType branchTy = new VarN(branchVar);
 
-				List<Constraint> cons = new ArrayList<>();
-				// TODO 正しいreasonをつける
-				extract(thenExp, branchTy, Reason.NO_EXPECTATION, cons);
-				extract(elseExp, branchTy, Reason.NO_EXPECTATION, cons);
-
-				exists(List.of(branchVar), cons, acc);
-			}
+			yield new CExists(
+					List.of(branchVar),
+					List.of(extract(condExp, RcType.BOOL),
+							extract(thenExp, branchTy),
+							extract(elseExp, branchTy),
+							new CEqual(branchTy, expected)));
 		}
 
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
-			List<Constraint> bodyCons = new ArrayList<>();
-			extract(body, expected, reason, bodyCons);
-			for(IcValDecl decl : decls) {
-				extractFromDef(decl, bodyCons, acc);
-			}
-		}
+		case IcLet(List<IcValDecl> decls, IcExp body, Location _) ->
+			extractFromDef(decls, extract(body, expected));
 
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+			List<Constraint> cons = new ArrayList<>();
+
 			Variable patVar = Variable.unbounded();
 			RcType patTy = new VarN(patVar);
-			List<Constraint> cons = new ArrayList<>();
-			extract(target, patTy, Reason.NO_EXPECTATION, cons);
+			cons.add(extract(target, patTy));
 
 			// TODO 型注釈から制約を抽出
 			Variable branchVar = Variable.unbounded();
 			RcType branchTy = new VarN(branchVar);
-
 			for(IcCaseBranch branch : branches) {
-				extractFromCaseBranch(branch, patTy, branchTy, Reason.NO_EXPECTATION, cons);  // TODO Reason系
+				cons.add(extractFromCaseBranch(branch, patTy, branchTy));  // TODO Reason系
 			}
-			cons.add(new CEqual(branchTy, expected, reason));
+			cons.add(new CEqual(branchTy, expected));
 
-			exists(List.of(patVar, branchVar), cons, acc);
+			yield new CExists(List.of(patVar, branchVar), cons);
 		}
 		};
 	}
-
-//	record State(
-//			IdMap<RcType> headers,
-//			List<Variable> vars,
-//			Stack<Constraint> cons) {
-//		State() {
-//			this(new IdMap<>(), new ArrayList<>(), new Stack<>());
-//		}
-//	}
 
 	/**
 	 * 引数のパターンの解析結果
@@ -222,77 +194,132 @@ public final class ConstraintExtractor {
 			RcType resultTy,
 			State state) {}
 
-	public static void extractFromDef(IcValDecl decl, List<Constraint> bodyCons, List<Constraint> acc) {
-		Args args = extractFromArgs(decl.args());
+	public static CLet extractFromDef(List<IcValDecl> decls, Constraint bodyCon) {
+		List<Constraint> headerCons = new ArrayList<>();
+		List<Variable> vars = new ArrayList<>();
+		IdMap<RcType> funTys = new IdMap<>();
+		for(IcValDecl decl : decls) {
+			Args args = extractFromArgs(decl.args());
+			Variable varFunTy = Variable.unbounded();
+			VarN rcVarFunTy = new VarN(varFunTy);
 
-		List<Constraint> exprCons = new ArrayList<>();
-		extract(decl.body(), args.resultTy, Reason.NO_EXPECTATION, exprCons);
-
-		acc.add(new CLet(
+			vars.add(varFunTy);
+			funTys.put(decl.id(), args.funTy);
+			headerCons.add(new CLet(
+					List.of(),
+					args.state.vars,
+					args.state.headers,
+					args.state.cons,
+					List.of(new CEqual(rcVarFunTy, args.funTy), extract(decl.body(), args.resultTy))
+					));
+		}
+		return new CLet(
 				List.of(),
-				args.vars,
-				IdMap.of(decl.id(), args.funTy),
-				List.of(new CLet(
-						List.of(),
-						args.state.vars,
-						args.state.headers,
-						args.state.cons,
-						exprCons)),
-				bodyCons));
+				vars,
+				funTys,
+				headerCons,
+				bodyCon);
+
+//		Args args = extractFromArgs(decl.args());
+//		Constraint exprCon = extract(decl.body(), args.resultTy);
+//		return new CLet(
+//				List.of(),
+//				args.vars,
+//				IdMap.of(decl.id(), args.funTy),
+//				List.of(new CLet(
+//						List.of(),
+//						args.state.vars,
+//						args.state.headers,
+//						args.state.cons,
+//						List.of(exprCon))),
+//				List.of(bodyCon));
 	}
 
-	public static void extractFromRecDef(List<IcValDecl> defs, List<Constraint> bodyCon, List<Constraint> acc) {
-//		return recDefsHelp(defs, bodyCon, new Info(), new Info());
-	}
-//	private static Constraint recDefsHelp(Rtv rtv, List<IcFunDecl> defs, Constraint bodyCon,
-//			Info ridgedInfo, Info flexInfo) {
+//	public static void extractFromDef(IcValDecl decl, List<Constraint> bodyCons) {
+//		Args args = extractFromArgs(decl.args());
+//
+//		List<Constraint> exprCons = new ArrayList<>();
+//		extract(decl.body(), args.resultTy, Reason.NO_EXPECTATION, exprCons);
+//
+//		return new CLet(
+//				List.of(),
+//				args.vars,
+//				IdMap.of(decl.id(), args.funTy),
+//				List.of(new CLet(
+//						List.of(),
+//						args.state.vars,
+//						args.state.headers,
+//						args.state.cons,
+//						exprCons)),
+//				bodyCons));
+//	}
+
+//	record Info(List<Variable> vars, List<Constraint> cons, IdMap<RcType> headers) {
+//		static Info empty() {
+//			return new Info(List.of(), List.of(), IdMap.of());
+//		}
+//	}
+//
+//	public static void extractFromRecDef(List<IcValDecl> defs, List<Constraint> bodyCon, List<Constraint> acc) {
+//		recDefsHelp(defs, bodyCon, Info.empty(), Info.empty(), acc);
+//	}
+//	private static void recDefsHelp(List<IcValDecl> defs, List<Constraint> bodyCon, Info ridgedInfo, Info flexInfo, List<Constraint> acc) {
 //
 //		if(defs.isEmpty()) {
-//			return new CLet(ridgedInfo.vars, List.of(), ridgedInfo.headers, new CTrue(),
-//					new CLet(List.of(), flexInfo.vars, flexInfo.headers, new CLet(List.of(), List.of(), flexInfo.headers, new CTrue(), new CAnd(flexInfo.cons)),
-//							new CAnd(List.of(new CAnd(ridgedInfo.cons), bodyCon))));
+//			List<Constraint> ridgedAndBodyCons = new ArrayList<>();
+//			ridgedAndBodyCons.addAll(ridgedInfo.cons);
+//			ridgedAndBodyCons.addAll(bodyCon);
+//			acc.add(new CLet(
+//					ridgedInfo.vars,
+//					List.of(),
+//					ridgedInfo.headers,
+//					List.of(),
+//					List.of(new CLet(
+//							List.of(),
+//							flexInfo.vars,
+//							flexInfo.headers,
+//							List.of(new CLet(
+//									List.of(),
+//									List.of(),
+//									flexInfo.headers,
+//									List.of(),
+//									flexInfo.cons)),
+//							ridgedAndBodyCons))));
+//			return;
 //		}
-//		IcFunDecl def = defs.get(0);
-//		List<IcFunDecl> otherDefs = defs.subList(1, defs.size());
+//		IcValDecl def = defs.get(0);
+//		List<IcValDecl> otherDefs = defs.subList(1, defs.size());
 //
-//		Args args = argsHelper(def.args(), new State(flexInfo.vars));
-//
-//		Constraint exprCon =
-//				extract(rtv, def.body(), args.resultType);
+//		State flexState = new State();
+//		flexState.vars.addAll(flexInfo.vars);
+//		Args args = extractFromArgs(def.args(), flexState);
 //
 //		Constraint defCon =
 //				new CLet(
 //						List.of(),
-//						args.state.vars.getAllAsList(),
+//						args.state.vars,
 //						args.state.headers,
-//						new CAnd(args.state.cons),
-//						exprCon);
+//						args.state.cons,
+//						List.of(extract(def.body(), args.resultTy)));
 //
 //		List<Constraint> cons = new ArrayList<>(flexInfo.cons);
 //		cons.add(0, defCon);
 //		IdMap<RcType> headers = flexInfo.headers.clone();
-//		headers.put(def.id(), args.type);
-//		return recDefsHelp(rtv, otherDefs, bodyCon, ridgedInfo,
-//				new Info(
-//						args.vars.getAllAsList(),
-//						cons,
-//						headers));
+//		headers.put(def.id(), args.funTy);
+//		recDefsHelp(
+//				otherDefs,
+//				bodyCon,
+//				ridgedInfo,
+//				new Info(args.vars, cons, headers),
+//				acc);
 //	}
 
-	/**
-	 * 指定したリストに，自由型変数を前提として制約を解く，という制約を追加する．
-	 * varを存在型として，これを前提に制約を解くことでスコープ内部のみの制約を実現できる．
-	 * @param var 自由型変数
-	 * @param cons 本体の制約
-	 * @param acc 追加先
-	 */
-	public static void exists(List<Variable> var, List<Constraint> cons, List<Constraint> acc) {
-		acc.add(new CExists(var, cons));
+	public static Args extractFromArgs(List<IcPattern> args) {
+		return extractFromArgs(args, new State());
 	}
 
-	public static Args extractFromArgs(List<IcPattern> args) {
+	public static Args extractFromArgs(List<IcPattern> args, State state) {
 		List<Variable> vars = new ArrayList<>();
-		State state = new State();
 		Stack<RcType> argTys = new Stack<>();
 		for(IcPattern arg : args) {
 			Variable argVar = Variable.unbounded();
@@ -313,15 +340,13 @@ public final class ConstraintExtractor {
 		return new Args(vars, funType, resultTy, state);
 	}
 
-	private static void extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected, Reason branchReason, List<Constraint> acc) {
+	private static Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
 		State state = new State().add(branch.pattern(), patExpected);
-		List<Constraint> branchCons = new ArrayList<>();
-		extract(branch.body(), branchExpected, branchReason, branchCons);
-		acc.add(new CLet(
+		return new CLet(
 				List.of(),
 				state.vars,
 				state.headers,
 				state.cons,
-				branchCons));
+				extract(branch.body(), branchExpected));
 	}
 }

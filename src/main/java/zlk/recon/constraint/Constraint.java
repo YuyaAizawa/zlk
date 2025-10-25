@@ -18,32 +18,30 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface Constraint extends PrettyPrintable
 permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 
-	// TODO CPatternを独立させる
+	// TODO: エラーメッセージ用の制約の由来
+	// どんな情報が必要か詰めてから
 
 	/**
 	 * 型の等式制約
 	 */
 	record CEqual(
 			RcType type,
-			RcType expected,
-			Reason reason) implements Constraint {}
+			RcType expected) implements Constraint {}
 
 	/**
 	 * 出現した変数の型
 	 */
 	record CLocal(
 			Id id,
-			RcType expected,
-			Reason reason) implements Constraint {}
+			RcType expected) implements Constraint {}
 
 	/**
 	 * 出現した外部変数（コンストラクタ含む）の型
 	 */
 	record CForeign(
 			Id id,
-			Type annotation,
-			RcType expected,
-			Reason reason) implements Constraint {}
+			Type ty,
+			RcType expected) implements Constraint {}
 
 	/**
 	 * パターンによる制約
@@ -51,8 +49,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	record CPattern(
 			Id id,  // TODO Ctor以外のカテゴリに対応
 			RcType ctorTy,
-			RcType expected  // TODO PReason追加
-			) implements Constraint {}
+			RcType expected) implements Constraint {}
 
 	/**
 	 * letやcaseのパターンとスコープに関わる制約．
@@ -68,10 +65,22 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			List<Variable> flexes,
 			IdMap<RcType> header,
 			List<Constraint> headerCons,
-			List<Constraint> bodyCons) implements Constraint {}
+			List<Constraint> bodyCon) implements Constraint {
+
+		public CLet(
+				List<Variable> rigids,
+				List<Variable> flexes,
+				IdMap<RcType> header,
+				List<Constraint> headerCons,
+				Constraint bodyCon) {
+			this(rigids, flexes, header, headerCons, List.of(bodyCon));
+		}
+	}
 
 	/**
-	 * 型変数のスコープ（正確には制約ではない）
+	 * 型変数のスコープ（正確には制約ではない）．
+	 * 関数の引数やcaseのパターンと戻り値など，
+	 * 導入した型変数が外と繋がらないことを確定させるのに使う
 	 *
 	 * @param vars 型変数
 	 * @param cons 制約
@@ -83,23 +92,14 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch (this) {
-		case CEqual(RcType type, RcType expected, Reason reason) -> {
+		case CEqual(RcType type, RcType expected) -> {
 			pp.append(type).append(" = ").append(expected);
-			if(reason != Reason.NO_EXPECTATION) {
-				pp.append("  -- ").append(reason);
-			}
 		}
-		case CLocal(Id id, RcType expected, Reason reason) -> {
+		case CLocal(Id id, RcType expected) -> {
 			pp.append("Local: ").append(id).append(" = ").append(expected);
-			if(reason != Reason.NO_EXPECTATION) {
-				pp.append("  -- ").append(reason);
-			}
 		}
-		case CForeign(Id id, Type type, RcType expected, Reason reason) -> {
+		case CForeign(Id id, Type type, RcType expected) -> {
 			pp.append("Foreign: ").append(id).append(":").append(type).append(" = ").append(expected);
-			if(reason != Reason.NO_EXPECTATION) {
-				pp.append("  -- ").append(reason);
-			}
 		}
 		case CPattern(Id id, RcType ctorTy, RcType expected) -> {
 			pp.append("Pattern: ").append(id).append(":").append(ctorTy).append(" = ").append(expected);

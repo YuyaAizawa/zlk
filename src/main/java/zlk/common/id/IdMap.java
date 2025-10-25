@@ -1,7 +1,9 @@
 package zlk.common.id;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -77,6 +79,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public boolean containsKey(Id id) {
 		return impl.containsKey(id);
+	}
+
+	public List<V> values() {
+		return new ArrayList<>(impl.values());
 	}
 
 	@Override

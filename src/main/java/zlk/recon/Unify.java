@@ -6,6 +6,7 @@ import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
 
 public final class Unify {
@@ -31,13 +32,25 @@ public final class Unify {
 		case FlexVar _ -> {
 			switch(vState.content) {
 			case FlexVar v_ -> merge(u, uState, v, vState, v_.name().isEmpty() ? uState.content : vState.content);
+			case RigidVar _ -> throw new Missmatch();
 			case Structure _ -> merge(u, uState, v, vState, vState.content);
 			case Content.Error e -> merge(u, uState, v, uState, e);
+			}
+		}
+		case RigidVar(String uName) -> {
+			switch(vState.content) {
+			case RigidVar(String vName) -> {
+				if(!uName.equals(vName)) {
+					throw new Missmatch();
+				}
+			}
+			default -> throw new Missmatch();
 			}
 		}
 		case Structure u_ -> {
 			switch(vState.content) {
 			case FlexVar _ -> merge(u, uState, v, vState, uState.content);
+			case RigidVar _ -> throw new Missmatch();
 			case Structure v_ -> {
 				if(u_.flatType() instanceof CtorApp1 u__ && v_.flatType() instanceof CtorApp1 v__) {
 					if(u__.id().equals(v__.id())) {
