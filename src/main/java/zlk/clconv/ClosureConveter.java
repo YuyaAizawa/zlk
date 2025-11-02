@@ -32,21 +32,20 @@ import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
-import zlk.idcalc.IcValDecl;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
 import zlk.idcalc.IcTypeDecl;
+import zlk.idcalc.IcValDecl;
 import zlk.util.Location;
 
 public final class ClosureConveter {
@@ -155,7 +154,7 @@ public final class ClosureConveter {
 		case IcVarCtor(Id id, Type _, Location loc) -> {
 			yield new CcVar(id, loc);
 		}
-		case IcAbs(Id _, Type _, IcExp body, Location _) -> {
+		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
 			yield neverHappen("no anonymous abs in this version.", body.loc());
 		}
 		case IcApp(IcExp fun, List<IcExp> args, Location loc) -> {

@@ -81,6 +81,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return impl.containsKey(id);
 	}
 
+	public IdList keys() {
+		return new IdList(impl.keySet());
+	}
+
 	public List<V> values() {
 		return new ArrayList<>(impl.values());
 	}
@@ -143,13 +147,7 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-			pp.append(PrettyPrintable.from(impl, id -> id, v -> {
-				if(v instanceof PrettyPrintable p) {
-					return p;
-				} else {
-					return pp_ -> pp_.append("--cannot print--");
-				}
-			}));
+		pp.append(PrettyPrintable.tailComma(impl));
 	}
 
 	@Override

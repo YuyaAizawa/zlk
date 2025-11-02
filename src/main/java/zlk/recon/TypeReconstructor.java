@@ -21,6 +21,7 @@ import zlk.recon.constraint.Constraint.CForeign;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Constraint.CPattern;
+import zlk.recon.constraint.Constraint.CPhase;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.Structure;
 import zlk.recon.constraint.RcType;
@@ -49,24 +50,19 @@ public class TypeReconstructor {
 	 */
 	private List<TypeError> errors;
 
-	public TypeReconstructor() {
+	private TypeReconstructor() {
 		result = new IdMap<>();
 		errors = new ArrayList<>();
 	}
 
 	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con) {
-		TypeReconstructor reconstructor = new TypeReconstructor();
-		reconstructor.solve(con, 0, new IdMap<>());
+		TypeReconstructor self = new TypeReconstructor();
+		self.solve(con, 0, new IdMap<>());
 
-		// TODO: 暫定確認用消す
-		IdMap<Type> test = new IdMap<>();
-		reconstructor.result.forEach((id, v) -> test.put(id, toType(v)));
-		System.out.println(test.buildString());
-
-		if(reconstructor.errors.isEmpty()) {
-			return new Result.Ok<>(reconstructor.result.traverse(v -> v.toType()));
+		if(self.errors.isEmpty()) {
+			return new Result.Ok<>(self.result.traverse(v -> v.toType()));
 		} else {
-			return new Result.Err<>(reconstructor.errors);
+			return new Result.Err<>(self.errors);  // TODO: unifyのmismatchなどを入れる
 		}
 	}
 
@@ -78,8 +74,9 @@ public class TypeReconstructor {
 			Unify.unify(actual, expected);
 		}
 		case CLocal(Id id, RcType expectation) -> {
+			Variable actual = instanciateIfNeed(letRank, env.get(id));
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(env.get(id), expected);
+			Unify.unify(actual, expected);
 		}
 		case CForeign(Id id, Type type, RcType expectation) -> {
 			Map<String, Variable> typeVars =
@@ -102,28 +99,27 @@ public class TypeReconstructor {
 				List<Variable> rigids,
 				List<Variable> flexes,
 				IdMap<RcType> header,
-				List<Constraint> headerCons,
+				List<CPhase> headerCons,
 				List<Constraint> bodyCons)
 		-> {
 			final int nextRank = letRank + 1;
 
-			// rigidとflexを導入
 			introduce(rigids, nextRank);
 			introduce(flexes, nextRank);
 
-			// 新たに導入された変数のためのアンカー
 			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
-
-			// 定義部を解く（SCCもこの中）
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
-			solve(headerCons, nextRank, newEnv);
 
-			// 一般化
-			// youngRankはnextRankのプールを一般化判定
-			final int youngMark = gMarkCounter++;
-			final int visitMark = gMarkCounter++;
-			generalizeAnchors(youngMark, visitMark, nextRank, locals.values());
+			// 強連結成分ごとに解決
+			for (CPhase phase : headerCons) {
+				solve(phase.cons(), nextRank, newEnv);
 
+				// let宣言の関数を一般化
+				List<Variable> anchors = phase.genTargets().stream().map(locals::get).toList();
+				final int youngMark = gMarkCounter++;
+				final int visitMark = gMarkCounter++;
+				generalizeAnchors(youngMark, visitMark, nextRank, anchors);
+			}
 			// let宣言の結果を保存
 			locals.forEach((id, v) -> result.put(id, v));
 
@@ -196,35 +192,6 @@ public class TypeReconstructor {
 		return var;
 	}
 
-	private void restore(Variable var) {
-		TypeVarState state = var.get();
-
-		if(state.cacheOnCopy==null) {
-			return;
-		}
-		state.cacheOnCopy = null;
-		restoreContent(state.content);
-	}
-	private void restoreContent(Content content) {
-		switch(content) {
-		case Content.FlexVar _ -> {}
-		case Content.RigidVar _ -> {}
-		case Content.Structure(FlatType term) -> {
-			switch(term) {
-			case FlatType.CtorApp1(_, List<Variable> args) -> {
-				args.forEach(arg -> restore(arg));
-			}
-			case FlatType.Fun1(Variable arg, Variable ret) -> {
-				restore(arg);
-				restore(ret);
-			}
-			default -> throw new IllegalArgumentException("Unexpected value: " + term);
-			}
-		}
-		case Content.Error() -> {}
-		}
-	}
-
 	private void occurCheck(Id id, Variable var) {
 		if(var.occurs()) {
 			// TODO エラーの詳細情報を構築
@@ -245,10 +212,9 @@ public class TypeReconstructor {
 						return;
 					}
 					if(s.rank < youngRank) {
-						System.out.println("scope leaked: "+s.content.buildString());
+						// スコープの外に漏れた
 					} else if (s.rank == youngRank) {
 						s.rank = 0; // TODO: 一般化された形にしてresultに追加
-						System.out.println("generalized: "+s.content.buildString());
 					}
 				}));
 	}
@@ -290,6 +256,72 @@ public class TypeReconstructor {
 	private static void introduce(List<Variable> vars, int letRank) {
 		for(Variable var : vars) {
 			var.get().rank = letRank;
+		}
+	}
+
+	// rank == 0のものを具体化（コピー）
+	private Variable instanciateIfNeed(int letRank, Variable v) {
+		Variable copy = instanciateIfNeedHelp(letRank, v);
+		restore(v);
+		return copy;
+	}
+	private Variable instanciateIfNeedHelp(int letRank, Variable v) {
+		TypeVarState s = v.get();
+		if(s.cacheOnCopy != null) {
+			return s.cacheOnCopy;
+		}
+		if(s.rank != 0) {
+			return v;
+		}
+
+		System.out.println("instanciate: "+s.content);
+
+		// キャッシュの用意
+		Variable copy = new Variable(s.content, s.rank);  // contentは仮
+		s.cacheOnCopy = copy;
+
+		// 具体化
+		switch(s.content) {
+		case Content.RigidVar(String name) -> {
+			copy.set(new TypeVarState(new Content.FlexVar(name), letRank));
+		}
+		case Content.Structure cture -> {
+			// 再帰的にコピー
+			Content.Structure cture_ = cture.traverse(v_ -> instanciateIfNeedHelp(letRank, v_));
+			copy.set(new TypeVarState(cture_, letRank));
+		}
+		case Content.FlexVar _, Content.Error _ -> {}
+		};
+		return copy;
+	}
+
+	private void restore(Variable var) {
+		TypeVarState state = var.get();
+
+		if(state.cacheOnCopy==null) {
+			return;
+		}
+		state.cacheOnCopy = null;
+		restoreContent(state.content);
+	}
+
+	private void restoreContent(Content content) {
+		switch(content) {
+		case Content.FlexVar _ -> {}
+		case Content.RigidVar _ -> {}
+		case Content.Structure(FlatType term) -> {
+			switch(term) {
+			case FlatType.CtorApp1(_, List<Variable> args) -> {
+				args.forEach(arg -> restore(arg));
+			}
+			case FlatType.Fun1(Variable arg, Variable ret) -> {
+				restore(arg);
+				restore(ret);
+			}
+			default -> throw new IllegalArgumentException("Unexpected value: " + term);
+			}
+		}
+		case Content.Error() -> {}
 		}
 	}
 

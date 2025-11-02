@@ -1,12 +1,12 @@
 package zlk.recon.constraint;
 
-import static zlk.util.ErrorUtils.todo;
-
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 
-import zlk.common.Type.Arrow;
-import zlk.common.Type.Atom;
-import zlk.common.Type.Var;
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.Variable;
 import zlk.recon.constraint.RcType.AppN;
@@ -22,28 +22,78 @@ permits VarN, AppN, FunN {
 	record AppN(Id id, List<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
 
-	public static final RcType BOOL = new AppN(zlk.common.Type.BOOL.ctor(), List.of());
-	public static final RcType I32  = new AppN(zlk.common.Type.I32.ctor() , List.of());
+	public static final RcType BOOL = new AppN(Type.BOOL.ctor(), List.of());
+	public static final RcType I32  = new AppN(Type.I32.ctor() , List.of());
 
-	public static RcType unbounded() {
-		return new VarN(Variable.unbounded());
-	}
+	/**
+	 * 注釈用の型から生成された制約用の型情報
+	 *
+	 * @param flex 制約用の型に含まれる型変数
+	 * @param argTys 関数型だった場合の引数型をflattenしたもの
+	 * @param retTy 関数型だった場合の戻り値の型かその他の場合の型そのもの
+	 */
+	public record FromType(List<Variable> flexes, List<RcType> argTys, RcType resultTy) {}
 
-	public static RcType from(zlk.common.Type ty) {
-		if(ty == zlk.common.Type.BOOL)
-			return BOOL;
-		if(ty == zlk.common.Type.I32)
-			return I32;
+	/**
+	 * 注釈などに使う型から制約用の型を生成する
+	 * @param ty
+	 * @return
+	 */
+	public static FromType from(Type ty) {
+		Map<String, Variable> vars = new HashMap<>();
 
-		return switch(ty) {
-		case Atom(Id id, _) ->
-			new AppN(id, List.of());
-		case Arrow(var arg, var ret) ->
-			new FunN(from(arg), from(ret));
-		case Var _ ->
-			todo();
+		Function<Type, RcType> conv = new Function<>() {
+			@Override
+			public RcType apply(Type t) {
+				return switch(t) {
+				case Type.Var(String name) ->
+					new VarN(vars.computeIfAbsent(name, _ -> Variable.unbounded()));
+				case Type.Atom(Id id, List<Type> args) ->
+					new AppN(id, args.stream().map(this).toList());
+				case Type.Arrow(Type arg, Type ret) ->
+					new FunN(apply(arg), apply(ret));
+				};
+			}
 		};
+
+		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
+
+		RcType resultTy = conv.apply(ty);
+		List<RcType> argTys = new java.util.ArrayList<>();
+		while (resultTy instanceof RcType.FunN(RcType arg, RcType ret)) {
+			argTys.add(arg);
+			resultTy = ret;
+		}
+
+		return new FromType(flexes, argTys, resultTy);
 	}
+
+//	public default List<RcType> flatten() {
+//		List<RcType> result = new ArrayList<>();
+//		RcType rest = this;
+//		while(rest instanceof FunN(RcType arg, RcType ret)) {
+//			result.add(arg);
+//			rest = ret;
+//		}
+//		result.add(rest);
+//		return result;
+//	}
+
+//	public static RcType from(Type ty) {
+//		if(ty == Type.BOOL)
+//			return BOOL;
+//		if(ty == Type.I32)
+//			return I32;
+//
+//		return switch(ty) {
+//		case Type.Atom(Id id, _) ->
+//			new AppN(id, List.of());
+//		case Type.Arrow(var arg, var ret) ->
+//			new FunN(from(arg), from(ret));
+//		case Type.Var _ ->
+//			todo();
+//		};
+//	}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {

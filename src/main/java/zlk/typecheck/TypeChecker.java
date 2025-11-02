@@ -7,20 +7,19 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcValDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
+import zlk.idcalc.IcValDecl;
 import zlk.util.Location;
 
 public final class TypeChecker {
@@ -82,8 +81,8 @@ public final class TypeChecker {
 			case IcVarLocal(Id id, Location _) -> env.get(id);
 			case IcVarForeign(Id id, Type _, Location _) -> env.get(id);
 			case IcVarCtor(Id id, Type _, Location _) -> env.get(id);
-			case IcAbs(Id id, Type _, IcExp body, Location _) -> {
-				yield Type.arrow(env.get(id), check(body));
+			case IcLamb(List<IcPattern> args, IcExp body, _) -> {
+				yield Type.arrow(args.stream().map(arg -> check(arg)).toList(), check(body));
 			}
 			case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
 				List<Type> funTy = check(fun).flatten();
@@ -108,11 +107,7 @@ public final class TypeChecker {
 				typeAssertion(elseExp, thenType);
 				yield thenType;
 			}
-			case IcLet(IcValDecl decl, IcExp body, Location _) -> {
-				check(decl);
-				yield check(body);
-			}
-			case IcLetrec(List<IcValDecl> decls, IcExp body, Location _) -> {
+			case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
 				for(IcValDecl decl : decls) {
 					check(decl);
 				}

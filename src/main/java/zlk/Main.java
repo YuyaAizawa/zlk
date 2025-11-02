@@ -40,22 +40,25 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				adddd x y z =
+				type IntList =
+				| Nil
+				| Cons I32 IntList
+
+				car list =
+				  case list of
+				  | Nil ->
+				    0
+				  | Cons hd tl ->
+				    hd
+
+				rectest =
 				  let
-				    addd i j = add i j
+				    id x =
+				      x
+				    res =
+				      Cons (id 1) (Cons (car (id (Cons 2 Nil))) Nil)
 				  in
-				    addd x (addd y z)
-
-				f x y = x y
-
-				ans1 =
-				  adddd 1 2 3
-
-				ans2 =
-				  adddd 2 3 4
-
-				ans3 =
-				  adddd 3 4 5
+				    res
 				""";
 
 		System.out.println("-- SOURCE --");

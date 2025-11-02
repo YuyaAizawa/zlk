@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import zlk.common.Type;
@@ -21,17 +20,15 @@ import zlk.util.pp.PrettyPrinter;
 
 public class Variable extends UnionFind<TypeVarState, Variable> implements PrettyPrintable {
 
-	private static final AtomicInteger idCounter = new AtomicInteger();
-
 	public Variable(TypeVarState state) {
 		super(state);
 	}
 
+	public static Variable unbounded(int letRank) {
+		return new Variable(new TypeVarState(new FlexVar(), letRank));
+	}
 	public static Variable unbounded() {
-		return new Variable(
-				new TypeVarState(
-						new FlexVar(idCounter.getAndIncrement(), Optional.empty()),
-						0));
+		return unbounded(0);
 	}
 
 	public Variable(Content con, int letRank) {
@@ -39,15 +36,13 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 	}
 
 	public Variable(String name, int letRank) {
-		this(new TypeVarState(
-				new FlexVar(idCounter.getAndIncrement(), Optional.of(name)),
-				letRank));
+		this(new TypeVarState(new FlexVar(name), letRank));
 	}
 
 	public Type toType() {
 		return switch(get().content) {
 		case FlexVar(int id, Optional<String> maybeName) ->
-			new Type.Var(maybeName.orElseGet(() -> "?"+id+"?"));
+			new Type.Var(maybeName.orElse(String.valueOf(id)));
 		case RigidVar(String name) -> new Type.Var(name);
 		case Structure(FlatType flatType) ->
 			flatType.toType();

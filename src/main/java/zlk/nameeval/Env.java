@@ -97,11 +97,7 @@ record Scope(
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(name).append(": ").append(PrettyPrintable.from(
-				ids,
-				s -> pp_ -> pp_.append(s),
-				i -> i
-		));
+		pp.append(name).append(": ").append(PrettyPrintable.oneLine(ids));
 	}
 }
 

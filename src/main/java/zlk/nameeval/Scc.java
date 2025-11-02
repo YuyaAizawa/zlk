@@ -55,6 +55,6 @@ public class Scc {
 				dfs(e, seen, graph, acc);
 			}
 		}
-		acc.add(v);
+		// acc.add(v); TODO: 自己辺を反映した方が分かりやすい？
 	}
 }

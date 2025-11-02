@@ -1,8 +1,10 @@
 package zlk.recon;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 import zlk.common.ConstValue;
 import zlk.common.Type;
@@ -29,6 +31,7 @@ import zlk.recon.constraint.Constraint.CExists;
 import zlk.recon.constraint.Constraint.CForeign;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
+import zlk.recon.constraint.Constraint.CPhase;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
@@ -59,8 +62,6 @@ record Env(Env parent, IdMap<Variable> table) {
 public final class ConstraintExtractor {
 
 	public static Constraint extract(IcModule module) {
-		IdMap<IdList> sccs = module.recscc();
-
 		// TODO: enumのコンストラクタとか
 		// TODO: 組込み関数どうするの？
 		return extractFromDef(module.decls(),
@@ -78,7 +79,7 @@ public final class ConstraintExtractor {
 		return switch (exp) {
 
 		case IcCnst(ConstValue value, Location _) ->
-			new CEqual(RcType.from(value.type()), expected);
+			new CEqual(RcType.from(value.type()).resultTy(), expected);
 
 		case IcVarLocal(Id id, Location _) ->
 			new CLocal(id, expected);
@@ -91,12 +92,13 @@ public final class ConstraintExtractor {
 
 		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
 			Args args_ = extractFromArgs(args);
+
 			List<Constraint> argsCons = List.of(
 				new CLet(
 					List.of(),
 					args_.state.vars,
 					args_.state.headers,
-					args_.state.cons,
+					List.of(new CPhase(args_.state.cons, extractIds(args))),
 					extract(body, args_.resultTy)),
 				new CEqual(args_.funTy, expected));
 			yield new CExists(args_.vars, argsCons);
@@ -167,7 +169,7 @@ public final class ConstraintExtractor {
 			RcType patTy = new VarN(patVar);
 			cons.add(extract(target, patTy));
 
-			// TODO 型注釈から制約を抽出
+			// TODO 型注釈から制約を抽出（ここに制約って書けたっけ？）
 			Variable branchVar = Variable.unbounded();
 			RcType branchTy = new VarN(branchVar);
 			for(IcCaseBranch branch : branches) {
@@ -195,30 +197,84 @@ public final class ConstraintExtractor {
 			State state) {}
 
 	public static CLet extractFromDef(List<IcValDecl> decls, Constraint bodyCon) {
-		List<Constraint> headerCons = new ArrayList<>();
-		List<Variable> vars = new ArrayList<>();
-		IdMap<RcType> funTys = new IdMap<>();
-		for(IcValDecl decl : decls) {
-			Args args = extractFromArgs(decl.args());
-			Variable varFunTy = Variable.unbounded();
-			VarN rcVarFunTy = new VarN(varFunTy);
-
-			vars.add(varFunTy);
-			funTys.put(decl.id(), args.funTy);
-			headerCons.add(new CLet(
-					List.of(),
-					args.state.vars,
-					args.state.headers,
-					args.state.cons,
-					List.of(new CEqual(rcVarFunTy, args.funTy), extract(decl.body(), args.resultTy))
-					));
+		// 0) 先に “外へ出る器 = アンカー” を全部配る（別オブジェクト！）
+		IdMap<RcType> header = new IdMap<>();
+		for (var decl : decls) {
+			header.put(decl.id(), new VarN(Variable.unbounded())); // アンカー
 		}
-		return new CLet(
-				List.of(),
-				vars,
-				funTys,
-				headerCons,
-				bodyCon);
+
+		// 1) 各 def の rhs ブロックを作る（★引数はこの内側CLetのheader）
+		// id -> rhsConstraint
+		IdMap<Constraint> defCons = new IdMap<>();
+		for (var decl : decls) {
+			Args a = extractFromArgs(decl.args());
+
+			List<Constraint> headerCons = new ArrayList<>();
+			headerCons.addAll(a.state.cons);
+			headerCons.add(extract(decl.body(), a.resultTy));
+
+			Constraint rhs = new CLet(
+					List.of(), // TODO: 型注釈のrigid
+					a.state.vars,
+					a.state.headers,
+					List.of(new CPhase(headerCons, new IdList())),  // 内側CLetは一般化なし
+					new CEqual(a.funTy, header.get(decl.id()))
+			);
+			defCons.put(decl.id(), rhs);
+		}
+
+		// 2) 同フレーム内の依存グラフ→SCC分解→トポ順（できている前提）
+		List<IdList> sccTopo = sccTopo(buildGraph(decls));
+
+		// 3) フェーズ列を作る：SCCごとに rhs を並べ、targets=そのSCCのid群
+		List<CPhase> phases = new ArrayList<>();
+		for (var scc : sccTopo) {
+			List<Constraint> items = new ArrayList<>();
+			IdList targets = new IdList();
+			for (Id id : scc) {
+				items.add(defCons.get(id));
+				targets.add(id);
+			}
+			phases.add(new CPhase(items, targets));
+		}
+
+		// 4) 外側の CLet にまとめる（★ここが実際の let フレーム）
+		return new CLet(/* rigids */ List.of(), // この let 自体で Skolem を効かせるならここ
+				/* flexes */ List.of(), // 外側フレームで導入する自由変数があるならここ（通常は空）
+				/* header */ header, // アンカー（id -> VarN(...))
+				/* phases */ phases, // SCC順のフェーズ列。各フェーズ末尾で一般化される
+				/* bodyCon */ bodyCon);
+	}
+
+//	public static CLet extractFromDef(
+//			List<IcValDecl> decls,
+//			Constraint bodyCon) {
+//
+//
+//		List<CPhase> phases = new ArrayList<>();
+//		List<Variable> vars = new ArrayList<>();
+//		IdMap<RcType> funTys = new IdMap<>();
+//		for(IcValDecl decl : decls) {
+//			Args args = extractFromArgs(decl.args());
+//			Variable varFunTy = Variable.unbounded();
+//			VarN rcVarFunTy = new VarN(varFunTy);
+//
+//			vars.add(varFunTy);
+//			funTys.put(decl.id(), args.funTy);
+//			headerCons.add(new CLet(
+//					List.of(),
+//					args.state.vars,
+//					args.state.headers,
+//					args.state.cons,
+//					List.of(new CEqual(rcVarFunTy, args.funTy), extract(decl.body(), args.resultTy))
+//					));
+//		}
+//		return new CLet(
+//				List.of(),
+//				vars,
+//				funTys,
+//				headerCons,
+//				bodyCon);
 
 //		Args args = extractFromArgs(decl.args());
 //		Constraint exprCon = extract(decl.body(), args.resultTy);
@@ -233,7 +289,7 @@ public final class ConstraintExtractor {
 //						args.state.cons,
 //						List.of(exprCon))),
 //				List.of(bodyCon));
-	}
+//	}
 
 //	public static void extractFromDef(IcValDecl decl, List<Constraint> bodyCons) {
 //		Args args = extractFromArgs(decl.args());
@@ -341,12 +397,114 @@ public final class ConstraintExtractor {
 	}
 
 	private static Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
-		State state = new State().add(branch.pattern(), patExpected);
+		PatternBinder pb = new PatternBinder();
+		pb.bind(branch.pattern(), patExpected);
+
+		Constraint bodyCon = extract(branch.body(), branchExpected);
+
+		ArrayList<Constraint> cons = new ArrayList<>(pb.cons.size()+1);
+		cons.addAll(pb.cons);
+		cons.add(bodyCon);
+
 		return new CLet(
 				List.of(),
-				state.vars,
-				state.headers,
-				state.cons,
-				extract(branch.body(), branchExpected));
+				pb.vars,
+				pb.headers,
+				List.of(new CPhase(cons, new IdList())),  // case branchは一般化する対象なし
+				new CEqual(branchExpected, branchExpected)  // TODO: 特に制約がないことを表せた方が良いか？
+		);
+	}
+
+	private static IdList extractIds(List<IcPattern> patterns) {
+		Set<Id> ids = new HashSet<>();
+		for(IcPattern pattern : patterns) {
+			pattern.accumulateVars(ids);
+		}
+		return new IdList(ids);
+	}
+
+	// 強連結成分分解のための呼び出しグラフ作成
+	public static IdMap<IdList> buildGraph(List<IcValDecl> decls) {
+		IdList targets = decls.stream().map(decl -> decl.id()).collect(IdList.collector());
+		IdMap<IdList> result = new IdMap<>();
+		decls.forEach(decl -> result.put(decl.id(), collectRefs(decl.body(), targets)));
+		return result;
+	}
+	private static IdList collectRefs(IcExp exp, IdList targets) {
+		IdList acc = new IdList();
+		collectRefsHelp(exp, targets, acc);
+		return acc;
+	}
+	private static void collectRefsHelp(IcExp exp, IdList targets, IdList acc) {
+		switch(exp) {
+		case IcVarLocal(Id id, _) -> {
+			if(targets.contains(id)) {
+				acc.addIfNotContains(id);
+			}
+		}
+
+		case IcLamb(List<IcPattern> _, IcExp body, _) -> {
+			collectRefsHelp(body, targets, acc);
+		}
+
+		case IcApp(IcExp fun, List<IcExp> args, _) -> {
+			collectRefsHelp(fun, targets, acc);
+			args.forEach(arg -> collectRefsHelp(arg, targets, acc));
+		}
+
+		case IcIf(IcExp cond, IcExp exp1, IcExp exp2, _) -> {
+			collectRefsHelp(cond, targets, acc);
+			collectRefsHelp(exp1, targets, acc);
+			collectRefsHelp(exp2, targets, acc);
+		}
+
+		case IcLet(List<IcValDecl> _, IcExp body, _) -> {
+			collectRefsHelp(body, targets, acc);  // 同じ階層の定義のみ TODO: 本当にこれでOK？
+		}
+
+		case IcCase(IcExp target, List<IcCaseBranch> branches, _) -> {
+			collectRefsHelp(target, targets, acc);
+			branches.forEach(branche -> collectRefsHelp(branche.body(), targets, acc));
+		}
+
+		case IcCnst _, IcVarForeign _, IcVarCtor _ -> {}
+		}
+	}
+
+	// 強連結成分分解
+	public static List<IdList> sccTopo(IdMap<IdList> graph) {
+		IdList postorder = new IdList();
+		IdList seen = new IdList();
+		for(Id v : graph.keys()) {
+			if(!seen.contains(v)) {
+				dfs(v, seen, graph, postorder);
+			}
+		}
+
+		IdMap<IdList> rgraph = new IdMap<>();
+		graph.keys().forEach(id -> rgraph.put(id, new IdList()));
+		graph.forEach((v, es) -> es.forEach(e -> rgraph.get(e).addIfNotContains(v)));
+
+		seen.clear();
+		List<IdList> result = new ArrayList<>();
+		for(Id v : postorder.reversed()) {
+			if(!seen.contains(v)) {
+				IdList scc = new IdList();
+				dfs(v, seen, rgraph, scc);
+				result.add(scc);
+			}
+		}
+		return result;
+	}
+	private static void dfs(Id v, IdList seen, IdMap<IdList> graph, IdList acc) {
+		if(!seen.contains(v)) {
+			seen.add(v);
+		}
+		for(Id e : graph.get(v)) {
+			if(!seen.contains(e)) {
+				dfs(e, seen, graph, acc);
+			}
+		}
+		acc.addIfNotContains(v);  // 自己辺が無かったら入れる
 	}
 }

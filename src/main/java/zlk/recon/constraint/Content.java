@@ -2,6 +2,7 @@ package zlk.recon.constraint;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import zlk.common.id.Id;
@@ -28,7 +29,17 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 	 * @param id   変数の一意な識別子
 	 * @param name この変数の推奨表示名
 	 */
-	record FlexVar(int id, Optional<String> name) implements Content {}
+	record FlexVar(int id, Optional<String> name) implements Content {
+		private static final AtomicInteger idCounter = new AtomicInteger();
+
+		public FlexVar(String name) {
+			this(idCounter.getAndIncrement(), Optional.of(name));
+		}
+
+		public FlexVar() {
+			this(idCounter.getAndIncrement(), Optional.empty());
+		}
+	}
 
 	record RigidVar(String name) implements Content {}
 

@@ -1,7 +1,5 @@
 package zlk.recon;
 
-import static zlk.util.ErrorUtils.todo;
-
 import java.util.List;
 import java.util.function.Function;
 
@@ -9,6 +7,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
+import zlk.recon.constraint.Content;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -17,7 +16,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public sealed interface FlatType extends PrettyPrintable
 permits CtorApp1, Fun1 {
-	record CtorApp1(Id id, List<Variable> args) implements FlatType {}
+	record CtorApp1(Id id, List<Variable> args) implements FlatType {} // TODO: App1?
 	record Fun1(Variable arg, Variable ret) implements FlatType {}
 
 	default FlatType traverse(Function<Variable, Variable> f) {
@@ -50,16 +49,19 @@ permits CtorApp1, Fun1 {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case CtorApp1(Id id, _) -> {
-			if(id.equals(Type.BOOL.ctor())) {
-				pp.append(Type.BOOL);
-				return;
+		case CtorApp1(Id id, List<Variable> args) -> {
+			pp.append(id);
+			for(Variable arg : args) {
+				pp.append(" ");
+				if(arg.get().content instanceof Content.Structure structure
+						&& structure.flatType() instanceof CtorApp1 ctorApp
+						&& ctorApp.args.size() > 0) {
+					// 複数トークンはカッコが要る
+					pp.append("(").append(arg).append(")");
+				} else {
+					pp.append(arg);
+				}
 			}
-			if(id.equals(Type.I32.ctor())) {
-				pp.append(Type.I32);
-				return;
-			}
-			todo();
 		}
 		case Fun1(Variable arg, Variable ret) -> {
 			pp.append(arg).append(" -> ").append(ret);

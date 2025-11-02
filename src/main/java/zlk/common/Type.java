@@ -12,14 +12,41 @@ import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * 型
+ * 主に型注釈などで利用する
+ *
+ * <ul>
+ *   <li> {@link Atom} -- 関数型以外の型
+ *   <li> {@link Arrow} -- 関数型
+ *   <li> {@link Var} -- 型変数
+ * </ul>
+ */
 public sealed interface Type extends PrettyPrintable
 permits Atom, Arrow, Var {
+
+	/**
+	 * 関数型以外の型
+	 * @param ctor 型構築子
+	 * @param args 型パラメータ
+	 */
 	record Atom(Id ctor, List<Type> args) implements Type {
 		public Atom(Id id) {
 			this(id, List.of());
 		}
 	}
+
+	/**
+	 * 関数型
+	 * @param arg 引数の型
+	 * @param ret 戻り値の型
+	 */
 	record Arrow(Type arg, Type ret) implements Type {}
+
+	/**
+	 * 型変数
+	 * @param name 変数名
+	 */
 	record Var(String name) implements Type {}
 
 	public static final Atom UNIT = new Atom(Id.fromCanonicalName("Unit"));

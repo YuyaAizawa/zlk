@@ -1,9 +1,8 @@
 package zlk.util.pp;
 
-import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 @FunctionalInterface
 public interface PrettyPrintable {
@@ -23,7 +22,7 @@ public interface PrettyPrintable {
 		return sb.toString();
 	}
 
-	public static PrettyPrintable join(Iterator<? extends PrettyPrintable> iter, PrettyPrintable sep) {
+	private static PrettyPrintable join(Iterator<? extends PrettyPrintable> iter, PrettyPrintable sep) {
 		return pp -> {
 			if(iter.hasNext()) {
 				pp.append(iter.next());
@@ -32,79 +31,93 @@ public interface PrettyPrintable {
 		};
 	}
 
-	public static PrettyPrintable join(Iterator<? extends PrettyPrintable> iter, CharSequence sep) {
+	public static PrettyPrintable join(Iterable<? extends PrettyPrintable> iterable, PrettyPrintable sep) {
+		return join(iterable.iterator(), sep);
+	}
+
+	public static PrettyPrintable join(Iterable<? extends PrettyPrintable> iterable, CharSequence sep) {
+		return join(iterable, pp -> pp.append(sep));
+	}
+
+	// TODO: tailCommaとoneLineはprinter側のNoBreakで切り替えるように
+	public static PrettyPrintable oneLine(List<? extends PrettyPrintable> list) {
+		if(list.isEmpty()) {
+			return pp -> pp.append("[]");
+		}
+
+
 		return pp -> {
-			if(iter.hasNext()) {
-				pp.append(iter.next());
-				iter.forEachRemaining(e -> pp.append(sep).append(e));
-			}
+			pp.withoutLineBreak(pp_ -> {
+				pp_.append("[").append(join(list, ", ")).append("]");
+			});
 		};
 	}
 
-	public static <E> PrettyPrintable from(
-			Collection<E> values,
-			Function<? super E, PrettyPrintable> mapper
-	) {
+	public static PrettyPrintable tailComma(List<? extends PrettyPrintable> list) {
+		if(list.isEmpty()) {
+			return pp -> pp.append("[]");
+		}
+
 		return pp -> {
-			switch(values.size()) {
-			case 0:
-				pp.append("[]");
-				break;
-			case 1:
-				pp.append("[ ");
-				pp.append(mapper.apply(values.iterator().next()));
-				pp.append(" ]");
-				break;
-			default:
-				pp.append("[").indent(() ->
-					values.forEach(v -> {
-						pp.endl();
-						pp.append(mapper.apply(v)).append(",");
-					})
-				).endl().append("]");
-			}
+			pp.append("[").endl();
+			pp.indent(() -> {
+				pp.append(join(list, pp_ -> pp_.append(",").endl()));
+				pp.append(",").endl();
+			});
+			pp.append("]");
 		};
 	}
 
-	public static <E> PrettyPrintable from(Collection<? extends PrettyPrintable> values) {
-		return from(values, p -> p);
-	}
+	public static PrettyPrintable oneLine(Map<?, ?> map) {
+		if(map.isEmpty()) {
+			return pp -> pp.append("{}");
+		}
 
-	public static <K, V> PrettyPrintable from(
-			Map<K, V> map,
-			Function<? super K, PrettyPrintable> keyMapper,
-			Function<? super V, PrettyPrintable> valueMapper
-	) {
+		Iterator<PrettyPrintable> iter = map.keySet()
+				.stream()
+				.sorted()
+				.map(k -> (PrettyPrintable)(pp_ -> appendEntry(k, map.get(k), pp_)))
+				.iterator();
+
 		return pp -> {
-			switch(map.size()) {
-			case 0:
-				pp.append("{}");
-				break;
-			case 1:
-				pp.append("{ ");
-				appendEntry(pp, map.entrySet().iterator().next(), keyMapper, valueMapper);
-				pp.append(" }");
-				break;
-			default:
-				pp.append("{").indent(() ->
-					map.entrySet().forEach(entry -> {
-						pp.endl();
-						appendEntry(pp, entry, keyMapper, valueMapper);
-						pp.append(",");
-					})
-				).endl().append("}");
-			}
+			pp.withoutLineBreak(pp_ -> {
+				pp_.append("{").append(join(iter, pp__ -> pp__.append(", "))).append("}");
+			});
 		};
 	}
 
-	private static <K, V> void appendEntry(
-			PrettyPrinter pp,
-			Map.Entry<K, V> entry,
-			Function<? super K, PrettyPrintable> keyMapper,
-			Function<? super V, PrettyPrintable> valueMapper
-	) {
-		pp.append(keyMapper.apply(entry.getKey()));
+	public static PrettyPrintable tailComma(Map<?, ?> map) {
+		if(map.isEmpty()) {
+			return pp -> pp.append("{}");
+		}
+
+		Iterator<PrettyPrintable> iter = map.keySet()
+				.stream()
+				.sorted()
+				.map(k -> (PrettyPrintable)(pp_ -> appendEntry(k, map.get(k), pp_)))
+				.iterator();
+
+		return pp -> {
+			pp.append("{").endl();
+			pp.indent(() -> {
+				pp.append(join(iter, pp_ -> pp_.append(",").endl()));
+				pp.append(",").endl();
+			});
+			pp.append("}");
+		};
+	}
+
+	private static void appendEntry(Object k, Object v, PrettyPrinter pp) {
+		if(k instanceof PrettyPrintable kp) {
+			pp.append(kp);
+		} else {
+			pp.append(k.toString());
+		}
 		pp.append(": ");
-		pp.append(valueMapper.apply(entry.getValue()));
+		if(v instanceof PrettyPrintable vp) {
+			pp.append(vp);
+		} else {
+			pp.append(v.toString());
+		}
 	}
 }
