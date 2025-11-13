@@ -425,7 +425,7 @@ public class Parser {
 		return exp;
 	}
 
-	private AnType parseType() {
+	public AnType parseType() {
 		Position start = current.pos();
 
 		AnType ty = parseBType();
@@ -458,7 +458,8 @@ public class Parser {
 			nextToken();
 			yield type;
 		}
-		case UCID ->  new AnType.Type(parse(UCID), List.of(), location(start, end));
+		case UCID -> new AnType.Type(parse(UCID), List.of(), location(start, end));
+		case LCID -> new AnType.Var(parse(LCID), location(start, end));
 		default -> throw new RuntimeException("type expected");
 		};
 	}

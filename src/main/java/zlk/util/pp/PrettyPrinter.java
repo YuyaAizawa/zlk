@@ -127,8 +127,8 @@ public interface PrettyPrinter extends UncheckedAppendable {
 	}
 
 	default PrettyPrinter withoutLineBreak(Consumer<PrettyPrinter> printAction) {
-		PrettyPrinter wolbPrinter = wrap(Wrapper.oneLine());
-		printAction.accept(wolbPrinter);
+		PrettyPrinter innerPrinter = wrap(Wrapper.oneLine());
+		printAction.accept(innerPrinter);
 		return this;
 	}
 }
@@ -165,36 +165,16 @@ abstract class Wrapper implements PrettyPrinter {
 	}
 
 	/**
-	 * Returns {@link Wrapper} that prints objects in one-line.
-	 *
-	 * It calls {@link PrettyPrintable#mkStringWithoutLineBreak(PrettyPrinter)} instead of
-	 * {@link PrettyPrintable#mkString(PrettyPrinter)}.
-	 *
-	 * @return One-line wrapper
-	 */
-	public static Wrapper oneLine() {
-		return ONE_LINE;
-	}
-
-	/**
 	 * Returns {@link Wrapper} that prints {@link PrettyPrinter#endl()} as one space.
 	 *
 	 * @return Wrapper
 	 * @see #oneLine()
 	 */
-	public static Wrapper spaceEndl() {
-		return SPACE_ENDL;
+	public static Wrapper oneLine() {
+		return ONE_LINE;
 	}
 
 	private static final Wrapper ONE_LINE = new Wrapper() {
-		@Override
-		public PrettyPrinter append(PrettyPrintable target) {
-			target.mkStringWithoutLineBreak(this);
-			return this;
-		}
-	};
-
-	private static final Wrapper SPACE_ENDL = new Wrapper() {
 		@Override
 		public PrettyPrinter endl() {
 			return append(" ");

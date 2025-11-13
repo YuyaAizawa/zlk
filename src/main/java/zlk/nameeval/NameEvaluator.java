@@ -145,25 +145,7 @@ public final class NameEvaluator {
 		if(env.scoped.size() != 0) {
 			throw new AssertionError();
 		}
-
-		// decomp recursion scc
-		List<IdList> scc = Scc.decomp(sccRef);
-		IdList empty = new IdList();
-		IdMap<IdList> recscc = new IdMap<>();
-		scc.forEach(vs -> {
-			if(vs.size() == 1) {
-				Id v = vs.get(0);
-				if(sccRef.get(v).contains(v)) {
-					recscc.put(v, vs);
-				} else {
-					recscc.put(v, empty);
-				}
-			} else {
-				vs.forEach(v -> recscc.put(v, vs));
-			}
-		});
-
-		return new IcModule(module.name(), icTypes, icDecls, recscc, module.origin());
+		return new IcModule(module.name(), icTypes, icDecls, module.origin());
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {

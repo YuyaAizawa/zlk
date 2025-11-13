@@ -36,11 +36,6 @@ public class TypeReconstructor {
 	// TODO 例外が起きたら，それに関する型はダミーの型に確定したとして続けたらいいか？
 
 	/**
-	 * 汎化するときに使う
-	 */
-	private int gMarkCounter;
-
-	/**
 	 * 推論結果
 	 */
 	private IdMap<Variable> result;
@@ -50,13 +45,24 @@ public class TypeReconstructor {
 	 */
 	private List<TypeError> errors;
 
-	private TypeReconstructor() {
-		result = new IdMap<>();
-		errors = new ArrayList<>();
+	/**
+	 * 衝突しない型変数の生成器
+	 */
+	private FreshFlex freshFlex;
+
+	/**
+	 * 汎化するときに使う
+	 */
+	private int gMarkCounter;
+
+	private TypeReconstructor(FreshFlex freshFlex) {
+		this.result = new IdMap<>();
+		this.errors = new ArrayList<>();
+		this.freshFlex = freshFlex;
 	}
 
-	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con) {
-		TypeReconstructor self = new TypeReconstructor();
+	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con, FreshFlex freshFlex) {
+		TypeReconstructor self = new TypeReconstructor(freshFlex);
 		self.solve(con, 0, new IdMap<>());
 
 		if(self.errors.isEmpty()) {
@@ -84,7 +90,7 @@ public class TypeReconstructor {
 							.stream()
 							.collect(Collectors.toMap(
 									name -> name,
-									name -> new Variable(name, letRank)));
+									name -> freshFlex.getVariable(name, letRank)));
 
 			Variable actual = annoTypeToVar(letRank, typeVars, type);
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
@@ -207,14 +213,14 @@ public class TypeReconstructor {
 		// 一般化できるものをする
 		anchors.forEach(anchor -> anchor.markAndWalk(youngMark,
 				v -> {
-					TypeVarState s = v.get();
+					VariableState s = v.get();
 					if(s.content instanceof Content.RigidVar) {
 						return;
 					}
 					if(s.rank < youngRank) {
 						// スコープの外に漏れた
 					} else if (s.rank == youngRank) {
-						s.rank = 0; // TODO: 一般化された形にしてresultに追加
+						s.rank = 0; // TODO: 一般化された形にしてresultに追加？
 					}
 				}));
 	}
@@ -224,7 +230,7 @@ public class TypeReconstructor {
 	 * 修正後のrankを返す．
 	 */
 	private int adjustRank(int youngMark, int visitMark, int groupRank, Variable var) {
-		TypeVarState state = var.get();
+		VariableState state = var.get();
 		if(state.gMark == youngMark) {
 			state.gMark = visitMark;
 			int maxRank = adjustRankContent(youngMark, visitMark, groupRank, state.content);
@@ -266,15 +272,13 @@ public class TypeReconstructor {
 		return copy;
 	}
 	private Variable instanciateIfNeedHelp(int letRank, Variable v) {
-		TypeVarState s = v.get();
+		VariableState s = v.get();
 		if(s.cacheOnCopy != null) {
 			return s.cacheOnCopy;
 		}
 		if(s.rank != 0) {
 			return v;
 		}
-
-		System.out.println("instanciate: "+s.content);
 
 		// キャッシュの用意
 		Variable copy = new Variable(s.content, s.rank);  // contentは仮
@@ -283,20 +287,23 @@ public class TypeReconstructor {
 		// 具体化
 		switch(s.content) {
 		case Content.RigidVar(String name) -> {
-			copy.set(new TypeVarState(new Content.FlexVar(name), letRank));
+			copy.set(new VariableState(freshFlex.getContent(name), letRank));
 		}
 		case Content.Structure cture -> {
 			// 再帰的にコピー
 			Content.Structure cture_ = cture.traverse(v_ -> instanciateIfNeedHelp(letRank, v_));
-			copy.set(new TypeVarState(cture_, letRank));
+			copy.set(new VariableState(cture_, letRank));
 		}
-		case Content.FlexVar _, Content.Error _ -> {}
+		case Content.FlexVar _ -> {
+			copy.set(new VariableState(freshFlex.getContent(), letRank));
+		}
+		case Content.Error _ -> { throw new RuntimeException(); }
 		};
 		return copy;
 	}
 
 	private void restore(Variable var) {
-		TypeVarState state = var.get();
+		VariableState state = var.get();
 
 		if(state.cacheOnCopy==null) {
 			return;
@@ -323,53 +330,5 @@ public class TypeReconstructor {
 		}
 		case Content.Error() -> {}
 		}
-	}
-
-	// TODO: 表示用の暫定なので処遇を考える
-	private static Type toType(Variable root) {
-		// rank==0 の TVar を ∀ で束縛。発見順で a, b, c...
-		  Map<TypeVarState, String> names = new java.util.HashMap<>();
-		  var next = new Object(){ int i=0; };
-		  Function<TypeVarState,String> freshName = v -> {
-		    return names.computeIfAbsent(v, _ -> {
-		      int n = next.i++;
-		      // a,b,c,...,z, a1,b1,...
-		      char base = (char)('a' + (n % 26));
-		      int k = n / 26;
-		      return k==0 ? String.valueOf(base) : (""+base+k);
-		    });
-		  };
-
-		  Function<Variable, Type> go = new Function<>() {
-		    public Type apply(Variable v) {
-		      var s = v.get();
-		      return switch (s.content) {
-		        case Content.FlexVar flexId -> {
-		          if (s.rank == 0) { // ★ 多相変数
-		            yield new Type.Var(freshName.apply(s));
-		          } else {
-		            // ここに来るのは原則 let 抜け直後のアンカーでは無いはずだが、
-		            // 念のため mono として匿名名にする or エラー
-		            yield new Type.Var("_t" + System.identityHashCode(v));
-		          }
-		        }
-		        case Content.RigidVar r -> {
-		          // rigid がスキームに現れるのは注釈破りなので通常は起きない。念のため停止または匿名化。
-		          throw new IllegalStateException("Rigid leaked into scheme: " + r.name());
-		        }
-		        case Content.Structure(FlatType.CtorApp1(Id id, List<Variable> args)) -> {
-		          var ts = args.stream().map(this::apply).toList();
-		          yield new Type.Atom(id, ts);
-		        }
-		        case Content.Structure(FlatType.Fun1(Variable a, Variable b)) -> {
-		          yield new Type.Arrow(apply(a), apply(b));
-		        }
-		        case Content.Error _ -> throw new RuntimeException();
-		      };
-		    }
-		  };
-
-		  Type body = go.apply(root);
-		  return body;
 	}
 }

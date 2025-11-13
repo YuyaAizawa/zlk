@@ -8,10 +8,6 @@ import java.util.Map;
 public interface PrettyPrintable {
 	void mkString(PrettyPrinter pp);
 
-	default void mkStringWithoutLineBreak(PrettyPrinter pp) {
-		mkString(pp.wrap(Wrapper.spaceEndl()));
-	}
-
 	default void pp(Appendable out) {
 		mkString(new BasicPrettyPrinter(out));
 	}
@@ -19,6 +15,12 @@ public interface PrettyPrintable {
 	default String buildString() {
 		StringBuilder sb = new StringBuilder();
 		mkString(new BasicPrettyPrinter(sb));
+		return sb.toString();
+	}
+
+	default String buildStringOneLine() {  // TODO: ケツカンマどうするか
+		StringBuilder sb = new StringBuilder();
+		mkString(new BasicPrettyPrinter(sb).wrap(Wrapper.oneLine()));
 		return sb.toString();
 	}
 

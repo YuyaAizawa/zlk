@@ -38,7 +38,7 @@ permits CtorApp1, Fun1 {
 			// TODO: user defined type
 
 			yield Type.arrow(
-					args.stream().map(Variable::toAnnotation).toList(),
+					args.stream().map(Variable::toType).toList(),
 					new Type.Atom(id));
 		}
 		case Fun1(Variable arg, Variable ret) ->

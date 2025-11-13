@@ -12,11 +12,11 @@ import zlk.recon.constraint.Content.Structure;
 public final class Unify {
 
 	private static void merge(
-			Variable var1, TypeVarState state1,
-			Variable var2, TypeVarState state2,
+			Variable var1, VariableState state1,
+			Variable var2, VariableState state2,
 			Content content
 	) {
-		TypeVarState state = new TypeVarState(content, Math.min(state1.rank, state2.rank));
+		VariableState state = new VariableState(content, Math.min(state1.rank, state2.rank));
 		var1.unite(var2, state);
 	}
 
@@ -26,8 +26,8 @@ public final class Unify {
 			return;
 		}
 
-		TypeVarState uState = u.get();
-		TypeVarState vState = v.get();
+		VariableState uState = u.get();
+		VariableState vState = v.get();
 		switch(uState.content) {
 		case FlexVar _ -> {
 			switch(vState.content) {
@@ -83,4 +83,3 @@ public final class Unify {
 
 @SuppressWarnings("serial")
 class Missmatch extends RuntimeException {}
-

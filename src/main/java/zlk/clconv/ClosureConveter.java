@@ -1,7 +1,6 @@
 package zlk.clconv;
 
 import static zlk.util.ErrorUtils.neverHappen;
-import static zlk.util.ErrorUtils.todo;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -181,24 +180,6 @@ public final class ClosureConveter {
 				yield compileFunc(id, decl.args(), bounded)
 						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
 						.orElse(letBody); // トップレベルで定義されているのでletは要らない
-			} else {
-				yield new CcLet(id, compile(bounded), letBody, loc);
-			}
-		}
-		case IcLetrec(List<IcValDecl> decls, IcExp body, Location loc) -> {
-			if(decls.size() != 1) {
-				todo();
-			}
-			IcValDecl decl = decls.get(0);
-			Id id = decl.id();
-			List<IcPattern> args = decl.args();
-			IcExp bounded = decl.body();
-			CcExp letBody = compile(body);
-
-			if(!args.isEmpty()) {
-				yield compileFunc(id, decl.args(), bounded)
-						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-						.orElse(letBody);
 			} else {
 				yield new CcLet(id, compile(bounded), letBody, loc);
 			}

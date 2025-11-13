@@ -2,8 +2,6 @@ package zlk.idcalc;
 
 import java.util.List;
 
-import zlk.common.id.IdList;
-import zlk.common.id.IdMap;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -19,7 +17,6 @@ public record IcModule(
 		String name,
 		List<IcTypeDecl> types,
 		List<IcValDecl> decls,
-		IdMap<IdList> recscc,
 		String origin
 ) implements PrettyPrintable {
 
@@ -35,11 +32,6 @@ public record IcModule(
 		decls.forEach(decl -> {
 			pp.endl();
 			pp.append(decl).endl();
-		});
-
-		recscc.forEach((k,v) ->{
-			pp.endl();
-			pp.append(k).append(": ").append(v);
 		});
 	}
 }

@@ -23,6 +23,8 @@ implements Instructions
 		Type i32bool = Type.arrow(I32, BOOL);
 
 		return List.of(
+				new Builtin("Basic.False", BOOL, mv -> mv.visitInsn(Opcodes.LCONST_0)),
+				new Builtin("Basic.True", BOOL, mv -> mv.visitInsn(Opcodes.LCONST_1)),
 				new Builtin("Basic.isZero", i32bool, mv -> {
 					mv.visitInsn(Opcodes.I2L);
 					mv.visitInsn(Opcodes.LCONST_0);

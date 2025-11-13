@@ -26,6 +26,7 @@ import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
+import zlk.recon.FreshFlex;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.typecheck.TypeChecker;
@@ -40,25 +41,13 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList =
-				| Nil
-				| Cons I32 IntList
-
-				car list =
-				  case list of
-				  | Nil ->
-				    0
-				  | Cons hd tl ->
-				    hd
-
-				rectest =
+				c = 1
+				fun =
 				  let
-				    id x =
-				      x
-				    res =
-				      Cons (id 1) (Cons (car (id (Cons 2 Nil))) Nil)
+				    f = c
 				  in
-				    res
+				    f
+
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -78,12 +67,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- CONSTRAIN EXTRACTION --");
-		Constraint cint = ConstraintExtractor.extract(idcalc);
+		FreshFlex freshFlex = new FreshFlex();
+		Constraint cint = ConstraintExtractor.extract(idcalc, freshFlex);
 		System.out.println(cint.buildString());
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		IdMap<Type> types = TypeReconstructor.recon(cint).unwrap();
+		IdMap<Type> types = TypeReconstructor.recon(cint, freshFlex).unwrap();
 		System.out.println(types.buildString());
 		System.out.println();
 

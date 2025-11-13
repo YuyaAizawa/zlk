@@ -1,13 +1,12 @@
 package zlk.recon;
 
-import static zlk.util.ErrorUtils.todo;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -18,84 +17,50 @@ import zlk.recon.constraint.Content.Structure;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public class Variable extends UnionFind<TypeVarState, Variable> implements PrettyPrintable {
+public class Variable extends UnionFind<VariableState, Variable> implements PrettyPrintable {
 
-	public Variable(TypeVarState state) {
+	public Variable(VariableState state) {
 		super(state);
 	}
 
-	public static Variable unbounded(int letRank) {
-		return new Variable(new TypeVarState(new FlexVar(), letRank));
-	}
-	public static Variable unbounded() {
-		return unbounded(0);
+	public static Variable ofFlex(int flexId, Optional<String> maybeName, int letRank) {
+		return new Variable(new VariableState(new FlexVar(flexId, maybeName), letRank));
 	}
 
 	public Variable(Content con, int letRank) {
-		this(new TypeVarState(con, letRank));
+		this(new VariableState(con, letRank));
 	}
 
-	public Variable(String name, int letRank) {
-		this(new TypeVarState(new FlexVar(name), letRank));
-	}
 
+	/**
+	 * この変数の注釈用の型を生成する
+	 * @return 型
+	 */
 	public Type toType() {
-		return switch(get().content) {
-		case FlexVar(int id, Optional<String> maybeName) ->
-			new Type.Var(maybeName.orElse(String.valueOf(id)));
-		case RigidVar(String name) -> new Type.Var(name);
-		case Structure(FlatType flatType) ->
-			flatType.toType();
-		case Content.Error _ ->
-			throw new RuntimeException("error type cannot convert");
-		};
+		// TODO: flexの推奨名を反映する
+		// TODO: rigidとの被り防止
+		// TODO: 自動の命名アルゴリズム含めもう少し何とか
+		return this.toType(new IntFunction<String>() {
+			Map<Integer, String> named = new HashMap<>();
+			@Override
+			public String apply(int value) {
+				return named.computeIfAbsent(value, _ -> named.size() > 'z' - 'a'
+						? "ty" + (named.size() - ('z' - 'a'))
+								: "" + (char)('a' + named.size()));
+			}
+		});
 	}
-
-	public Type toAnnotation() {
-		Map<String, Variable> userNames = new HashMap<>();
-		accumlateVarNames(userNames);
-		return toAnnotation(userNames);
-	}
-
-	private Type toAnnotation(Map<String, Variable> userNames) {
+	private Type toType(IntFunction<String> namer) {
 		return switch(get().content) {
-		case FlexVar(int id, Optional<String> maybeName) ->
-			maybeName.map(name -> new Type.Var(name))
-					.orElseGet(() -> todo());
-//			if(name == null) {
-//				System.out.println(this);
-//				name = todo();
-//				set(new Descriptor(new FlexVar(flex.id(), name), dtor.rank, dtor.mark));
-//			}
-//			return new TyVar(name);
+		case FlexVar(int id, Optional<String> _) -> new Type.Var(namer.apply(id));
 		case RigidVar(String name) -> new Type.Var(name);
 		case Structure(FlatType.CtorApp1(Id id, _)) ->
 			new Type.Atom(id);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			Type.arrow(List.of(arg.toAnnotation(), ret.toAnnotation()));
+			Type.arrow(List.of(arg.toType(namer), ret.toType(namer)));
 		case Content.Error _ ->
 			throw new RuntimeException("error type cannot convert");
 		};
-	}
-
-	/**
-	 * この変数の名前を指定されたMapに登録する
-	 * @param takenNames
-	 * @return
-	 */
-	private void accumlateVarNames(Map<String, Variable> takenNames) {
-		switch(get().content) {
-		case FlexVar(int _, Optional<String> maybeName) ->
-			maybeName.ifPresent(name -> takenNames.putIfAbsent(name, this));
-		case RigidVar(String name) -> takenNames.putIfAbsent(name, this);
-		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
-			args.forEach(arg -> arg.accumlateVarNames(takenNames));
-		case Structure(FlatType.Fun1(Variable arg, Variable ret)) -> {
-			arg.accumlateVarNames(takenNames);
-			ret.accumlateVarNames(takenNames);
-		}
-		case Content.Error() -> {}
-		}
 	}
 
 	/**
@@ -129,12 +94,12 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
 	 * @param action
 	 */
 	public void markAndWalk(int mark, Consumer<Variable> action) {
-		TypeVarState s = get();
+		VariableState s = get();
 		if(s.gMark == mark) {
 			return;
 		}
-		s.gMark = mark;
 		action.accept(this);
+		s.gMark = mark;
 		switch(s.content) {
 		case Content.Structure(FlatType.CtorApp1(_, List<Variable> args)) -> {
 			args.forEach(arg -> arg.markAndWalk(mark, action));
@@ -168,13 +133,13 @@ public class Variable extends UnionFind<TypeVarState, Variable> implements Prett
  * @param cacheOnCopy 具体化時のキャッシュ用 普段はnull
  * @param gMark 汎化時に外部から参照されているかを記録する用
  */
-class TypeVarState {
+class VariableState {
 	final Content content;
 	int rank;
 	Variable cacheOnCopy;
 	int gMark;
 
-	public TypeVarState(Content content, int letRank) {
+	public VariableState(Content content, int letRank) {
 		this.content = content;
 		this.rank = letRank;
 		this.cacheOnCopy = null;

@@ -144,7 +144,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 		case CExists(List<Variable> vars, List<Constraint> cons) -> {
 			pp.append("Exists:").endl();
 			pp.indent(() -> {
-				pp.append("vars").append("[").append(PrettyPrintable.join(vars, ", ")).append("]").endl();
+				pp.append("vars: ").append("[").append(PrettyPrintable.join(vars, ", ")).append("]").endl();
 				pp.append("cons: ").append(PrettyPrintable.tailComma(cons));
 			});
 		}

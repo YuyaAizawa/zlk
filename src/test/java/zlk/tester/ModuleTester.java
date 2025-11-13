@@ -2,6 +2,7 @@ package zlk.tester;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import zlk.ast.Module;
@@ -9,6 +10,7 @@ import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConveter;
 import zlk.common.Type;
+import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
@@ -17,36 +19,91 @@ import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
+import zlk.recon.FreshFlex;
+import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
-import zlk.typecheck.TypeChecker;
+import zlk.util.Result;
 
 public class ModuleTester {
+
+	public enum CompileLevel {
+		PARSE,
+		NAME_EVAL,
+		TYPE_CINT,
+		TYPE_RECON,
+		CLOSURE_CONV,
+		BYTECODE_GEN,
+		;
+
+		public boolean includes(CompileLevel other) {
+			return this.compareTo(other) >= 0;
+		}
+	}
+
 	private static final String TARGET_MODULE_NAME = "Main";
+	private final CompileLevel compileLevel;
 	private final String src;
 	private final InMemoryClassLoader classLoader;
+
+	// CompileLevelに応じて用意するもの
+	private Module ast = null;
+	private IcModule module = null;
+	private Constraint cint = null;
+	private IdMap<Type> recon = null;
+	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
-	public ModuleTester(String src) {
-		this.src = "module " + TARGET_MODULE_NAME + "\n" + src;
+	public ModuleTester(String src, CompileLevel level) {
+		this.compileLevel = level;
+		this.src = "module " + TARGET_MODULE_NAME + "\n" + src;  // TODO: これ要る？
 		this.classLoader = new InMemoryClassLoader();
 
-		// TODO コンパイラのデザイン
-		Module ast = new Parser(new Lexer(TARGET_MODULE_NAME + ".zlk", this.src)).parse();
-		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
-		IcModule idcalc = new NameEvaluator(ast, Builtin.functions()).eval();
-		Constraint cint = ConstraintExtractor.extract(idcalc);
-		IdMap<Type> types = new TypeReconstructor().run(cint);
+		this.ast = new Parser(new Lexer(TARGET_MODULE_NAME + ".zlk", this.src)).parse();
+		if(this.compileLevel == CompileLevel.PARSE) {
+			return;
+		}
 
-		// TODO ↓これreconする前じゃね？
-		idcalc.types().forEach(union ->
-			union.ctors().forEach(ctor ->
-				types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
-		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
+		this.module = new NameEvaluator(ast).eval();
+		if(this.compileLevel == CompileLevel.NAME_EVAL) {
+			return;
+		}
 
-		new TypeChecker(types).check(idcalc);
-		CcModule clconv = new ClosureConveter(idcalc, types, builtinIds).convert();
-		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(this::addClass);
+		FreshFlex freshFlex = new FreshFlex();
+		this.cint = ConstraintExtractor.extract(module, freshFlex);
+		if(this.compileLevel == CompileLevel.TYPE_CINT) {
+			return;
+		}
+
+		Result<List<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
+		this.recon = reconResult.unwrap();
+		if(this.compileLevel == CompileLevel.TYPE_RECON) {
+			return;
+		}
+
+		IdMap<Type> allTys = new IdMap<>();
+		Builtin.functions().forEach(fun -> allTys.put(fun.id(), fun.type()));
+		module.types().forEach(union ->
+				union.ctors().forEach(ctor ->
+						allTys.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
+		recon.forEach((id, ty) -> allTys.put(id, ty));
+		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
+				.collect(IdList.collector());
+		this.clconv = new ClosureConveter(module, allTys, builtinIds).convert();
+		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
+			return;
+		}
+
+		new BytecodeGenerator(clconv, allTys, Builtin.functions()).compile(this::addClass);
+	}
+
+	public Constraint getConstraint() {
+		return this.cint;
+	}
+
+	public TypeTester getType(String name) {
+		Type ty = recon.get(Id.fromCanonicalName(TARGET_MODULE_NAME+"."+name));
+		return new TypeTester(ty, Id.fromCanonicalName(TARGET_MODULE_NAME), module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.Atom(i, List.of()))));
 	}
 
 	public void addClass(String className, byte[] bytecode) {

@@ -21,6 +21,8 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 	private final Id parent; // nullable
 	private final String simple;
 
+	// TODO: Idもinternできるように
+
 	/**
 	 * 識別子を新しく生成する
 	 * @param canonical

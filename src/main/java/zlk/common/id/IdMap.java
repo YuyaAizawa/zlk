@@ -63,6 +63,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return impl.getOrDefault(id, value);
 	}
 
+	public V computeIfAbsent(Id id, Function<? super Id, ? extends V> mappingFunction) {
+		return impl.computeIfAbsent(id, mappingFunction);
+	}
+
 	public void put(Id id, V value) {
 		V old = impl.put(Objects.requireNonNull(id), Objects.requireNonNull(value));
 		if(old != null) {

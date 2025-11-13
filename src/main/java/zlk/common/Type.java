@@ -217,7 +217,7 @@ permits Atom, Arrow, Var {
 			pp.append(" -> ").append(ret);
 		}
 		case Var(String name) -> {
-			pp.append("[").append(name).append("]");
+			pp.append(name);
 		}
 		}
 	}

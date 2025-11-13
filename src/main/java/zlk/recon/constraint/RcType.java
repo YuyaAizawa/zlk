@@ -8,6 +8,7 @@ import java.util.function.Function;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.recon.FreshFlex;
 import zlk.recon.Variable;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
@@ -39,7 +40,7 @@ permits VarN, AppN, FunN {
 	 * @param ty
 	 * @return
 	 */
-	public static FromType from(Type ty) {
+	public static FromType from(Type ty, FreshFlex freshFlex) {
 		Map<String, Variable> vars = new HashMap<>();
 
 		Function<Type, RcType> conv = new Function<>() {
@@ -47,7 +48,7 @@ permits VarN, AppN, FunN {
 			public RcType apply(Type t) {
 				return switch(t) {
 				case Type.Var(String name) ->
-					new VarN(vars.computeIfAbsent(name, _ -> Variable.unbounded()));
+					new VarN(vars.computeIfAbsent(name, _ -> freshFlex.getVariable()));
 				case Type.Atom(Id id, List<Type> args) ->
 					new AppN(id, args.stream().map(this).toList());
 				case Type.Arrow(Type arg, Type ret) ->
@@ -67,33 +68,6 @@ permits VarN, AppN, FunN {
 
 		return new FromType(flexes, argTys, resultTy);
 	}
-
-//	public default List<RcType> flatten() {
-//		List<RcType> result = new ArrayList<>();
-//		RcType rest = this;
-//		while(rest instanceof FunN(RcType arg, RcType ret)) {
-//			result.add(arg);
-//			rest = ret;
-//		}
-//		result.add(rest);
-//		return result;
-//	}
-
-//	public static RcType from(Type ty) {
-//		if(ty == Type.BOOL)
-//			return BOOL;
-//		if(ty == Type.I32)
-//			return I32;
-//
-//		return switch(ty) {
-//		case Type.Atom(Id id, _) ->
-//			new AppN(id, List.of());
-//		case Type.Arrow(var arg, var ret) ->
-//			new FunN(from(arg), from(ret));
-//		case Type.Var _ ->
-//			todo();
-//		};
-//	}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {

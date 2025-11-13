@@ -3,6 +3,7 @@ package zlk;
 import org.junit.jupiter.api.Test;
 
 import zlk.tester.ModuleTester;
+import zlk.tester.ModuleTester.CompileLevel;
 
 public class FeatureTest {
 	@Test
@@ -19,7 +20,7 @@ public class FeatureTest {
 		      mul n (fact nn)
 		""";
 
-		var module = new ModuleTester(src);
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		var fact = module.getValue("fact");
 		fact.apply(0).is(1);
 		fact.apply(5).is(120);
@@ -38,7 +39,7 @@ public class FeatureTest {
 		  in
 		    adder
 		""";
-		var module = new ModuleTester(src);
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		var make_adder = module.getValue("make_adder");
 		make_adder.apply(1).apply(2).apply(3).is(6);
 	}
@@ -55,7 +56,7 @@ public class FeatureTest {
 
 		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";
-		var module = new ModuleTester(src);
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		var ans = module.getValue("ans");
 		ans.is(6);
 	}
