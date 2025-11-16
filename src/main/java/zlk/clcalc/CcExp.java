@@ -1,7 +1,5 @@
 package zlk.clcalc;
 
-import static zlk.util.pp.PrettyPrintable.join;
-
 import java.util.List;
 
 import zlk.clcalc.CcExp.CcApp;
@@ -134,7 +132,7 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 			pp.append("mkCls:").endl();
 			pp.indent(() -> {
 				pp.append("clsFunc: ").append(clsFunc).endl();
-				pp.append("caps: ").append("[").append(join(caps.iterator(), ", ")).append("]");
+				pp.append("caps: ").append("[").append(PrettyPrintable.join(caps, ", ")).append("]");
 			});
 		}
 		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {

@@ -31,7 +31,7 @@ implements PrettyPrintable, LocationHolder {
 		pp.indent(() -> {
 			pp.append("id: ").append(id).endl();
 			pp.append("args: [");
-			pp.append(PrettyPrintable.join(args.iterator(), ", "));
+			pp.append(PrettyPrintable.join(args, ", "));
 			pp.append("]").endl();
 			pp.append("body:").endl();
 			pp.indent(() -> {
