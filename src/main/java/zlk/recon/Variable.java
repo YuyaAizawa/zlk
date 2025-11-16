@@ -54,8 +54,8 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 		return switch(get().content) {
 		case FlexVar(int id, Optional<String> _) -> new Type.Var(namer.apply(id));
 		case RigidVar(String name) -> new Type.Var(name);
-		case Structure(FlatType.CtorApp1(Id id, _)) ->
-			new Type.Atom(id);
+		case Structure(FlatType.CtorApp1(Id id, List<Variable> args)) ->
+			new Type.CtorApp(id, args.stream().map(arg -> arg.toType(namer)).toList());
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			Type.arrow(List.of(arg.toType(namer), ret.toType(namer)));
 		case Content.Error _ ->

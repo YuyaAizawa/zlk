@@ -108,9 +108,27 @@ public class ReconTest {
 				r2 = v True
 				""";
 		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
-		// TODO: parseTypeが失敗するので直す
-		// module.getType("p").is("((a -> a) -> (b -> b) -> c) -> c");
+		module.getType("p").is("((a -> a) -> (b -> b) -> c) -> c");
 		module.getType("r1").is("I32");
 		module.getType("r2").is("Bool");
+	}
+
+	@Test
+	void userDefinedGenericDatatype() {
+		String src ="""
+				type List a =
+				| Nil
+				| Cons a (List a)
+
+				type Pair a b = Pair_ a b
+
+				intList = Cons 1 Nil
+				boolList = Cons True Nil
+				pair = Pair_ 1 True
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+		module.getType("intList").is("List I32");
+		module.getType("boolList").is("List Bool");
+		module.getType("pair").is("Pair I32 Bool");
 	}
 }

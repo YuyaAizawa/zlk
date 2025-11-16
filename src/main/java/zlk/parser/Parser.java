@@ -20,6 +20,7 @@ import static zlk.parser.Token.Kind.RPAREN;
 import static zlk.parser.Token.Kind.THEN;
 import static zlk.parser.Token.Kind.TYPE;
 import static zlk.parser.Token.Kind.UCID;
+import static zlk.util.ErrorUtils.todo;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -61,7 +62,7 @@ import zlk.util.Position;
  * <h3>宣言</h3>
  * <typeDecl> ::= type <ucid> <aType>* = <ctor> (| <ctor>)*
  *
- * <ctor>     ::= <ucid> <aType>*
+ * <ctor>     ::= <ucid> <tyConArg>*
  *
  * <valDecl>  ::= (<lcid> : <type> <br>)? <lcid> <pattern>* = <br>? <exp>
  *
@@ -84,15 +85,17 @@ import zlk.util.Position;
  *              | <lcid>
  *
  * <h3>型注釈</h3>
- * <type>     ::= <bType> (-> <type>)?
+ * <type>     ::= <funTyArg> (-> <type>)?
  *
- * <bType>    ::= <ucid> <aType>+
- *              | <aType>
+ * <funTyArg> ::= ()
+ *              | <lcid>
+ *              | <ucid> <tyConArg>*
+ *              | ( <type> )
  *
- * <aType>    ::= ( <type> )
- *              | ()
+ * <tyConArg> ::= ()
  *              | <lcid>
  *              | <ucid>
+ *              | ( <type> )
  * }</pre>
  */
 public class Parser {
@@ -153,6 +156,12 @@ public class Parser {
 
 		String name = parse(UCID);
 
+		List<AnType.Var> tyArgs = new ArrayList<>();
+		AnType.Var tyArg;
+		while((tyArg = maybeParseTyVar()) != null) {
+			tyArgs.add(tyArg);
+		}
+
 		consume(EQUAL);
 
 		maybeConsume(BAR);
@@ -164,7 +173,7 @@ public class Parser {
 			ctors.add(parseConstructor());
 		}
 
-		return new TypeDecl(name, ctors, location(start, end));
+		return new TypeDecl(name, tyArgs, ctors, location(start, end));
 	}
 
 	private Constructor parseConstructor() {
@@ -173,15 +182,12 @@ public class Parser {
 		String name = parse(UCID);
 
 		List<AnType> args = new ArrayList<>();
-		while(aTypeStartToken(current)) {
-			args.add(parseAType());
+		AnType arg;
+		while((arg = maybeParseTyConArg()) != null) {
+			args.add(arg);
 		}
 
 		return new Constructor(name, args, location(start, end));
-	}
-
-	private static boolean aTypeStartToken(Token token) {
-		return token.kind() == UCID || token.kind() == LPAREN;
 	}
 
 	public ValDecl parseValDecl() {
@@ -428,7 +434,7 @@ public class Parser {
 	public AnType parseType() {
 		Position start = current.pos();
 
-		AnType ty = parseBType();
+		AnType ty = parseFunTyArg();
 
 		if(maybeConsume(ARROW)) {
 			return new AnType.Arrow(ty, parseType(), location(start, end));
@@ -436,50 +442,74 @@ public class Parser {
 		return ty;
 	}
 
-	private AnType parseBType() {
-		if(current.kind() == UCID) {
-			Position start = current.pos();
-			String ctor = parse(UCID);
-			List<AnType> args = new ArrayList<>();
-			while(isATypeStartToken(current)) {
-				args.add(parseAType());
-			}
-			return new AnType.Type(ctor, args, location(start, end));
-		}
-		return parseAType();
-	}
-
-	private AnType parseAType() {
-		Position start = current.pos();
+	private AnType parseFunTyArg() {
 		return switch(current.kind()) {
+		case UNIT -> parseUnit();
+		case LCID -> parseTyVar();
+		case UCID -> parseTyConApp();
 		case LPAREN -> parseParenType();
-		case UNIT -> {
-			AnType type = new AnType.Unit(location(start, end));
-			nextToken();
-			yield type;
-		}
-		case UCID -> new AnType.Type(parse(UCID), List.of(), location(start, end));
-		case LCID -> new AnType.Var(parse(LCID), location(start, end));
-		default -> throw new RuntimeException("type expected");
+		default -> todo("syntax error");
 		};
 	}
 
-	private static boolean isATypeStartToken(Token token) {
-		return switch(token.kind()) {
-		case LPAREN, UNIT, UCID, LCID -> true;
-		default -> false;
+	private AnType parseTyConApp() {
+		Position start = current.pos();
+		String tyCon = parse(UCID);
+
+		List<AnType> args = new ArrayList<>();
+		AnType tyConArg;
+		while((tyConArg = maybeParseTyConArg()) != null) {
+			args.add(tyConArg);
+		}
+
+		return new AnType.Type(tyCon, args, location(start, end));
+	}
+
+	/**
+	 * 失敗時にnullを返すので注意
+	 * @return
+	 */
+	private AnType maybeParseTyConArg() {
+		Position start = current.pos();
+		return switch(current.kind()) {
+		case UNIT -> parseUnit();
+		case LCID -> parseTyVar();
+		case UCID -> new AnType.Type(parse(UCID), List.of(), location(start, end));
+		case LPAREN -> parseParenType();
+		default -> null;
 		};
 	}
 
 	private AnType parseParenType() {
 		consume(LPAREN);
 
-		AnType type = parseAType();
+		AnType type = parseType();
 
 		consume(RPAREN);
 
 		return type;
 	}
+
+	private AnType parseUnit() {
+		Position start = current.pos();
+		consume(Kind.UNIT);
+		return new AnType.Unit(location(start, end));
+	}
+
+	private AnType.Var maybeParseTyVar() {
+		if(current.kind() != LCID) {
+			return null;
+		}
+		return parseTyVar();
+	}
+
+	private AnType.Var parseTyVar() {
+		Position start = current.pos();
+		String var = parse(LCID);
+		return new AnType.Var(var, location(start, end));
+	}
+
+
 
 	private void nextToken() {
 		end = current.endPos();

@@ -13,7 +13,7 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface Decl extends PrettyPrintable, LocationHolder
 permits ValDecl, TypeDecl {
 	record ValDecl(String name, Optional<AnType> anno, List<Pattern> args, Exp body, Location loc) implements Decl {}
-	record TypeDecl(String name, List<Constructor> ctors, Location loc) implements Decl {}
+	record TypeDecl(String name, List<AnType.Var> vars, List<Constructor> ctors, Location loc) implements Decl {}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {
@@ -29,8 +29,10 @@ permits ValDecl, TypeDecl {
 				pp.append(body);
 			});
 		}
-		case TypeDecl(String name, List<Constructor> ctors, _) -> {
-			pp.append("type ").append(name).append(" =");
+		case TypeDecl(String name, List<AnType.Var> tyArgs, List<Constructor> ctors, _) -> {
+			pp.append("type ").append(name).append(" ");
+			tyArgs.forEach(arg -> pp.append(arg).append(" "));
+			pp.append("=");
 			if(ctors.size() == 1) {
 				pp.indent(() -> {
 					pp.endl().append(ctors.get(0));

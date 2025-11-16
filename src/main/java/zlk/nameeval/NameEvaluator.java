@@ -84,16 +84,17 @@ public final class NameEvaluator {
 		// resister types
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl(String name, _, _) -> {
-				Id typeId;
+			case TypeDecl(String name, List<AnType.Var>args, _, _) -> {
+				Id id;
 				try {
-					typeId = env.register(name);
+					id = env.register(name);
 				} catch (DuplicatedNameException e) {
 					// TODO コンパイルメッセージに追加
 					throw new RuntimeException(e);
 				}
-				Type type = new Type.Atom(typeId);
-				types.put(typeId, type);
+				List<Type> tyArgs = args.stream().map(this::eval).toList();  // TODO: コンストラクタが入っていないことを確認
+				Type type = new Type.CtorApp(id, tyArgs);
+				types.put(id, type);
 			}
 			default -> {}
 			}
@@ -102,7 +103,7 @@ public final class NameEvaluator {
 		// resister toplevels
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl(String name, List<Constructor> ctors, _) -> {
+			case TypeDecl(String name, _, List<Constructor> ctors, _) -> {
 				// 2 step registrations for mutual recursion types
 				Type retTy = types.get(env.get(name));
 				ctors.forEach(ctor -> {
@@ -113,6 +114,7 @@ public final class NameEvaluator {
 						// TODO コンパイルメッセージに追加
 						throw new RuntimeException(e);
 					}
+					// TODO: 宣言された型とコンストラクタの型の整合性検査
 					Type type =Type.arrow(
 							ctor.args().stream().map(ty -> eval(ty)).toList(),
 							retTy
@@ -151,13 +153,15 @@ public final class NameEvaluator {
 	public IcTypeDecl eval(TypeDecl union) {
 		Id id = env.get(union.name());
 
+		List<Type> vars = union.vars().stream().map(var -> eval(var)).toList();
+
 		List<IcCtor> ctors = union.ctors().stream().map(ctor -> {
 			Id ctorId = env.get(ctor.name());
 			List<Type> args = ctor.args().stream().map(ty -> eval(ty)).toList();
 			return new IcCtor(ctorId, args, ctor.loc());
 		}).toList();
 
-		return new IcTypeDecl(id, ctors, union.loc());
+		return new IcTypeDecl(id, vars, ctors, union.loc());
 	}
 
 	public IcValDecl eval(ValDecl decl) {
@@ -285,7 +289,7 @@ public final class NameEvaluator {
 		case AnType.Type(String ctor, List<AnType> args, _) -> {
 			Id ctor_ = env.get(ctor);
 			List<Type> args_ = args.stream().map(arg -> eval(arg)).toList();
-			yield new Type.Atom(ctor_, args_);
+			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
 		};

@@ -49,7 +49,7 @@ permits VarN, AppN, FunN {
 				return switch(t) {
 				case Type.Var(String name) ->
 					new VarN(vars.computeIfAbsent(name, _ -> freshFlex.getVariable()));
-				case Type.Atom(Id id, List<Type> args) ->
+				case Type.CtorApp(Id id, List<Type> args) ->
 					new AppN(id, args.stream().map(this).toList());
 				case Type.Arrow(Type arg, Type ret) ->
 					new FunN(apply(arg), apply(ret));

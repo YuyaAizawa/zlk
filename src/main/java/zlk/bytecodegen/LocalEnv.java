@@ -16,7 +16,7 @@ public class LocalEnv {
 		LocalVar localVar = new LocalVar(idx, type);
 
 		return switch(type) {
-		case Type.Atom _ -> {
+		case Type.CtorApp _ -> {
 			impl.put(idInfo, localVar);
 			yield localVar;
 		}
