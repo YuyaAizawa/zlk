@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import zlk.common.Type.Arrow;
-import zlk.common.Type.Atom;
+import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.util.Stack;
@@ -17,21 +17,21 @@ import zlk.util.pp.PrettyPrinter;
  * 主に型注釈などで利用する
  *
  * <ul>
- *   <li> {@link Atom} -- 関数型以外の型
+ *   <li> {@link CtorApp} -- 関数型以外の型
  *   <li> {@link Arrow} -- 関数型
  *   <li> {@link Var} -- 型変数
  * </ul>
  */
 public sealed interface Type extends PrettyPrintable
-permits Atom, Arrow, Var {
+permits CtorApp, Arrow, Var {
 
 	/**
 	 * 関数型以外の型
 	 * @param ctor 型構築子
 	 * @param args 型パラメータ
 	 */
-	record Atom(Id ctor, List<Type> args) implements Type {
-		public Atom(Id id) {
+	record CtorApp(Id ctor, List<Type> args) implements Type {
+		public CtorApp(Id id) {
 			this(id, List.of());
 		}
 	}
@@ -49,11 +49,11 @@ permits Atom, Arrow, Var {
 	 */
 	record Var(String name) implements Type {}
 
-	public static final Atom UNIT = new Atom(Id.fromCanonicalName("Unit"));
-	public static final Atom BOOL = new Atom(Id.fromCanonicalName("Bool"));
-	public static final Atom I32  = new Atom(Id.fromCanonicalName("I32"));
+	public static final CtorApp UNIT = new CtorApp(Id.fromCanonicalName("Unit"));
+	public static final CtorApp BOOL = new CtorApp(Id.fromCanonicalName("Bool"));
+	public static final CtorApp I32  = new CtorApp(Id.fromCanonicalName("I32"));
 
-	public static final List<Atom> BUILTIN = List.of(UNIT, BOOL, I32);
+	public static final List<CtorApp> BUILTIN = List.of(UNIT, BOOL, I32);
 
 	public static Type arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -83,9 +83,9 @@ permits Atom, Arrow, Var {
 		return arrow(types.toArray(Type[]::new));
 	}
 
-	default Atom asAtom() {
+	default CtorApp asAtom() {
 		return switch(this) {
-		case Atom atom -> atom;
+		case CtorApp atom -> atom;
 		default -> null;
 		};
 	}
@@ -111,7 +111,7 @@ permits Atom, Arrow, Var {
 		Type result = this;
 		for(int i = 0; i < cnt ; i++) {
 			result = switch(result) {
-			case Atom _ -> throw tooManyApplies(this, cnt);
+			case CtorApp _ -> throw tooManyApplies(this, cnt);
 			case Arrow(_, Type ret) -> ret;
 			case Var _ -> throw tooManyApplies(this, cnt);
 			};
@@ -133,7 +133,7 @@ permits Atom, Arrow, Var {
 	 */
 	default Type arg(int idx) {
 		return switch(apply(idx)) {
-		case Atom _ -> throw typeMissmatch(Arrow.class, Atom.class);
+		case CtorApp _ -> throw typeMissmatch(Arrow.class, CtorApp.class);
 		case Arrow(Type arg, _) -> arg;
 		case Var _ -> throw typeMissmatch(Arrow.class, Var.class);
 		};
@@ -177,7 +177,7 @@ permits Atom, Arrow, Var {
 	}
 	default void getVarNamesHelp(List<String> acc) {
 		switch(this) {
-		case Atom(_, List<Type> typeArguments) -> {
+		case CtorApp(_, List<Type> typeArguments) -> {
 			for(Type arg : typeArguments) {
 				arg.getVarNamesHelp(acc);
 			}
@@ -197,11 +197,11 @@ permits Atom, Arrow, Var {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case Atom(Id id, List<Type> typeArguments) -> {
+		case CtorApp(Id id, List<Type> typeArguments) -> {
 			pp.append(id);
 			typeArguments.forEach(a -> {
 				if(a instanceof Arrow ||
-						(a instanceof Atom(_, List<Type> args) && !args.isEmpty())) {
+						(a instanceof CtorApp(_, List<Type> args) && !args.isEmpty())) {
 					pp.append(" (").append(a).append(")");
 				} else {
 					pp.append(" ").append(a);
