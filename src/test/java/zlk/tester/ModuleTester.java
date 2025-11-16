@@ -50,7 +50,7 @@ public class ModuleTester {
 	private Module ast = null;
 	private IcModule module = null;
 	private Constraint cint = null;
-	private IdMap<Type> recon = null;
+	private IdMap<Type> types = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
@@ -75,26 +75,25 @@ public class ModuleTester {
 			return;
 		}
 
+		this.types = new IdMap<>();
+		Builtin.functions().forEach(fun -> types.put(fun.id(), fun.type()));
+		module.types().forEach(union ->
+				union.ctors().forEach(ctor ->
+					types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
 		Result<List<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
-		this.recon = reconResult.unwrap();
+		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
 
-		IdMap<Type> allTys = new IdMap<>();
-		Builtin.functions().forEach(fun -> allTys.put(fun.id(), fun.type()));
-		module.types().forEach(union ->
-				union.ctors().forEach(ctor ->
-						allTys.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
-		recon.forEach((id, ty) -> allTys.put(id, ty));
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
-		this.clconv = new ClosureConveter(module, allTys, builtinIds).convert();
+		this.clconv = new ClosureConveter(module, types, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
 
-		new BytecodeGenerator(clconv, allTys, Builtin.functions()).compile(this::addClass);
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(this::addClass);
 	}
 
 	public Constraint getConstraint() {
@@ -102,8 +101,8 @@ public class ModuleTester {
 	}
 
 	public TypeTester getType(String name) {
-		Type ty = recon.get(Id.fromCanonicalName(TARGET_MODULE_NAME+"."+name));
-		return new TypeTester(ty, Id.fromCanonicalName(TARGET_MODULE_NAME), module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.Atom(i, List.of()))));
+		Type ty = types.get(Id.fromCanonicalName(TARGET_MODULE_NAME+"."+name));
+		return new TypeTester(ty, Id.fromCanonicalName(TARGET_MODULE_NAME), module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.CtorApp(i, List.of()))));
 	}
 
 	public void addClass(String className, byte[] bytecode) {

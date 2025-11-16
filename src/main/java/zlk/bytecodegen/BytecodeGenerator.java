@@ -192,7 +192,7 @@ public final class BytecodeGenerator {
 
 	private static String toDesc(Type type) {
 		return switch(type) {
-		case Type.Atom atom -> toBinary(atom);
+		case Type.CtorApp atom -> toBinary(atom);
 		case Type.Arrow _ -> todo();
 		case Type.Var(String name) -> { throw new Error(name); }
 		};
@@ -728,7 +728,7 @@ public final class BytecodeGenerator {
 
 	private void loadLocal(int idx, Type ty) {
 		switch(ty) {
-		case Type.Atom _ -> {
+		case Type.CtorApp _ -> {
 			if(ty == Type.I32 || ty == Type.BOOL) {
 				mv.visitVarInsn(Opcodes.ILOAD, idx);
 			} else if (ty == Type.UNIT) {
@@ -746,7 +746,7 @@ public final class BytecodeGenerator {
 
 	private void storeLocal(int idx, Type ty) {
 		switch(ty) {
-		case Type.Atom _ -> {
+		case Type.CtorApp _ -> {
 			if(ty == Type.I32 || ty == Type.BOOL) {
 				mv.visitVarInsn(Opcodes.ISTORE, idx);
 			} else if (ty == Type.UNIT) {
@@ -762,7 +762,7 @@ public final class BytecodeGenerator {
 		}
 	}
 
-	private void genBoxing(Type.Atom type) {
+	private void genBoxing(Type.CtorApp type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKESTATIC,
@@ -772,7 +772,7 @@ public final class BytecodeGenerator {
 				false);
 	}
 
-	private void genUnboxing(Type.Atom type) {
+	private void genUnboxing(Type.CtorApp type) {
 		Boxing boxing = Boxing.of(type);
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
@@ -784,7 +784,7 @@ public final class BytecodeGenerator {
 
 	private void genReturn(Type type) {
 		switch(type) {
-		case Type.Atom _ -> {
+		case Type.CtorApp _ -> {
 			if(type == Type.BOOL || type == Type.I32) {
 				mv.visitInsn(Opcodes.IRETURN);
 			} else if(type == Type.UNIT) {
@@ -902,7 +902,7 @@ public final class BytecodeGenerator {
 	private static final String objectDesc = "Ljava/lang/Object;";
 	private static final String functionDesc = "Ljava/util/function/Function;";
 
-	private static String toBinary(Type.Atom ty) {
+	private static String toBinary(Type.CtorApp ty) {
 		if(ty == Type.BOOL) { return "Z";}
 		if(ty == Type.I32)  { return "I";}
 		if(ty == Type.UNIT) { return "V";}
@@ -922,7 +922,7 @@ public final class BytecodeGenerator {
 
 	private static String toBoxed(Type ty) {
 		return switch(ty) {
-		case Type.Atom atom ->
+		case Type.CtorApp atom ->
 			Boxing.of(atom).boxedClassDesc;
 		case Type.Arrow _ ->
 			functionDesc;
@@ -932,7 +932,7 @@ public final class BytecodeGenerator {
 
 	private static String toBoxedSignature(Type ty) {
 		return switch(ty) {
-		case Type.Atom atom ->
+		case Type.CtorApp atom ->
 			Boxing.of(atom).boxedClassDesc;
 		case Type.Arrow(Type arg, Type ret) ->
 			"Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;";
@@ -1007,7 +1007,7 @@ enum Boxing {
 		this.boxMethodDesc = boxMethodDecs;
 	}
 
-	public static Boxing of(Type.Atom ty) {
+	public static Boxing of(Type.CtorApp ty) {
 		if(ty == Type.BOOL) { return BOOL;}
 		if(ty == Type.I32)  { return INT;}
 		throw new IllegalArgumentException("Unexpected value: " + ty);

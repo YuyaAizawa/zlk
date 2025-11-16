@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
-import zlk.common.Type.Atom;
+import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -178,7 +178,7 @@ public class TypeReconstructor {
 		Function<Type, Variable> go = t -> annoTypeToVar(letRank, typeVars, t);
 
 		switch(type) {
-		case Atom(Id id, List<Type> typeArguments) -> {
+		case CtorApp(Id id, List<Type> typeArguments) -> {
 			List<Variable> argVars = typeArguments.stream().map(go).toList();
 			return register(letRank, new Structure(new FlatType.CtorApp1(id, argVars)));
 		}
@@ -305,7 +305,7 @@ public class TypeReconstructor {
 	private void restore(Variable var) {
 		VariableState state = var.get();
 
-		if(state.cacheOnCopy==null) {
+		if(state.cacheOnCopy == null) {
 			return;
 		}
 		state.cacheOnCopy = null;

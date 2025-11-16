@@ -123,7 +123,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			pp.append("Foreign: ").append(id).append(":").append(type).append(" = ").append(expected);
 		}
 		case CPattern(Id id, RcType ctorTy, RcType expected) -> {
-			pp.append("Pattern: ").append(id).append(":").append(ctorTy).append(" = ").append(expected);
+			pp.append("Pattern: ").append(id).append(": ").append(ctorTy).append(" = ").append(expected);
 		}
 		case CLet(
 				List<Variable> rigids,

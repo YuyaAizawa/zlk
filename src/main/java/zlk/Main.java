@@ -41,12 +41,15 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				c = 1
-				fun =
-				  let
-				    f = c
-				  in
-				    f
+				type List a =
+				| Nil
+				| Cons a (List a)
+
+				type Pair a b = Pair_ a b
+
+				intList = Cons 1 Nil
+				boolList = Cons True Nil
+				pair = Pair_ 1 True
 
 				""";
 
@@ -78,7 +81,7 @@ public class Main {
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.Atom(union.id())))));
+			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- TYPE CHECK --");  // TODO remove
