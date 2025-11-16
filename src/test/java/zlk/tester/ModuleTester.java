@@ -20,6 +20,7 @@ import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
+import zlk.recon.LetDependencyExtractor;
 import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
@@ -69,8 +70,10 @@ public class ModuleTester {
 			return;
 		}
 
+		IdMap<IdList> letDependers = LetDependencyExtractor.extract(module);
+
 		FreshFlex freshFlex = new FreshFlex();
-		this.cint = ConstraintExtractor.extract(module, freshFlex);
+		this.cint = ConstraintExtractor.extract(module, letDependers, freshFlex);
 		if(this.compileLevel == CompileLevel.TYPE_CINT) {
 			return;
 		}
