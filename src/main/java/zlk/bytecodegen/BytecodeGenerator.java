@@ -25,7 +25,9 @@ import zlk.clcalc.CcExp.CcCase;
 import zlk.clcalc.CcExp.CcCnst;
 import zlk.clcalc.CcExp.CcIf;
 import zlk.clcalc.CcExp.CcLet;
+import zlk.clcalc.CcExp.CcLetRec;
 import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcRecBinding;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
@@ -475,12 +477,30 @@ public final class BytecodeGenerator {
 			compile(elseExp);
 			mv.visitLabel(l2);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
-			compile(boundExp);
-			locals.add(varName);
-			storeLocal(locals.size() - 1, types.get(varName));
-			compile(body);
-		}
+case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+compile(boundExp);
+locals.add(varName);
+storeLocal(locals.size() - 1, types.get(varName));
+compile(body);
+}
+case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location _) -> {
+bindings.forEach(binding -> {
+locals.add(binding.id());
+mv.visitTypeInsn(Opcodes.NEW, RECURSIVE_FUNCTION_CLASS);
+mv.visitInsn(Opcodes.DUP);
+mv.visitMethodInsn(Opcodes.INVOKESPECIAL, RECURSIVE_FUNCTION_CLASS, "<init>", "()V", false);
+storeLocal(locals.size() - 1, types.get(binding.id()));
+});
+bindings.forEach(binding -> {
+compile(binding.mkCls());
+int placeholderIdx = locals.indexOf(binding.id());
+mv.visitVarInsn(Opcodes.ALOAD, placeholderIdx);
+mv.visitInsn(Opcodes.SWAP);
+mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RECURSIVE_FUNCTION_CLASS, "setTarget",
+"(Ljava/util/function/Function;)V", false);
+});
+compile(body);
+}
 		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）
@@ -900,7 +920,8 @@ public final class BytecodeGenerator {
 	}
 
 	private static final String objectDesc = "Ljava/lang/Object;";
-	private static final String functionDesc = "Ljava/util/function/Function;";
+private static final String functionDesc = "Ljava/util/function/Function;";
+private static final String RECURSIVE_FUNCTION_CLASS = "zlk/core/RecursiveFunction";
 
 	private static String toBinary(Type.CtorApp ty) {
 		if(ty == Type.BOOL) { return "Z";}
@@ -965,7 +986,8 @@ public final class BytecodeGenerator {
         case CcApp call -> returnType(call);
         case CcMkCls(Id id, IdList _, Location _) -> types.get(id);
         case CcIf(CcExp _, CcExp thenExp, CcExp _, Location _) -> getType(thenExp);
-        case CcLet(Id _, CcExp _, CcExp body, Location _) -> getType(body);
+case CcLet(Id _, CcExp _, CcExp body, Location _) -> getType(body);
+case CcLetRec(List<CcRecBinding> _, CcExp body, Location _) -> getType(body);
         case CcCase(CcExp _, List<CcCaseBranch> branches, Location _) -> {
         	yield getType(branches.get(0).body());
         }

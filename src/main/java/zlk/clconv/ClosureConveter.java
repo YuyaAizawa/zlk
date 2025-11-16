@@ -3,8 +3,10 @@ package zlk.clconv;
 import static zlk.util.ErrorUtils.neverHappen;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,7 +20,9 @@ import zlk.clcalc.CcExp.CcCase;
 import zlk.clcalc.CcExp.CcCnst;
 import zlk.clcalc.CcExp.CcIf;
 import zlk.clcalc.CcExp.CcLet;
+import zlk.clcalc.CcExp.CcLetRec;
 import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcRecBinding;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
@@ -45,27 +49,30 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
+import zlk.recon.ConstraintExtractor;
 import zlk.util.Location;
 
 public final class ClosureConveter {
 
-	private final IcModule src;
-	private final IdMap<Type> type; // 変換後のIdの型を追加
-	private final Set<Id> knowns;
+private final IcModule src;
+private final IdMap<Type> type; // 変換後のIdの型を追加
+private final Set<Id> knowns;
+        private final IdMap<IdList> letDependers;
 
-	private final List<CcFunDecl> toplevels;
-	private final AtomicInteger closureCount;
+private final List<CcFunDecl> toplevels;
+private final AtomicInteger closureCount;
 
-	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
-		this.src = src;
-		this.type = type;
-		this.knowns = new HashSet<>();
-		src.decls().forEach(decl -> knowns.add(decl.id()));
-		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
-		knowns.addAll(builtins);
-		this.toplevels = new ArrayList<>();
-		this.closureCount = new AtomicInteger();
-	}
+public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins, IdMap<IdList> letDependers) {
+this.src = src;
+this.type = type;
+this.knowns = new HashSet<>();
+src.decls().forEach(decl -> knowns.add(decl.id()));
+src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
+knowns.addAll(builtins);
+                this.letDependers = letDependers;
+this.toplevels = new ArrayList<>();
+this.closureCount = new AtomicInteger();
+}
 
 	public CcModule convert() {
 		src.decls()
@@ -83,11 +90,19 @@ public final class ClosureConveter {
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
 	 * @return クロージャの生成（クロージャが必要だったとき）
 	 */
-	private Optional<CcMkCls> compileFunc(Id id, List<IcPattern> args_, IcExp body) {
+private Optional<CcMkCls> compileFunc(Id id, List<IcPattern> args_, IcExp body) {
+return compileFunc(id, args_, body, true);
+}
 
-		knowns.add(id);
-		CcExp ccBody = compile(body);
-		IdList frees = fvFunc(ccBody, args_);
+private Optional<CcMkCls> compileLetFunc(Id id, List<IcPattern> args_, IcExp body) {
+return compileFunc(id, args_, body, false);
+}
+
+private Optional<CcMkCls> compileFunc(Id id, List<IcPattern> args_, IcExp body, boolean treatSelfAsKnown) {
+
+knowns.add(id);
+CcExp ccBody = compile(body);
+IdList frees = fvFunc(ccBody, args_, treatSelfAsKnown ? Optional.empty() : Optional.of(id));
 
 		if(frees.isEmpty()) {
 //			System.out.println(id + " is not cloeure.");
@@ -139,8 +154,8 @@ public final class ClosureConveter {
 		return new CcFunDecl(clsId, clsArgs, clsBody, loc);
 	}
 
-	private CcExp compile(IcExp exp) {
-		return switch (exp) {
+private CcExp compile(IcExp exp) {
+return switch (exp) {
 		case IcCnst(ConstValue value, Location loc) -> {
 			yield new CcCnst(value, loc);
 		}
@@ -170,22 +185,11 @@ public final class ClosureConveter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(IcValDecl decl, IcExp body, Location loc) -> {
-			Id id = decl.id();
-			List<IcPattern> args = decl.args();
-			IcExp bounded = decl.body();
-			CcExp letBody = compile(body);
-
-			if(!args.isEmpty()) {
-				yield compileFunc(id, decl.args(), bounded)
-						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-						.orElse(letBody); // トップレベルで定義されているのでletは要らない
-			} else {
-				yield new CcLet(id, compile(bounded), letBody, loc);
-			}
-		}
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
-			CcExp compiledTarget = compile(target);
+case IcLet(List<IcValDecl> decls, IcExp body, Location loc) -> {
+yield compileLet(decls, body, loc);
+}
+case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
+CcExp compiledTarget = compile(target);
 			List<CcCaseBranch> compiledBranches =
 					branches.stream()
 							.map(branch -> new CcCaseBranch(
@@ -195,19 +199,96 @@ public final class ClosureConveter {
 							.toList();
 			yield new CcCase(compiledTarget, compiledBranches, loc);
 		}
-		};
-	}
+};
+}
 
-	private IdList fvFunc(CcExp body, List<IcPattern> args) {
-		IdList free = new IdList();
-		Set<Id> bounded = new HashSet<>(knowns);
-		args.forEach(arg -> arg.accumulateVars(bounded));
-		fv(body, bounded, free);
-		return free;
-	}
+private CcExp compileLet(List<IcValDecl> decls, IcExp body, Location loc) {
+if (decls.isEmpty()) {
+return compile(body);
+}
 
-	private void fv(CcExp exp, Set<Id> bounded, IdList free) {
-		switch (exp) {
+Map<Id, IcValDecl> declMap = new HashMap<>();
+IdList targets = new IdList();
+decls.forEach(decl -> {
+declMap.put(decl.id(), decl);
+targets.add(decl.id());
+});
+
+Set<Id> targetSet = new HashSet<>(targets);
+IdMap<IdList> graph = new IdMap<>();
+for (Id id : targets) {
+IdList dependers = letDependers.getOrDefault(id, new IdList());
+IdList filtered = dependers.stream()
+.filter(targetSet::contains)
+.collect(IdList.collector());
+graph.put(id, filtered);
+}
+
+List<IdList> sccTopo = ConstraintExtractor.sccTopo(graph);
+CcExp result = compile(body);
+for (int i = sccTopo.size() - 1; i >= 0; i--) {
+IdList scc = sccTopo.get(i);
+SccResult sccResult = compileScc(scc, declMap, graph);
+List<LetBinding> bindings = sccResult.bindings();
+for (int j = bindings.size() - 1; j >= 0; j--) {
+LetBinding binding = bindings.get(j);
+result = new CcLet(binding.id(), binding.exp(), result, binding.loc());
+}
+if (!sccResult.recBindings().isEmpty()) {
+result = new CcLetRec(sccResult.recBindings(), result, loc);
+}
+}
+
+return result;
+}
+
+private SccResult compileScc(IdList scc, Map<Id, IcValDecl> declMap, IdMap<IdList> graph) {
+boolean recursive = isRecursive(scc, graph);
+List<LetBinding> bindings = new ArrayList<>();
+List<CcRecBinding> recBindings = new ArrayList<>();
+for (Id id : scc) {
+IcValDecl decl = declMap.get(id);
+if (decl.args().isEmpty()) {
+bindings.add(new LetBinding(id, compile(decl.body()), decl.loc()));
+continue;
+}
+
+Optional<CcMkCls> maybeCls = compileLetFunc(id, decl.args(), decl.body());
+if (maybeCls.isEmpty()) {
+continue;
+}
+if (recursive) {
+recBindings.add(new CcRecBinding(id, maybeCls.get()));
+} else {
+bindings.add(new LetBinding(id, maybeCls.get(), decl.loc()));
+}
+}
+return new SccResult(bindings, recBindings);
+}
+
+private boolean isRecursive(IdList scc, IdMap<IdList> graph) {
+if (scc.size() > 1) {
+return true;
+}
+Id id = scc.get(0);
+return graph.get(id).contains(id);
+}
+
+private record LetBinding(Id id, CcExp exp, Location loc) {}
+
+private record SccResult(List<LetBinding> bindings, List<CcRecBinding> recBindings) {}
+
+private IdList fvFunc(CcExp body, List<IcPattern> args, Optional<Id> treatSelfAsFree) {
+IdList free = new IdList();
+Set<Id> bounded = new HashSet<>(knowns);
+treatSelfAsFree.ifPresent(bounded::remove);
+args.forEach(arg -> arg.accumulateVars(bounded));
+fv(body, bounded, free);
+return free;
+}
+
+private void fv(CcExp exp, Set<Id> bounded, IdList free) {
+switch (exp) {
 		case CcCnst _ -> {
 		}
 		case CcVar(Id id, Location _) -> {
@@ -231,12 +312,17 @@ public final class ClosureConveter {
 			fv(thenExp, bounded, free);
 			fv(elseExp, bounded, free);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
-			bounded.add(varName);
-			fv(boundExp, bounded, free);
-			fv(body, bounded, free);
-		}
-		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
+case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+bounded.add(varName);
+fv(boundExp, bounded, free);
+fv(body, bounded, free);
+}
+case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location _) -> {
+bindings.forEach(binding -> bounded.add(binding.id()));
+bindings.forEach(binding -> fv(binding.mkCls(), bounded, free));
+fv(body, bounded, free);
+}
+case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
 			fv(target, bounded, free);
 			for (CcCaseBranch branch : branches) {
 				branch.pattern().accumulateVars(bounded);

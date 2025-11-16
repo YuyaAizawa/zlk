@@ -96,8 +96,8 @@ public class Main {
 		System.out.println(types);
 		System.out.println();
 
-		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConveter(idcalc, types, builtinIds).convert();
+System.out.println("-- CL CONV --");
+CcModule clconv = new ClosureConveter(idcalc, types, builtinIds, letDependers).convert();
 		clconv.pp(System.out);
 		System.out.println();
 

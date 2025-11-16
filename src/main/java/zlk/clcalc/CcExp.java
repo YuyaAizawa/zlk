@@ -7,7 +7,9 @@ import zlk.clcalc.CcExp.CcCase;
 import zlk.clcalc.CcExp.CcCnst;
 import zlk.clcalc.CcExp.CcIf;
 import zlk.clcalc.CcExp.CcLet;
+import zlk.clcalc.CcExp.CcLetRec;
 import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcRecBinding;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.common.ConstValue;
 import zlk.common.Type;
@@ -20,7 +22,7 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface CcExp extends PrettyPrintable, LocationHolder
-permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
+permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcLetRec, CcCase {
 
 	record CcCnst(
 			ConstValue value,
@@ -50,11 +52,20 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 			CcExp elseExp,
 			Location loc) implements CcExp {}
 
-	record CcLet(  // ローカル変数になる部分
-			Id var,
-			CcExp boundExp,
-			CcExp body,
-			Location loc) implements CcExp {}
+record CcLet(  // ローカル変数になる部分
+Id var,
+CcExp boundExp,
+CcExp body,
+Location loc) implements CcExp {}
+
+        record CcRecBinding(
+                        Id id,
+                        CcMkCls mkCls) {}
+
+        record CcLetRec(
+                        List<CcRecBinding> bindings,
+                        CcExp body,
+                        Location loc) implements CcExp {}
 
 	record CcCase(
 			CcExp target,
@@ -81,20 +92,26 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 					caps.substId(map),
 					loc);
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) -> {
-			yield new CcIf(
-					cond.substId(map),
-					thenExp.substId(map),
-					elseExp.substId(map),
-					loc);
-		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location loc) -> {
-			yield new CcLet(
-					varName,
-					boundExp.substId(map),
-					body.substId(map),
-					loc);
-		}
+case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) -> {
+yield new CcIf(
+cond.substId(map),
+thenExp.substId(map),
+elseExp.substId(map),
+loc);
+}
+case CcLet(Id varName, CcExp boundExp, CcExp body, Location loc) -> {
+yield new CcLet(
+varName,
+boundExp.substId(map),
+body.substId(map),
+loc);
+}
+case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location loc) -> {
+List<CcRecBinding> newBindings = bindings.stream()
+.map(binding -> new CcRecBinding(binding.id(), (CcMkCls) binding.mkCls().substId(map)))
+.toList();
+yield new CcLetRec(newBindings, body.substId(map), loc);
+}
 		case CcCase(CcExp target, List<CcCaseBranch> branches, Location loc) -> {
 			yield new CcCase(
 					target.substId(map),
@@ -152,20 +169,38 @@ permits CcCnst, CcVar, CcApp, CcMkCls, CcIf, CcLet, CcCase {
 				});
 			});
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
-			pp.append("let:").endl();
-			pp.indent(() -> {
-				pp.append("var: ").append(varName).endl();
-				pp.append("boundExp:").endl();
-				pp.indent(() -> {
-					pp.append(boundExp).endl();
-				});
-				pp.append("body:").endl();
-				pp.indent(() -> {
-					pp.append(body);
-				});
-			});
-		}
+case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+pp.append("let:").endl();
+pp.indent(() -> {
+pp.append("var: ").append(varName).endl();
+pp.append("boundExp:").endl();
+pp.indent(() -> {
+pp.append(boundExp).endl();
+});
+pp.append("body:").endl();
+pp.indent(() -> {
+pp.append(body);
+});
+});
+}
+case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location _) -> {
+pp.append("letrec:").endl();
+pp.indent(() -> {
+pp.append("bindings:");
+pp.indent(() -> {
+bindings.forEach(binding -> {
+pp.endl().append(binding.id()).append(" =");
+pp.indent(() -> {
+pp.endl().append(binding.mkCls());
+});
+});
+});
+pp.append("body:").endl();
+pp.indent(() -> {
+pp.append(body);
+});
+});
+}
 		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
 			pp.append("case:").endl();
 			pp.indent(() -> {

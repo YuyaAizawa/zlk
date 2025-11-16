@@ -44,8 +44,8 @@ public class FeatureTest {
 		make_adder.apply(1).apply(2).apply(3).is(6);
 	}
 
-	@Test
-	void enumDeclAndCaseExp() {
+@Test
+void enumDeclAndCaseExp() {
 		String src="""
 		type IntList = Nil | Cons I32 IntList
 
@@ -56,9 +56,53 @@ public class FeatureTest {
 
 		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var ans = module.getValue("ans");
-		ans.is(6);
-	}
+var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+var ans = module.getValue("ans");
+ans.is(6);
+}
+
+@Test
+void mutuallyRecursiveClosures() {
+String src ="""
+check n =
+  let
+    one = 1
+    even m =
+      if isZero m then
+        True
+      else
+        odd (sub m one)
+    odd m =
+      if isZero m then
+        False
+      else
+        even (sub m one)
+  in
+    even n
+
+evenFive = check 5
+evenSix = check 6
+""";
+
+var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+module.getValue("evenFive").is(0L);
+module.getValue("evenSix").is(1L);
+}
+
+@Test
+void nonRecursiveLetBlockRemainsSequential() {
+String src ="""
+ans =
+  let
+    base = 1
+    mid = add base 2
+    top = add mid 3
+  in
+    top
+""";
+
+var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+module.getValue("ans").is(6);
+}
 }
 

@@ -49,10 +49,11 @@ public class ModuleTester {
 
 	// CompileLevelに応じて用意するもの
 	private Module ast = null;
-	private IcModule module = null;
-	private Constraint cint = null;
-	private IdMap<Type> types = null;
-	private CcModule clconv = null;
+private IcModule module = null;
+private Constraint cint = null;
+private IdMap<Type> types = null;
+private CcModule clconv = null;
+private IdMap<IdList> letDependers = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
 	public ModuleTester(String src, CompileLevel level) {
@@ -70,7 +71,8 @@ public class ModuleTester {
 			return;
 		}
 
-		IdMap<IdList> letDependers = LetDependencyExtractor.extract(module);
+IdMap<IdList> letDependers = LetDependencyExtractor.extract(module);
+this.letDependers = letDependers;
 
 		FreshFlex freshFlex = new FreshFlex();
 		this.cint = ConstraintExtractor.extract(module, letDependers, freshFlex);
@@ -91,7 +93,7 @@ public class ModuleTester {
 
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
-		this.clconv = new ClosureConveter(module, types, builtinIds).convert();
+this.clconv = new ClosureConveter(module, types, builtinIds, this.letDependers).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
