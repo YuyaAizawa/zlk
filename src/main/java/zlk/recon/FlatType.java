@@ -39,7 +39,7 @@ permits CtorApp1, Fun1 {
 
 			yield Type.arrow(
 					args.stream().map(Variable::toType).toList(),
-					new Type.Atom(id));
+					new Type.CtorApp(id));
 		}
 		case Fun1(Variable arg, Variable ret) ->
 				new Type.Arrow(arg.toType(), ret.toType());

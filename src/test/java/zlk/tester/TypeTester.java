@@ -7,7 +7,7 @@ import java.util.List;
 import zlk.ast.AnType;
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
-import zlk.common.Type.Atom;
+import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -42,7 +42,7 @@ public final class TypeTester {
 		case AnType.Type(String ctor, List<AnType> args, _) -> {
 			Id ctor_ = Id.fromCanonicalName(ctor);
 			List<Type> args_ = args.stream().map(arg -> simpleEval(arg)).toList();
-			yield new Type.Atom(ctor_, args_);
+			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(simpleEval(arg), simpleEval(ret));
 		};
@@ -54,8 +54,8 @@ public final class TypeTester {
 	 */
 	private Type importFromModule(Type ty) {
 		return switch(ty) {
-			case Atom(Id id, List<Type> typeArguments) -> {
-				yield new Atom(condidate(id), typeArguments.stream().map(t -> importFromModule(t)).toList());
+			case CtorApp(Id id, List<Type> typeArguments) -> {
+				yield new CtorApp(condidate(id), typeArguments.stream().map(t -> importFromModule(t)).toList());
 			}
 			case Arrow(Type arg, Type ret) -> {
 				yield new Arrow(importFromModule(arg), importFromModule(ret));

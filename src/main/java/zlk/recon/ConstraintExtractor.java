@@ -161,7 +161,7 @@ public final class ConstraintExtractor {
 			// a : A
 			// b : B
 			// c : C
-			// f : A -> B -> C -> R
+			// F = A -> B -> C -> R
 
 			List<Variable> vars = new ArrayList<>();
 			List<Constraint> cons = new ArrayList<>();

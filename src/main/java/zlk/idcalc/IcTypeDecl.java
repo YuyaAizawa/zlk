@@ -2,6 +2,7 @@ package zlk.idcalc;
 
 import java.util.List;
 
+import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.util.Location;
 import zlk.util.LocationHolder;
@@ -10,14 +11,16 @@ import zlk.util.pp.PrettyPrinter;
 
 public record IcTypeDecl(
 	Id id,
-	// TODO: 型変数
+	List<Type> vars,
 	List<IcCtor> ctors,
 	Location loc
 ) implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("type ").append(id).append(" =").inc();
+		pp.append("type ").append(id);
+		vars.forEach(var -> pp.append(" ").append(var));
+		pp.append(" =").inc();
 		if(ctors.size() == 1) {
 			pp.endl().append(ctors.get(0));
 		} else {
