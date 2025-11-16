@@ -39,83 +39,15 @@ import zlk.util.Location;
 public final class ConstraintExtractor {
 
 	private FreshFlex freshFlex;
-	private IdMap<IdList> dependencies; // dependee -> dependers
+	private IdMap<IdList> letDependers; // dependee -> dependers
 
-	private ConstraintExtractor(IcModule module, FreshFlex freshFlex) {
-		this.dependencies = extractDependency(module);
+	private ConstraintExtractor(IdMap<IdList> dependers, FreshFlex freshFlex) {
+		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
 	}
 
-	/**
-	 * 依存されている先を抽出する
-	 * @param module
-	 * @return
-	 */
-	private static IdMap<IdList> extractDependency(IcModule module) {
-		IdMap<IdList> includes = new IdMap<>();
-		accIncluded(module.decls(), includes);
-		// 依存されている側から引く（letで定義されるものだけでよい）
-		IdMap<IdList> dependency = new IdMap<>();
-		includes.keys().forEach(k -> dependency.put(k, new IdList()));
-		includes.forEach((d, es) -> es.stream()
-				.filter(dependency::containsKey)
-				.forEach(e -> dependency.get(e).addIfNotContains(d)));
-		return dependency;
-	}
-	private static IdList accIncluded(List<IcValDecl> decls, IdMap<IdList> revRel) {
-		IdList all = new IdList();
-		for (IcValDecl decl : decls) {
-			IdList partial = accIncluded(decl.body(), revRel);
-			revRel.put(decl.id(), partial);
-			partial.forEach(all::addIfNotContains);
-		}
-		return all;
-	}
-	private static IdList accIncluded(IcExp exp, IdMap<IdList> includes) {
-		return switch (exp) {
-		case IcCnst(ConstValue _, Location _) -> {
-			yield new IdList();
-		}
-		case IcVarLocal(Id id, Location _) -> {
-			IdList result = new IdList();
-			result.add(id);
-			yield result;
-		}
-		case IcVarForeign(Id _, Type _, Location _) -> {
-			yield new IdList();
-		}
-		case IcVarCtor(Id _, Type _, Location _) -> {
-			yield new IdList();
-		}
-		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
-			yield accIncluded(body, includes);
-		}
-		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
-			IdList result = accIncluded(fun, includes);
-			args.forEach(arg -> accIncluded(arg, includes).forEach(result::addIfNotContains));
-			yield result;
-		}
-		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
-			IdList result = accIncluded(cond, includes);
-			accIncluded(thenExp, includes).forEach(result::addIfNotContains);
-			accIncluded(elseExp, includes).forEach(result::addIfNotContains);
-			yield result;
-		}
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
-			IdList result = accIncluded(decls, includes);
-			accIncluded(body, includes).forEach(result::addIfNotContains);
-			yield result;
-		}
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
-			IdList result = accIncluded(target, includes);
-			branches.forEach(branch -> accIncluded(branch.body(), includes).forEach(result::addIfNotContains));
-			yield result;
-		}
-		};
-	}
-
-	public static Constraint extract(IcModule module, FreshFlex freshFlex) {
-		return new ConstraintExtractor(module, freshFlex).extractFromDef(module.decls(),
+	public static Constraint extract(IcModule module, IdMap<IdList> dependers, FreshFlex freshFlex) {
+		return new ConstraintExtractor(dependers, freshFlex).extractFromDef(module.decls(),
 				new CExists(  // TODO: main関数のletにする
 						List.of(),
 						List.of()));
@@ -362,7 +294,7 @@ public final class ConstraintExtractor {
 		IdList targets = decls.stream().map(decl -> decl.id()).collect(IdList.collector());
 		IdMap<IdList> result = new IdMap<>();
 		for(Id target : targets) {
-			result.put(target, dependencies.get(target).stream().filter(targets::contains).collect(IdList.collector()));
+			result.put(target, letDependers.get(target).stream().filter(targets::contains).collect(IdList.collector()));
 		}
 		return result;
 	}

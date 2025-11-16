@@ -27,6 +27,7 @@ import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
+import zlk.recon.LetDependencyExtractor;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.typecheck.TypeChecker;
@@ -49,7 +50,7 @@ public class Main {
 
 				intList = Cons 1 Nil
 				boolList = Cons True Nil
-				pair = Pair_ 1 True
+				pair x y = Pair_ y x
 
 				""";
 
@@ -69,9 +70,14 @@ public class Main {
 		idcalc.pp(System.out);
 		System.out.println();
 
+		System.out.println("-- LET DEPENDENCY EXTRACTION --");
+		IdMap<IdList> letDependers = LetDependencyExtractor.extract(idcalc);
+		letDependers.pp(System.out);
+		System.out.println();
+
 		System.out.println("-- CONSTRAIN EXTRACTION --");
 		FreshFlex freshFlex = new FreshFlex();
-		Constraint cint = ConstraintExtractor.extract(idcalc, freshFlex);
+		Constraint cint = ConstraintExtractor.extract(idcalc, letDependers, freshFlex);
 		System.out.println(cint.buildString());
 		System.out.println();
 
