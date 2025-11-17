@@ -465,42 +465,42 @@ public final class BytecodeGenerator {
 							toplevelDescs.get(impl), false),
 					toMethodType(toBoxedDesc(indyReturnTy)));
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
-			Label l1 = new Label();
-			Label l2 = new Label();
-			compile(cond);
-			mv.visitJumpInsn(Opcodes.IFEQ, // = 0; false
-					l1);
-			compile(thenExp);
-			mv.visitJumpInsn(Opcodes.GOTO, l2);
-			mv.visitLabel(l1);
-			compile(elseExp);
-			mv.visitLabel(l2);
-		}
-case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
-compile(boundExp);
-locals.add(varName);
-storeLocal(locals.size() - 1, types.get(varName));
-compile(body);
-}
-case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location _) -> {
-bindings.forEach(binding -> {
-locals.add(binding.id());
-mv.visitTypeInsn(Opcodes.NEW, RECURSIVE_FUNCTION_CLASS);
-mv.visitInsn(Opcodes.DUP);
-mv.visitMethodInsn(Opcodes.INVOKESPECIAL, RECURSIVE_FUNCTION_CLASS, "<init>", "()V", false);
-storeLocal(locals.size() - 1, types.get(binding.id()));
-});
-bindings.forEach(binding -> {
-compile(binding.mkCls());
-int placeholderIdx = locals.indexOf(binding.id());
-mv.visitVarInsn(Opcodes.ALOAD, placeholderIdx);
-mv.visitInsn(Opcodes.SWAP);
-mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RECURSIVE_FUNCTION_CLASS, "setTarget",
-"(Ljava/util/function/Function;)V", false);
-});
-compile(body);
-}
+                case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+                        Label l1 = new Label();
+                        Label l2 = new Label();
+                        compile(cond);
+                        mv.visitJumpInsn(Opcodes.IFEQ, // = 0; false
+                                        l1);
+                        compile(thenExp);
+                        mv.visitJumpInsn(Opcodes.GOTO, l2);
+                        mv.visitLabel(l1);
+                        compile(elseExp);
+                        mv.visitLabel(l2);
+                }
+                case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+                        compile(boundExp);
+                        locals.add(varName);
+                        storeLocal(locals.size() - 1, types.get(varName));
+                        compile(body);
+                }
+                case CcLetRec(List<CcRecBinding> bindings, CcExp body, Location _) -> {
+                        bindings.forEach(binding -> {
+                                locals.add(binding.id());
+                                mv.visitTypeInsn(Opcodes.NEW, RECURSIVE_FUNCTION_CLASS);
+                                mv.visitInsn(Opcodes.DUP);
+                                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, RECURSIVE_FUNCTION_CLASS, "<init>", "()V", false);
+                                storeLocal(locals.size() - 1, types.get(binding.id()));
+                        });
+                        bindings.forEach(binding -> {
+                                compile(binding.mkCls());
+                                int placeholderIdx = locals.indexOf(binding.id());
+                                mv.visitVarInsn(Opcodes.ALOAD, placeholderIdx);
+                                mv.visitInsn(Opcodes.SWAP);
+                                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, RECURSIVE_FUNCTION_CLASS, "setTarget",
+                                                "(Ljava/util/function/Function;)V", false);
+                        });
+                        compile(body);
+                }
 		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）

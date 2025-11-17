@@ -6,103 +6,102 @@ import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 
 public class FeatureTest {
-	@Test
-	void selfRecursiveFunction() {
-		String src ="""
-		fact n =
-		  if isZero n then
-		    1
-		  else
-		    let
-		      one = 1
-		      nn = sub n one
-		    in
-		      mul n (fact nn)
-		""";
+        @Test
+        void selfRecursiveFunction() {
+                String src = """
+                fact n =
+                  if isZero n then
+                    1
+                  else
+                    let
+                      one = 1
+                      nn = sub n one
+                    in
+                      mul n (fact nn)
+                """;
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var fact = module.getValue("fact");
-		fact.apply(0).is(1);
-		fact.apply(5).is(120);
-	}
+                var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+                var fact = module.getValue("fact");
+                fact.apply(0).is(1);
+                fact.apply(5).is(120);
+        }
 
-	@Test
-	void closuerConversion() {
-		String src ="""
-		make_adder x =
-		  let
-		    adder y =
-		      let
-		        adder2 z = add (add x y) z
-		      in
-		        adder2
-		  in
-		    adder
-		""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var make_adder = module.getValue("make_adder");
-		make_adder.apply(1).apply(2).apply(3).is(6);
-	}
+        @Test
+        void closuerConversion() {
+                String src = """
+                make_adder x =
+                  let
+                    adder y =
+                      let
+                        adder2 z = add (add x y) z
+                      in
+                        adder2
+                  in
+                    adder
+                """;
+                var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+                var make_adder = module.getValue("make_adder");
+                make_adder.apply(1).apply(2).apply(3).is(6);
+        }
 
-@Test
-void enumDeclAndCaseExp() {
-		String src="""
-		type IntList = Nil | Cons I32 IntList
+        @Test
+        void enumDeclAndCaseExp() {
+                String src = """
+                type IntList = Nil | Cons I32 IntList
 
-		sum list =
-		  case list of
-		    | Nil -> 0
-		    | Cons hd tl -> add hd (sum tl)
+                sum list =
+                  case list of
+                    | Nil -> 0
+                    | Cons hd tl -> add hd (sum tl)
 
-		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
-		""";
-var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-var ans = module.getValue("ans");
-ans.is(6);
+                ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
+                """;
+                var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+                var ans = module.getValue("ans");
+                ans.is(6);
+        }
+
+        @Test
+        void mutuallyRecursiveClosures() {
+                String src = """
+                check n =
+                  let
+                    one = 1
+                    even m =
+                      if isZero m then
+                        True
+                      else
+                        odd (sub m one)
+                    odd m =
+                      if isZero m then
+                        False
+                      else
+                        even (sub m one)
+                  in
+                    even n
+
+                evenFive = check 5
+                evenSix = check 6
+                """;
+
+                var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+                module.getValue("evenFive").is(0L);
+                module.getValue("evenSix").is(1L);
+        }
+
+        @Test
+        void nonRecursiveLetBlockRemainsSequential() {
+                String src = """
+                ans =
+                  let
+                    base = 1
+                    mid = add base 2
+                    top = add mid 3
+                  in
+                    top
+                """;
+
+                var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+                module.getValue("ans").is(6);
+        }
 }
-
-@Test
-void mutuallyRecursiveClosures() {
-String src ="""
-check n =
-  let
-    one = 1
-    even m =
-      if isZero m then
-        True
-      else
-        odd (sub m one)
-    odd m =
-      if isZero m then
-        False
-      else
-        even (sub m one)
-  in
-    even n
-
-evenFive = check 5
-evenSix = check 6
-""";
-
-var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-module.getValue("evenFive").is(0L);
-module.getValue("evenSix").is(1L);
-}
-
-@Test
-void nonRecursiveLetBlockRemainsSequential() {
-String src ="""
-ans =
-  let
-    base = 1
-    mid = add base 2
-    top = add mid 3
-  in
-    top
-""";
-
-var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-module.getValue("ans").is(6);
-}
-}
-
