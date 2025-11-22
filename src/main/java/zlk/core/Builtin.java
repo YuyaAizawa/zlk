@@ -5,6 +5,7 @@ import static zlk.common.Type.I32;
 
 import java.util.List;
 
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -23,16 +24,17 @@ implements Instructions
 		Type i32bool = Type.arrow(I32, BOOL);
 
 		return List.of(
-				new Builtin("Basic.False", BOOL, mv -> mv.visitInsn(Opcodes.LCONST_0)),
-				new Builtin("Basic.True", BOOL, mv -> mv.visitInsn(Opcodes.LCONST_1)),
+				new Builtin("Basic.False", BOOL, mv -> mv.visitInsn(Opcodes.ICONST_0)),
+				new Builtin("Basic.True", BOOL, mv -> mv.visitInsn(Opcodes.ICONST_1)),
 				new Builtin("Basic.isZero", i32bool, mv -> {
-					mv.visitInsn(Opcodes.I2L);
-					mv.visitInsn(Opcodes.LCONST_0);
-					mv.visitInsn(Opcodes.LCMP);
+					Label lTrue = new Label();
+					Label lEnd = new Label();
+					mv.visitJumpInsn(Opcodes.IFEQ, lTrue);
+					mv.visitInsn(Opcodes.ICONST_0);
+					mv.visitJumpInsn(Opcodes.GOTO, lEnd);
+					mv.visitLabel(lTrue);
 					mv.visitInsn(Opcodes.ICONST_1);
-					mv.visitInsn(Opcodes.IAND);
-					mv.visitInsn(Opcodes.ICONST_1);
-					mv.visitInsn(Opcodes.IXOR);
+					mv.visitLabel(lEnd);
 				}),
 				new Builtin("Basic.add", i32i32i32, mv -> mv.visitInsn(Opcodes.IADD)),
 				new Builtin("Basic.sub", i32i32i32, mv -> mv.visitInsn(Opcodes.ISUB)),

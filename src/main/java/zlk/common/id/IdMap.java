@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
@@ -61,6 +62,13 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public V getOrDefault(Id id, V value) {
 		return impl.getOrDefault(id, value);
+	}
+
+	public void processIfPresent(Id id, Consumer<? super V> action) {
+		V v = getOrNull(id);
+		if(v != null) {
+			action.accept(v);
+		}
 	}
 
 	public V computeIfAbsent(Id id, Function<? super Id, ? extends V> mappingFunction) {
