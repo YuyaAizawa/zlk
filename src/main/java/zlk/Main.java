@@ -16,7 +16,7 @@ import org.objectweb.asm.util.TraceClassVisitor;
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
-import zlk.clconv.ClosureConveter;
+import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
@@ -27,10 +27,8 @@ import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
-import zlk.recon.LetDependencyExtractor;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
-import zlk.typecheck.TypeChecker;
 
 public class Main {
 
@@ -42,16 +40,52 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type List a =
+				type IntList =
 				| Nil
-				| Cons a (List a)
+				| Cons I32 IntList
 
-				type Pair a b = Pair_ a b
+				sq a  =
+				  let
+				    pow b c =
+				      if isZero c
+				      then 1
+				      else mul b (pow b (sub c 1))
+				  in
+				    pow a 2
 
-				intList = Cons 1 Nil
-				boolList = Cons True Nil
-				pair x y = Pair_ y x
+				fact n =
+				  if isZero n then
+				    1
+				  else
+				    let
+				      one = 1
+				      nn = sub n one
+				    in
+				      mul n (fact nn)
 
+				make_adder x =
+				  let
+				    adder y =
+				      let
+				        adder2 z = add (add x y) z
+				      in
+				        adder2
+				  in
+				    adder
+
+				sum list =
+				  case list of
+				  | Nil -> 0
+				  | Cons hd tl -> add hd (sum tl)
+
+				ans1 =
+				  sq 42
+
+				ans2 =
+				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
+
+				ans3 =
+				  make_adder 3 4 5
 				""";
 
 		System.out.println("-- SOURCE --");
@@ -70,14 +104,9 @@ public class Main {
 		idcalc.pp(System.out);
 		System.out.println();
 
-		System.out.println("-- LET DEPENDENCY EXTRACTION --");
-		IdMap<IdList> letDependers = LetDependencyExtractor.extract(idcalc);
-		letDependers.pp(System.out);
-		System.out.println();
-
 		System.out.println("-- CONSTRAIN EXTRACTION --");
 		FreshFlex freshFlex = new FreshFlex();
-		Constraint cint = ConstraintExtractor.extract(idcalc, letDependers, freshFlex);
+		Constraint cint = ConstraintExtractor.extract(idcalc, freshFlex);
 		System.out.println(cint.buildString());
 		System.out.println();
 
@@ -90,14 +119,14 @@ public class Main {
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
-		System.out.println("-- TYPE CHECK --");  // TODO remove
-		TypeChecker typeChecker = new TypeChecker(types);
-		typeChecker.check(idcalc);
-		System.out.println(types);
-		System.out.println();
+//		System.out.println("-- TYPE CHECK --");  // TODO remove or support type variables
+//		TypeChecker typeChecker = new TypeChecker(types);
+//		typeChecker.check(idcalc);
+//		System.out.println(types);
+//		System.out.println();
 
 		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConveter(idcalc, types, builtinIds).convert();
+		CcModule clconv = new ClosureConverter(idcalc, types, builtinIds).convert();
 		clconv.pp(System.out);
 		System.out.println();
 

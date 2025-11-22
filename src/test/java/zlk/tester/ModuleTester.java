@@ -1,14 +1,20 @@
 package zlk.tester;
 
+import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.util.Textifier;
+import org.objectweb.asm.util.TraceClassVisitor;
+
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
-import zlk.clconv.ClosureConveter;
+import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -20,7 +26,6 @@ import zlk.parser.Lexer;
 import zlk.parser.Parser;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
-import zlk.recon.LetDependencyExtractor;
 import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
@@ -70,10 +75,8 @@ public class ModuleTester {
 			return;
 		}
 
-		IdMap<IdList> letDependers = LetDependencyExtractor.extract(module);
-
 		FreshFlex freshFlex = new FreshFlex();
-		this.cint = ConstraintExtractor.extract(module, letDependers, freshFlex);
+		this.cint = ConstraintExtractor.extract(module, freshFlex);
 		if(this.compileLevel == CompileLevel.TYPE_CINT) {
 			return;
 		}
@@ -91,12 +94,17 @@ public class ModuleTester {
 
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
-		this.clconv = new ClosureConveter(module, types, builtinIds).convert();
+		this.clconv = new ClosureConverter(module, types, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
 
-		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(this::addClass);
+		Map<String, byte[]> classes = new HashMap<>();
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(classes::put);
+		classes.forEach((name, bytes) -> {
+			DumpOnFailureWatcher.setLastClassDump(name, bytes);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
+			addClass(name, bytes);
+		});
 	}
 
 	public Constraint getConstraint() {
@@ -125,6 +133,14 @@ public class ModuleTester {
 			throw new IllegalArgumentException("Function not found: " + name);
 		}
 		return functions.get(name);
+	}
+
+	public void dumpClass(byte[] classBytes, OutputStream out) {
+		PrintWriter pw = new PrintWriter(out);
+		TraceClassVisitor tcv = new TraceClassVisitor(null, new Textifier(), pw);
+
+		ClassReader cr = new ClassReader(classBytes);
+		cr.accept(tcv, 0);
 	}
 }
 

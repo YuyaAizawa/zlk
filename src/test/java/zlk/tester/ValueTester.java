@@ -63,4 +63,12 @@ permits VMethod, VFunction, VData {
 			throw new AssertionFailedError("is cannot be used for function");
 		}
 	}
+
+	default void stringExpIs(String string) {
+		if(this instanceof VData(Object actual)) {
+			assertEquals(string, actual);
+		} else {
+			throw new AssertionFailedError("stringExpIs cannot be used for function");
+		}
+	}
 }
