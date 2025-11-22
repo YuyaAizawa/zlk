@@ -41,7 +41,23 @@ permits CtorApp, Arrow, Var {
 	 * @param arg 引数の型
 	 * @param ret 戻り値の型
 	 */
-	record Arrow(Type arg, Type ret) implements Type {}
+	record Arrow(Type arg, Type ret) implements Type {
+
+		/**
+		 * 複数引数として見たときの引数型を返す．
+		 * @return 複数引数として見た引数の型
+		 */
+		public List<Type> args() {
+			List<Type> args = new ArrayList<>();
+
+			Type ret = this;
+			while(ret instanceof Arrow fun) {
+				args.add(fun.arg());
+				ret = fun.ret();
+			}
+			return args;
+		}
+	}
 
 	/**
 	 * 型変数
@@ -149,8 +165,7 @@ permits CtorApp, Arrow, Var {
 		List<Type> flatten = new ArrayList<>();
 
 		Type ret = this;
-		while(ret.isArrow()) {
-			Arrow fun = ret.asArrow();
+		while(ret instanceof Arrow fun) {
 			flatten.add(fun.arg());
 			ret = fun.ret();
 		}

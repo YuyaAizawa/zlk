@@ -46,8 +46,12 @@ public final class ConstraintExtractor {
 		this.freshFlex = freshFlex;
 	}
 
-	public static Constraint extract(IcModule module, IdMap<IdList> dependers, FreshFlex freshFlex) {
-		return new ConstraintExtractor(dependers, freshFlex).extractFromDef(module.decls(),
+	public static Constraint extract(IcModule module, FreshFlex freshFlex) {
+		return new ConstraintExtractor(
+				LetDependencyExtractor.extract(module),
+				freshFlex
+		).extractFromDef(
+				module.decls(),
 				new CExists(  // TODO: main関数のletにする
 						List.of(),
 						List.of()));

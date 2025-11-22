@@ -47,18 +47,22 @@ import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
 import zlk.util.Location;
 
-public final class ClosureConveter {
+/**
+ * クロージャ変換と関数のトップレベルへのflattenを行う
+ */
+public final class ClosureConverter {
 
 	private final IcModule src;
-	private final IdMap<Type> type; // 変換後のIdの型を追加
+	private final IdMap<Type> type;  // 変換後のIdの型を追加
 	private final Set<Id> knowns;
 
 	private final List<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
-	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
+	public ClosureConverter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
 		this.type = type;
+
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
 		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
@@ -77,7 +81,6 @@ public final class ClosureConveter {
 		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
 		return new CcModule(src.name(), types, toplevels, src.origin());
 	}
-
 
 	/**
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
@@ -113,20 +116,31 @@ public final class ClosureConveter {
 	 * @param loc 元の関数のLocation
 	 * @return
 	 */
-	private CcFunDecl makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
+	private CcFunDecl makeClosure(
+			Id original,
+			IdList frees,
+			List<IcPattern> args_,
+			CcExp body,
+			Type retTy,
+			Location loc
+	) {
 		List<Type> types = new ArrayList<>();
 		frees.forEach(id -> types.add(type.get(id)));
 		args_.forEach(pat -> types.add(type.get(pat.headId())));
 		types.add(retTy);
 
-		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
+		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));  // TODO: Type.arrow(types)
 		Id clsId = freshId(original);
 		type.put(clsId, clsTy);
 
+		// 自由変数を外に出すために置き換えを作る
 		IdMap<Id> idMap =
 				frees.stream().collect(IdMap.collector(
 						Function.identity(),
 						id -> Id.fromParentAndSimpleName(clsId, id.simpleName())));
+		// 自己再帰のために元の関数名も置換対象
+		idMap.put(original, clsId);
+
 		List<IcPattern> clsArgs = new ArrayList<>(args_);
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
@@ -170,19 +184,47 @@ public final class ClosureConveter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(IcValDecl decl, IcExp body, Location loc) -> {
-			Id id = decl.id();
-			List<IcPattern> args = decl.args();
-			IcExp bounded = decl.body();
-			CcExp letBody = compile(body);
-
-			if(!args.isEmpty()) {
-				yield compileFunc(id, decl.args(), bounded)
-						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-						.orElse(letBody); // トップレベルで定義されているのでletは要らない
-			} else {
-				yield new CcLet(id, compile(bounded), letBody, loc);
+		case IcLet(List<IcValDecl> decls, IcExp body, Location loc) -> {
+			// 関数と値に分ける
+			List<IcValDecl> funDecls = new ArrayList<>();
+			List<IcValDecl> valDecls = new ArrayList<>();
+			for(IcValDecl decl : decls) {
+				if(decl.args().isEmpty()) {
+					valDecls.add(decl);
+				} else {
+					funDecls.add(decl);
+				}
 			}
+
+			// 相互再帰のために先にknownsに登録しておく
+			funDecls.forEach(decl -> knowns.add(decl.id()));
+
+			// 各関数を変換（クロージャが必要ならCcMkClsが返る）
+			IdMap<Optional<CcMkCls>> closures = funDecls.stream().collect(IdMap.collector(
+					decl -> decl.id(),
+					decl -> compileFunc(decl.id(), decl.args(), decl.body())
+			));
+
+			// 各値を変換
+			IdMap<CcExp> valRhs = valDecls.stream().collect(IdMap.collector(
+					decl -> decl.id(),
+					decl -> compile(decl.body())
+			));
+
+			// 逆順に畳み込む
+			CcExp result = compile(body);
+			for(IcValDecl decl : decls.reversed()) {
+				Id id = decl.id();
+				if(decl.args().isEmpty()) {
+					result = new CcLet(id, valRhs.get(id), result, decl.loc());
+				} else {
+					CcExp cap = result;
+					result = closures.get(id)
+							.map(cls -> (CcExp)new CcLet(id, cls, cap, decl.loc()))
+							.orElse(cap);
+				}
+			}
+			yield result;
 		}
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
 			CcExp compiledTarget = compile(target);
