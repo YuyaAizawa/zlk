@@ -3,6 +3,7 @@ package zlk.tester;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,11 +100,12 @@ public class ModuleTester {
 			return;
 		}
 
-		Map<String, byte[]> classes = new HashMap<>();
-		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(classes::put);
-		classes.forEach((name, bytes) -> {
-			DumpOnFailureWatcher.setLastClassDump(name, bytes);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
-			addClass(name, bytes);
+		record NameAndBytecode(String name, byte[] bytecode) {}
+		List<NameAndBytecode> classes = new ArrayList<>();
+		new BytecodeGenerator(clconv, types, Builtin.functions()).compile((name, bytecode) -> classes.add(new NameAndBytecode(name, bytecode)));
+		classes.forEach(clz -> {
+			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
+			addClass(clz.name, clz.bytecode);
 		});
 	}
 

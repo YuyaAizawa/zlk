@@ -64,55 +64,53 @@ public class FeatureTest {
 		ans.is(6);
 	}
 
-	// TODO curry化の実装後
-//	@Test
-//	void mutualRecursionAndClosure() {
-//		String src="""
-//		makeEvenFromOffset offset =
-//		  let
-//		    even n =
-//		      if isZero n then
-//		        True
-//		      else
-//		        odd (sub n 1)
-//		    odd n =
-//		      if isZero n then
-//		        False
-//		      else
-//		        even (sub n 1)
-//		    evenFromOffset n =
-//		      even (add n offset)
-//		  in
-//		    evenFromOffset
-//		main =
-//		  let
-//		    f = makeEvenFromOffset 1
-//		  in
-//		    f 3
-//		""";
-//		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-//		module.getType("makeEvenFromOffset").is("I32 -> I32 -> Bool");
-//		module.getValue("main").is(true);
-//	}
+	@Test
+	void mutualRecursionAndClosure() {
+		String src="""
+		makeEvenFromOffset offset =
+		  let
+		    even n =
+		      if isZero n then
+		        True
+		      else
+		        odd (sub n 1)
+		    odd n =
+		      if isZero n then
+		        False
+		      else
+		        even (sub n 1)
+		    evenFromOffset n =
+		      even (add n offset)
+		  in
+		    evenFromOffset
+		main =
+		  let
+		    f = makeEvenFromOffset 1
+		  in
+		    f 3
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("makeEvenFromOffset").is("I32 -> I32 -> Bool");
+		module.getValue("main").is(true);
+	}
 
-	// TODO curry化の実装後
-//	@Test
-//	void genericAndClosure() {
-//		String src="""
-//		type Pair a b = Pair_ a b
-//		test =
-//		  let
-//		    id x = x
-//		    makePair a b =
-//		      Pair_ (id a) (id b)
-//		    intBoolPair = makePair 1 True
-//		  in
-//		    intBoolPair
-//		""";
-//		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-//		module.getType("intBoolPair").is("Pair I32 Bool");
-//		// module.getValue("intBoolPair").isWrittenIn("Pair I32 Bool"); TODO: 作る
-//	}
+	@Test
+	void genericAndClosure() {
+		String src="""
+		type Pair a b = Pair_ a b
+		test =
+		  let
+		    id x = x
+		    makePair a b =
+		      Pair_ (id a) (id b)
+		    intBoolPair = makePair 1 True
+		  in
+		    intBoolPair
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("test").is("Pair I32 Bool");
+		// module.getValue("intBoolPair").isWrittenIn("Pair I32 Bool"); TODO: 作る
+	}
 
 	// TODO ラムダ式の対応後に追加
 //	@Test

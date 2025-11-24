@@ -330,6 +330,13 @@ public final class BytecodeGenerator {
 		}
 	}
 
+	/**
+	 * 式に対応するバイトコードを生成する．
+	 *
+	 * Type.Arrowを持つ「値」は基本的に java.util.function.Function で扱い，
+	 * トップレベル関数を直接invokeできる場合はそのように「最適化する」．
+	 * @param exp
+	 */
 	private void compile(CcExp exp) {
 		switch (exp) {
 		case CcCnst(ConstValue value, Location _) -> {
@@ -381,79 +388,105 @@ public final class BytecodeGenerator {
 			});
 		}
 		case CcApp(CcExp fun, List<CcExp> args, Location loc) -> {
-			Type.Arrow funTy = (Type.Arrow)getType(fun);
-
-			// アリティチェック（部分適用は未対応）
-			if(args.size() != funTy.args().size()) {
-				todo("partial application");
-			}
-
-			if(fun instanceof CcVar funVar && !locals.contains(funVar.id())) {
-				// メソッドを適用する
-
-				// メソッドのId
-				Id funId = funVar.id();
-				// boxingした型変数をunboxingするための記録
-				Map<String, Type> genericArgs = new HashMap<>();
-
-				// コンストラクタのときははじめにnewをpush
-				ctors.processIfPresent(funVar.id(), ctor -> {
-					String subclassName = classNames.get(ctor.id());
-					mv.visitTypeInsn(Opcodes.NEW, subclassName);
-					mv.visitInsn(Opcodes.DUP);  // <init>は戻り値が無いので後のポインタが残るように
-				});
-				// 全引数をpush
-				for (int i = 0; i < args.size(); i++) {
-					CcExp arg = args.get(i);
-					compile(arg);
-
-					if(funTy.arg(i) instanceof Type.Var var) {  // 型変数はObject型扱い
-						genericArgs.put(var.name(), getType(arg));
-						Primitive.tryFrom(getType(arg)).ifPresent(p -> {
-							p.genBoxing(mv);
-						});
-					}
-				}
+			Type funTy = getType(fun);
+			if (fun instanceof CcVar var) {
+				Id funId = var.id();
+				List<Type> declFlat = types.get(funId).flatten();  // 宣言時の型（多相を含む）
 
 				getDecl(funId, descriptor -> {
-					// TODO: discriptorでなく専用クラスを作ってinvokeしやすいように
-					assert toplevelDecls.get(funId).arity() == funTy.args().size();
-					mv.visitMethodInsn(
-							Opcodes.INVOKESTATIC,
-							module.name(),
-							javaMethodName(funId),
-							descriptor,
-							false
-					);
-					if(funTy.ret() instanceof Type.Var var) {
-						// ジェネリック時のckeckcast + unboxing
-						// TODO: MethodHandles.Lookup + indy call site ベースの monomorphization
-						Type ty = genericArgs.get(var.name());
-						mv.visitTypeInsn(Opcodes.CHECKCAST, toClassName(ty));
-						Primitive.tryFrom(ty).ifPresent(p -> p.genUnboxing(mv));
+					int methodArity = toplevelDecls.get(funId).arity();
+
+					// 型変数と適用された型を記録
+					Map<String, Type> subst = new HashMap<>();
+					for (int i = 0; i < methodArity; i++) {
+						Type formal = declFlat.get(i);
+						Type actual = getType(args.get(i));
+						bindTypeVars(subst, formal, actual);
+					}
+
+					if (args.size() >= methodArity) {  // invoke staticが使える
+
+						// 全ての引数をstackに載せる
+						for (int i = 0; i < methodArity; i++) {
+							compile(args.get(i));
+							Type formal = declFlat.get(i);
+							Type actual = substType(formal, subst);
+							boxGenericArgIfNeeded(formal, actual);
+						}
+
+						mv.visitMethodInsn(
+								Opcodes.INVOKESTATIC,
+								module.name(),
+								javaMethodName(funId),
+								descriptor,
+								false);
+
+						Type formalRetTy = declFlat.get(methodArity);
+						Type actualRetTy = substType(formalRetTy, subst);
+						unboxGenericRetIfNeeded(formalRetTy, actualRetTy);
+
+						// 更に適用が必要なとき（戻り値はFunctionのはず）はapplyをチェーン
+						for (int i = methodArity; i < args.size(); i++) {
+							compile(args.get(i));
+							invokeApplyWithBoxing(funTy.apply(i).asArrow());
+						}
+					} else {  // 一旦Functionにしてapplyのチェーンで部分適用を実現
+						// TODO: indyで最適化する余地がある
+						compile(var);  // Functionオブジェクトをstackに載せる
+						for (int i = 0; i < args.size(); i++) {
+							compile(args.get(i));
+							invokeApplyWithBoxing(funTy.apply(i).asArrow());
+						}
 					}
 				}, builtin -> {
-					builtin.accept(mv);
-				}, _ -> {  // 引数が局所変数だった場合（Function型）
-					neverHappen("!locals.contains(funVar.id())");
-				}, ctor -> {
-					if (ctor.args().size() != args.size()) {
-						todo("currying");
+					int arity = types.get(funId).flatten().size() - 1;
+					if (args.size() == arity) {
+						for (int i = 0; i < arity; i++) {
+							compile(args.get(i));
+						}
+						builtin.accept(mv);
+					} else if (args.size() < arity) {
+						todo("partial application");
+					} else {
+						neverHappen("builtins never return function object", loc);
 					}
-					String subclassName = classNames.get(ctor.id());
-					mv.visitMethodInsn(Opcodes.INVOKESPECIAL, subclassName, "<init>",
-							toDesc(ctor.args(), Type.UNIT), false);
-				});
-			} else {  // Functionを適用する
-				if(fun instanceof CcVar localVar) {  // 局所変数ならFunction
-					loadLocal(localVar);
-				} else {
-					compile(fun);  // stack topにFunction
+				}, _ -> {
+					compile(var);  // CcVarの分岐に委ねる
 					for (int i = 0; i < args.size(); i++) {
 						compile(args.get(i));
 						invokeApplyWithBoxing(funTy.apply(i).asArrow());
 					}
-					// TODO: unboxing?
+				}, ctor -> {
+					int ctorArity = ctor.args().size();
+					if (args.size() != ctorArity) {
+						todo("currying");
+					}
+					String subclassName = classNames.get(ctor.id());
+					mv.visitTypeInsn(Opcodes.NEW, subclassName);
+					mv.visitInsn(Opcodes.DUP);  // <init>は値を返さないのでポインタを複製しておく
+					// 全ての引数をstackに載せる
+					for (int i = 0; i < ctorArity; i++) {
+						compile(args.get(i));
+						boxGenericArgIfNeeded(
+								declFlat.get(i),
+								getType(args.get(i))
+						);
+					}
+					mv.visitMethodInsn(
+							Opcodes.INVOKESPECIAL,
+							subclassName,
+							"<init>",
+							toDesc(ctor.args(), Type.UNIT),
+							false
+					);
+				});
+			} else {
+				compile(fun);
+
+				// function object remains on stack top
+				for (int i = 0; i < args.size(); i++) {
+					compile(args.get(i));
+					invokeApplyWithBoxing(funTy.apply(i).asArrow());
 				}
 			}
 		}
@@ -553,6 +586,84 @@ public final class BytecodeGenerator {
 		}
 		}
 	}
+	/**
+	 * 宣言時の引数型とインスタンスの引数型に合せて必要ならboxingを行う
+	 * @param declTy 宣言時の引数型
+	 * @param instTy インスタンスの引数型
+	 */
+	private void boxGenericArgIfNeeded(Type declTy, Type instTy) {
+		if(declTy instanceof Type.Var && instTy instanceof Type.CtorApp) {
+			Primitive.tryFrom(instTy).ifPresent(p -> {
+				mv.visitMethodInsn(
+						Opcodes.INVOKESTATIC,
+						p.boxedClassName,
+						"valueOf",
+						p.boxMethodDesc,
+						false
+				);
+			});
+		}
+	}
+	/**
+	 * 宣言時の戻り値型とインスタンスの戻り値に合せて必要ならunboxingを行う
+	 * @param declTy 宣言時の戻り値型
+	 * @param instTy インスタンスの戻り値型
+	 */
+	private void unboxGenericRetIfNeeded(Type declTy, Type instTy) {
+		if(declTy instanceof Type.Var && instTy instanceof Type.CtorApp) {
+			Primitive.tryFrom(instTy).ifPresent(p -> {
+				mv.visitTypeInsn(Opcodes.CHECKCAST, p.boxedClassName);
+				mv.visitMethodInsn(
+						Opcodes.INVOKEVIRTUAL,
+						p.boxedClassName,
+						p.unboxMethodName,
+						p.unboxMethodDesc,
+						false
+				);
+			});
+		}
+	}
+	private void bindTypeVars(Map<String, Type> subst, Type formal, Type actual) {
+		switch(formal) {
+		case Type.Var(String varName) -> {
+			Type prev = subst.get(varName);
+			if(prev == null) {
+				subst.put(varName, actual);
+			} else {
+				if(!prev.equals(actual)) {
+					neverHappen("type variable instantiated inconsistently: " + varName);
+				}
+			}
+		}
+		case Type.CtorApp(Id ctor, List<Type> args) -> {
+			if(actual instanceof Type.CtorApp aCtor && aCtor.ctor().equals(ctor)) {
+				for (int i = 0; i < args.size(); i++) {
+					bindTypeVars(subst, args.get(i), aCtor.args().get(i));
+				}
+			}
+		}
+		case Type.Arrow(Type arg, Type ret) -> {
+			if (actual instanceof Type.Arrow aArrow) {
+				bindTypeVars(subst, arg, aArrow.arg());
+				bindTypeVars(subst, ret, aArrow.ret());
+			}
+		}
+		}
+	}
+	private Type substType(Type ty, Map<String, Type> subst) {
+		return switch (ty) {
+		case Type.Var(String varName) -> subst.getOrDefault(varName, ty); // 未束縛ならそのまま
+		case Type.CtorApp(Id id, List<Type> args) -> {
+			List<Type> newArgs = args.stream().map(t -> substType(t, subst))
+					.collect(Collectors.toList());
+			yield new Type.CtorApp(id, newArgs);
+		}
+		case Type.Arrow(Type arg, Type ret) -> {
+			yield Type.arrow(substType(arg, subst), substType(ret, subst));
+		}
+		};
+	}
+
 	/**
 	 * パターンのマッチをチェックする．
 	 * マッチした場合，値をローカル変数に格納する．
