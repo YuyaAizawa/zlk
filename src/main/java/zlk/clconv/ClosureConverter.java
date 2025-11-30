@@ -99,7 +99,7 @@ public final class ClosureConverter {
 
 		} else {
 //			System.out.println(id + " is cloeure. frees: "+frees);
-			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
+			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).dropArgs(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
