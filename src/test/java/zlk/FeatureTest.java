@@ -112,6 +112,26 @@ public class FeatureTest {
 		// module.getValue("intBoolPair").isWrittenIn("Pair I32 Bool"); TODO: 作る
 	}
 
+	@Test
+	void leftPartialApplication() {
+		String src="""
+		fun x y = add x y
+		f1 = fun 1
+
+		type Pair a b = Pair_ a b
+		f2 = Pair_ 1
+
+		a1 = f1 2
+		a2 = case f2 2 of
+		| Pair_ a b -> add a b
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("f1").is("I32 -> I32");
+		module.getType("f2").is("Pair I32 a");
+		module.getValue("a1").is(3);
+		module.getValue("a2").is(3);
+	}
+
 	// TODO ラムダ式の対応後に追加
 //	@Test
 //	void mapAndUseTwice() {

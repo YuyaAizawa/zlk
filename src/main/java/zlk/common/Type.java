@@ -118,12 +118,12 @@ permits CtorApp, Arrow, Var {
 	}
 
 	/**
-	 * 指定した個数の引数を適用した後の型を返す．途中でArrowでなくなった場合は例外を投げる．
-	 * @param cnt 適用する引数の個数
-	 * @return 適用後の型
+	 * 指定した個数の引数を除いた残りの型を返す．途中でArrowでなくなった場合は例外を投げる．
+	 * @param cnt 除去する引数の個数
+	 * @return 除去後の型
 	 * @throws IndexOutOfBoundsException 指定回数適用できない場合
 	 */
-	default Type apply(int cnt) {
+	default Type dropArgs(int cnt) {
 		Type result = this;
 		for(int i = 0; i < cnt ; i++) {
 			result = switch(result) {
@@ -142,13 +142,13 @@ permits CtorApp, Arrow, Var {
 	}
 
 	/**
-	 * 指定した回数の引数を適用した後に次に引数に取る型を返す．つまりidx番目(0-based)の引数を返す．
-	 * @param idx 適用の回数
-	 * @return 適用後のArrowの引数型
+	 * idx番目(0-based)の引数を返す．
+	 * @param idx インデックス
+	 * @return 指定した位置の型
 	 * @throws IndexOutOfBoundsException 指定回数適用できないか適用後の型が引数を持たない場合
 	 */
 	default Type arg(int idx) {
-		return switch(apply(idx)) {
+		return switch(dropArgs(idx)) {
 		case CtorApp _ -> throw typeMissmatch(Arrow.class, CtorApp.class);
 		case Arrow(Type arg, _) -> arg;
 		case Var _ -> throw typeMissmatch(Arrow.class, Var.class);
@@ -207,6 +207,91 @@ permits CtorApp, Arrow, Var {
 			}
 		}
 		}
+	}
+
+	/**
+	 * この関数型を指定した型に適用した戻り値型を返す．
+	 * @param arg
+	 * @return
+	 */
+	default Type apply(Type arg) {
+		return switch(this) {
+		case CtorApp _ -> throw invalidTypeApply(this, arg);
+		case Arrow(Type pattern, Type ret) -> {
+			BindList binds = new BindList();
+			pattern.bind(arg, binds);
+			yield ret.subst(binds);
+		}
+		case Var _ -> throw invalidTypeApply(this, arg);
+		};
+	}
+	private static IllegalArgumentException invalidTypeApply(Type fun, Type arg) {
+		return new IllegalArgumentException(
+				String.format("Invalid type apply. fun: %s, arg: %s", fun, arg));
+	}
+	record BindPair(String name, Type ty) {}
+	static class BindList extends ArrayList<BindPair> {  // TODO IdMapに統合できないか
+		Type getOrNull(String name) {
+			for(BindPair registered : this) {
+				if(registered.name.equals(name)) {
+					return registered.ty;
+				}
+			}
+			return null;
+		}
+		void putOrConfirm(String name, Type ty) {
+			Type prev = getOrNull(name);
+			if(prev == null) {
+				add(new BindPair(name, ty));
+			} else if(prev.equals(ty)) {
+				// OK
+			} else {
+				throw new IllegalArgumentException(
+						String.format("var conflicted. prev: %s, new: %s", prev, ty));
+			}
+		}
+	}
+	default void bind(Type target, BindList binds) {
+		switch(this) {
+		case Var(String name) -> {
+			binds.putOrConfirm(name, target);
+		}
+		case CtorApp(Id ctor, List<Type> args) -> {
+			if(target instanceof CtorApp(Id targetCtor, List<Type> targetArgs)) {
+				if(ctor.equals(targetCtor)) {
+					for (int i = 0; i < args.size(); i++) {
+						args.get(i).bind(targetArgs.get(i), binds);
+					}
+					return;
+				}
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
+		case Arrow(Type arg, Type ret) -> {
+			if(target instanceof Arrow(Type targetArg, Type targetRet)) {
+				arg.bind(targetArg, binds);
+				ret.bind(targetRet, binds);
+				return;
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
+		}
+	}
+	default Type subst(BindList binds) {
+		return switch(this) {
+		case Var(String name) -> {
+			Type bound = binds.getOrNull(name);
+			yield (bound != null) ? bound : this;
+		}
+		case CtorApp(Id ctor, var args) -> {
+			yield new CtorApp(ctor, args.stream().map(t -> t.subst(binds)).toList());
+		}
+		case Arrow(Type arg, Type ret) -> {
+			yield new Arrow(arg.subst(binds), ret.subst(binds));
+		}
+		};
 	}
 
 	@Override

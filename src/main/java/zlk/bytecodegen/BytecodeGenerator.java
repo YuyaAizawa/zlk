@@ -3,9 +3,7 @@ package zlk.bytecodegen;
 import static zlk.util.ErrorUtils.neverHappen;
 import static zlk.util.ErrorUtils.todo;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -267,7 +265,7 @@ public final class BytecodeGenerator {
 			mv.visitCode();
 			registerArgs(decl.args());
 			compile(decl.body());
-			genReturn(types.get(decl.id()).apply(decl.arity()));
+			genReturn(types.get(decl.id()).dropArgs(decl.arity()));
 			mv.visitMaxs(-1, -1); // compute all frames and local automatically
 			mv.visitEnd();
 
@@ -378,13 +376,33 @@ public final class BytecodeGenerator {
 			}, localIdx -> {
 				loadLocal(localIdx, types.get(id));
 			}, ctor -> {
-				if (ctor.args().size() != 0) {
-					todo("currying");
+				if (ctor.args().size() == 0) {
+					String subclassName = classNames.get(ctor.id());
+					mv.visitTypeInsn(Opcodes.NEW, subclassName);
+					mv.visitInsn(Opcodes.DUP);
+					mv.visitMethodInsn(Opcodes.INVOKESPECIAL, subclassName, "<init>", "()V", false);
+				} else {
+					ensureCtorOriginal(ctor);
+					List<Type> ty = types.get(ctor.id()).flatten();  // TODO: 通常の関数とカリー化のコードを統一
+					Id nextId = null;
+					for (int i = ty.size() - 1; i >= 0; i--) {
+						List<Type> args = ty.subList(0, i);
+						List<Type> ret = ty.subList(i, ty.size());
+
+						Id lambdaId = Id.fromParentAndSimpleName(Id.fromParentAndSimpleName(id, ""),
+								i + "");
+
+						if (args.size() == ty.size() - 1) {
+							genBoxedMethod(lambdaId, args, id, ret.get(0));
+						} else {
+							genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
+						}
+						nextId = lambdaId;
+					}
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(nextId),
+							"()" + functionDesc, false);
 				}
-				String subclassName = classNames.get(ctor.id());
-				mv.visitTypeInsn(Opcodes.NEW, subclassName);
-				mv.visitInsn(Opcodes.DUP);
-				mv.visitMethodInsn(Opcodes.INVOKESPECIAL, subclassName, "<init>", "()V", false);
+
 			});
 		}
 		case CcApp(CcExp fun, List<CcExp> args, Location loc) -> {
@@ -395,23 +413,16 @@ public final class BytecodeGenerator {
 
 				getDecl(funId, descriptor -> {
 					int methodArity = toplevelDecls.get(funId).arity();
-
-					// 型変数と適用された型を記録
-					Map<String, Type> subst = new HashMap<>();
-					for (int i = 0; i < methodArity; i++) {
-						Type formal = declFlat.get(i);
-						Type actual = getType(args.get(i));
-						bindTypeVars(subst, formal, actual);
-					}
-
 					if (args.size() >= methodArity) {  // invoke staticが使える
 
 						// 全ての引数をstackに載せる
+						Type actualRetTy = funTy;
 						for (int i = 0; i < methodArity; i++) {
-							compile(args.get(i));
-							Type formal = declFlat.get(i);
-							Type actual = substType(formal, subst);
-							boxGenericArgIfNeeded(formal, actual);
+							CcExp arg = args.get(i);
+							compile(arg);
+							Type actualArgTy = getType(arg);
+							boxGenericArgIfNeeded(declFlat.get(i), actualArgTy);
+							actualRetTy = actualRetTy.apply(actualArgTy);
 						}
 
 						mv.visitMethodInsn(
@@ -421,21 +432,29 @@ public final class BytecodeGenerator {
 								descriptor,
 								false);
 
-						Type formalRetTy = declFlat.get(methodArity);
-						Type actualRetTy = substType(formalRetTy, subst);
-						unboxGenericRetIfNeeded(formalRetTy, actualRetTy);
-
 						// 更に適用が必要なとき（戻り値はFunctionのはず）はapplyをチェーン
 						for (int i = methodArity; i < args.size(); i++) {
-							compile(args.get(i));
-							invokeApplyWithBoxing(funTy.apply(i).asArrow());
+							CcExp arg = args.get(i);
+							compile(arg);
+							Type actualArgTy = getType(arg);
+							genInvokeApplyCurriedFunctionWithBoxing(funTy.dropArgs(i).asArrow(), actualArgTy);
+							actualRetTy = actualRetTy.apply(actualArgTy);
 						}
+						if (methodArity < args.size()) {
+							Primitive.tryFrom(actualRetTy).ifPresent(p -> {
+								p.genCheckCast(mv);
+								p.genUnboxing(mv);
+							});
+						}
+
+						unboxGenericRetIfNeeded(declFlat.get(args.size()), actualRetTy);
+
 					} else {  // 一旦Functionにしてapplyのチェーンで部分適用を実現
 						// TODO: indyで最適化する余地がある
 						compile(var);  // Functionオブジェクトをstackに載せる
 						for (int i = 0; i < args.size(); i++) {
 							compile(args.get(i));
-							invokeApplyWithBoxing(funTy.apply(i).asArrow());
+							invokeApplyWithBoxing(funTy.dropArgs(i).asArrow());
 						}
 					}
 				}, builtin -> {
@@ -454,46 +473,56 @@ public final class BytecodeGenerator {
 					compile(var);  // CcVarの分岐に委ねる
 					for (int i = 0; i < args.size(); i++) {
 						compile(args.get(i));
-						invokeApplyWithBoxing(funTy.apply(i).asArrow());
+						invokeApplyWithBoxing(funTy.dropArgs(i).asArrow());
 					}
 				}, ctor -> {
 					int ctorArity = ctor.args().size();
-					if (args.size() != ctorArity) {
-						todo("currying");
+					if (args.size() == ctorArity) {  // <init>を呼べる
+						String subclassName = classNames.get(ctor.id());
+						mv.visitTypeInsn(Opcodes.NEW, subclassName);
+						mv.visitInsn(Opcodes.DUP);  // 値を返さないのでポインタを複製しておく
+						// 全ての引数をstackに載せる
+						for (int i = 0; i < ctorArity; i++) {
+							compile(args.get(i));
+							boxGenericArgIfNeeded(
+									declFlat.get(i),
+									getType(args.get(i)));
+						}
+						mv.visitMethodInsn(
+								Opcodes.INVOKESPECIAL,
+								subclassName,
+								"<init>",
+								toDesc(ctor.args(), Type.UNIT),
+								false);
+					} else {  // 一旦Functionにしてapplyのチェーンで部分適用を実現
+						// TODO: indyで最適化する余地がある
+						compile(var);  // Functionオブジェクトをstackに載せる
+						Type stepTy = funTy;
+						for (CcExp arg : args) {
+							compile(arg);
+							stepTy = genInvokeApplyCurriedFunctionWithBoxing((Type.Arrow)stepTy, getType(arg));
+						}
 					}
-					String subclassName = classNames.get(ctor.id());
-					mv.visitTypeInsn(Opcodes.NEW, subclassName);
-					mv.visitInsn(Opcodes.DUP);  // <init>は値を返さないのでポインタを複製しておく
-					// 全ての引数をstackに載せる
-					for (int i = 0; i < ctorArity; i++) {
-						compile(args.get(i));
-						boxGenericArgIfNeeded(
-								declFlat.get(i),
-								getType(args.get(i))
-						);
-					}
-					mv.visitMethodInsn(
-							Opcodes.INVOKESPECIAL,
-							subclassName,
-							"<init>",
-							toDesc(ctor.args(), Type.UNIT),
-							false
-					);
 				});
 			} else {
+				Type actualRetTy = getType(fun);
 				compile(fun);
 
 				// function object remains on stack top
 				for (int i = 0; i < args.size(); i++) {
-					compile(args.get(i));
-					invokeApplyWithBoxing(funTy.apply(i).asArrow());
+					CcExp arg = args.get(i);
+					compile(arg);
+					Type actualArgTy = getType(arg);
+					invokeApplyWithBoxing(funTy.dropArgs(i).asArrow());
+					actualRetTy = actualRetTy.apply(actualArgTy);
 				}
+				unboxGenericRetIfNeeded(funTy.dropArgs(args.size()), actualRetTy);
 			}
 		}
 		case CcMkCls(Id clsFunc, IdList caps, Location _) -> {
 			Id impl = clsFunc;
 			List<Type> indyArgTys = caps.stream().map(types::get).toList();
-			Type.Arrow indyReturnTy = types.get(impl).apply(indyArgTys.size()).asArrow();
+			Type.Arrow indyReturnTy = types.get(impl).dropArgs(indyArgTys.size()).asArrow();
 
 			if (indyReturnTy == null) {
 				throw new Error(impl.toString());
@@ -623,46 +652,6 @@ public final class BytecodeGenerator {
 			});
 		}
 	}
-	private void bindTypeVars(Map<String, Type> subst, Type formal, Type actual) {
-		switch(formal) {
-		case Type.Var(String varName) -> {
-			Type prev = subst.get(varName);
-			if(prev == null) {
-				subst.put(varName, actual);
-			} else {
-				if(!prev.equals(actual)) {
-					neverHappen("type variable instantiated inconsistently: " + varName);
-				}
-			}
-		}
-		case Type.CtorApp(Id ctor, List<Type> args) -> {
-			if(actual instanceof Type.CtorApp aCtor && aCtor.ctor().equals(ctor)) {
-				for (int i = 0; i < args.size(); i++) {
-					bindTypeVars(subst, args.get(i), aCtor.args().get(i));
-				}
-			}
-		}
-		case Type.Arrow(Type arg, Type ret) -> {
-			if (actual instanceof Type.Arrow aArrow) {
-				bindTypeVars(subst, arg, aArrow.arg());
-				bindTypeVars(subst, ret, aArrow.ret());
-			}
-		}
-		}
-	}
-	private Type substType(Type ty, Map<String, Type> subst) {
-		return switch (ty) {
-		case Type.Var(String varName) -> subst.getOrDefault(varName, ty); // 未束縛ならそのまま
-		case Type.CtorApp(Id id, List<Type> args) -> {
-			List<Type> newArgs = args.stream().map(t -> substType(t, subst))
-					.collect(Collectors.toList());
-			yield new Type.CtorApp(id, newArgs);
-		}
-		case Type.Arrow(Type arg, Type ret) -> {
-			yield Type.arrow(substType(arg, subst), substType(ret, subst));
-		}
-		};
-	}
 
 	/**
 	 * パターンのマッチをチェックする．
@@ -710,6 +699,57 @@ public final class BytecodeGenerator {
 			}
 		}
 		};
+	}
+
+	/**
+	 * コンストラクタと同名の，戻り値のあるメソッドをなければ作る
+	 * @param ctor
+	 */
+	private void ensureCtorOriginal(CcCtor ctor) {  // TODO: はじめに用意してもいいかも
+		Id id = ctor.id();
+		if (toplevelDescs.containsKey(id)) {
+			return;
+		}
+
+		// ディスクリプタを登録
+		String subclassName = classNames.get(id);
+		String argsDesc = ctor.args()
+				.stream()
+				.map(arg -> toParamDesc(arg))
+				.collect(Collectors.joining(""));
+		String retDesc = "L"+subclassName+";";
+		String desc = "("+argsDesc+")"+retDesc;
+		toplevelDescs.put(id, desc);
+
+		pendings.push(() -> {
+			mv = cw.visitMethod(
+					Opcodes.ACC_PRIVATE + Opcodes.ACC_STATIC + Opcodes.ACC_SYNTHETIC,
+					javaMethodName(id),
+					desc,
+					null,
+					null);
+			mv.visitCode();
+
+			mv.visitTypeInsn(Opcodes.NEW, subclassName);
+			mv.visitInsn(Opcodes.DUP);
+
+			List<Type> argTys = ctor.args();
+			for (int i = 0; i < argTys.size(); i++) {
+				loadLocal(i, argTys.get(i));
+			}
+
+			mv.visitMethodInsn(
+					Opcodes.INVOKESPECIAL,
+					subclassName,
+					"<init>",
+					toDesc(argTys, Type.UNIT),
+					false);
+
+			mv.visitInsn(Opcodes.ARETURN);
+
+			mv.visitMaxs(-1, -1);
+			mv.visitEnd();
+		});
 	}
 
 	private void getDecl(Id id,
@@ -917,15 +957,7 @@ public final class BytecodeGenerator {
 
 	private void invokeApplyWithBoxing(Type.Arrow ty) {
 		Type argTy = ty.arg();
-		if(!argTy.isArrow()) {
-			Primitive boxing = Primitive.of(argTy.asAtom());
-			mv.visitMethodInsn(
-					Opcodes.INVOKESTATIC,
-					boxing.boxedClassName,
-					"valueOf",
-					boxing.boxMethodDesc,
-					false);
-		}
+		Primitive.tryFrom(argTy).ifPresent(p -> p.genBoxing(mv));
 
 		// カリー化されている前提
 		mv.visitMethodInsn(
@@ -938,18 +970,31 @@ public final class BytecodeGenerator {
 		Type retTy = ty.ret();
 		if(retTy.isArrow()) {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
-
 		} else {
-			Primitive boxing = Primitive.of(retTy.asAtom());
-			mv.visitTypeInsn(Opcodes.CHECKCAST, boxing.boxedClassName);
-
-			mv.visitMethodInsn(
-					Opcodes.INVOKEVIRTUAL,
-					boxing.boxedClassName,
-					boxing.unboxMethodName,
-					boxing.unboxMethodDesc,
-					false);
+			Primitive.tryFrom(retTy).ifPresent(p -> {
+				p.genCheckCast(mv);
+				p.genUnboxing(mv);
+			});
 		};
+	}
+	
+	/**
+	 * 関数と引数の型を指定し，関数をカリー化したFunctionのapplyをinvokeするコードを生成する．
+	 * 関数の型は定義時のもの，引数の型は適用時に与えるものを指定する．
+	 * 引数にBoxingが必要な場合それも行う．
+	 * @param funTy 関数の型（定義の型）
+	 * @param argTy 引数の型（適用時に与える型）
+	 * @return apply後の関数の型
+	 */
+	private Type genInvokeApplyCurriedFunctionWithBoxing(Type.Arrow funTy, Type argTy) {
+		Primitive.tryFrom(argTy).ifPresent(p -> p.genBoxing(mv));
+		mv.visitMethodInsn(
+				Opcodes.INVOKEINTERFACE,
+				"java/util/function/Function",
+				"apply",
+				"(Ljava/lang/Object;)Ljava/lang/Object;",
+				true);
+		return funTy.ret();
 	}
 
 	private static String toFunctionApplyDescErased(Type.Arrow ty) {
@@ -970,7 +1015,7 @@ public final class BytecodeGenerator {
 		List<Type> argTys = decl.args().stream()
 				.map(pat -> types.get(pat.headId()))
 				.toList();
-		Type retTy = types.get(decl.id()).apply(argTys.size());
+		Type retTy = types.get(decl.id()).dropArgs(argTys.size());
 		return toDesc(argTys, retTy);
 	}
 
@@ -1089,16 +1134,17 @@ public final class BytecodeGenerator {
 		return org.objectweb.asm.Type.getMethodType(descriptor);
 	}
 
-	private Type returnType(CcApp call) {
-		Type funTy = getType(call.fun());
-		return funTy.apply(call.args().size());
-	}
-
 	private Type getType(CcExp exp) {
 		return switch (exp) {
 		case CcCnst(ConstValue value, Location _) -> value.type();
 		case CcVar(Id id, Location _) -> types.get(id);
-		case CcApp call -> returnType(call);
+		case CcApp(CcExp fun, List<CcExp> args, Location _) -> {
+			Type result = getType(fun);
+			for(CcExp arg : args) {
+				result = result.apply(getType(arg));
+			}
+			yield result;
+		}
 		case CcMkCls(Id id, IdList _, Location _) -> types.get(id);
 		case CcIf(CcExp _, CcExp thenExp, CcExp _, Location _) -> getType(thenExp);
 		case CcLet(Id _, CcExp _, CcExp body, Location _) -> getType(body);

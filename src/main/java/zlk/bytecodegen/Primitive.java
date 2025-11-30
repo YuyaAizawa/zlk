@@ -58,5 +58,11 @@ enum Primitive {
 				this.unboxMethodDesc,
 				false);
 	}
+	
+	void genCheckCast(MethodVisitor mv) {
+		mv.visitTypeInsn(
+				Opcodes.CHECKCAST,
+				this.boxedClassName);
+	}
 }
 
