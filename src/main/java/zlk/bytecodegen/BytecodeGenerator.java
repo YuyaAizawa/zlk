@@ -291,7 +291,7 @@ public final class BytecodeGenerator {
 		});
 
 		for (int i = 0; i < args.size(); i++) {
-			if(args.get(i) instanceof IcPattern.Ctor ctor) {
+			if(args.get(i) instanceof IcPattern.Dector ctor) {
 				Type subClassTy = types.get(ctor.headId());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
@@ -306,7 +306,7 @@ public final class BytecodeGenerator {
 			locals.add(id);
 			storeLocal(locals.size()-1, types.get(id));
 		}
-		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
 			String subClassName = classNames.get(ctor.id());
 
 			// stackの数を調整
@@ -589,11 +589,7 @@ public final class BytecodeGenerator {
 			 *
 			 * にする．
 			 */
-			Type targetTy = getType(target);
-			locals.add(LOCAL_DUMMY_ID);
-			int targetLocalIdx = locals.size() - 1;
 			compile(target);
-			storeLocal(targetLocalIdx, targetTy);
 			Label neck = new Label();
 
 			// マッチしないパターンに遭遇したら次の選択肢に進む
@@ -601,8 +597,7 @@ public final class BytecodeGenerator {
 			for (int branchIdx = 0; branchIdx < branches.size(); branchIdx++) {
 				Label nextBranchLabel = (branchIdx < branches.size() - 1) ? new Label() : null;
 				CcCaseBranch branch = branches.get(branchIdx);
-
-				checkMatchAndStoreLocals(targetLocalIdx, branch.pattern(), nextBranchLabel);
+				checkMatchAndStoreLocals(branch.pattern(), null, nextBranchLabel); // TODO: Dectorの分解にはdeclTyは要らないのでメソッドを分ける
 				compile(branch.body());
 				mv.visitJumpInsn(Opcodes.GOTO, neck);
 
@@ -654,48 +649,57 @@ public final class BytecodeGenerator {
 	}
 
 	/**
-	 * パターンのマッチをチェックする．
+	 * スタックトップとパターンのマッチをチェックする．
 	 * マッチした場合，値をローカル変数に格納する．
 	 * マッチしなかった場合，次のLabelにjumpする．
 	 * 次のLabelがnullであるとき，チェックは省略される．
-	 * @param targetIdx チェックする値の局所変数番号
 	 * @param pat
 	 * @param next 次のラベル
+	 * @param isVarInCtorDecl
 	 */
-	private void checkMatchAndStoreLocals(int targetIdx, IcPattern pat, Label next) {
+	private void checkMatchAndStoreLocals(IcPattern pat, Type declTy, Label next) {
 		switch(pat) {
 		case IcPattern.Var(Id id, Location _) -> {
-			locals.set(targetIdx, id);
+			Type expTy = getType(new CcVar(id, Location.noLocation()));  // TODO: 利用箇所が無かったら推論されてなくね？
+			if(declTy instanceof Type.Var) {
+				// 必要ならキャストする
+				if(expTy instanceof Type.CtorApp ctorapp) {
+					Primitive.tryFrom(expTy).ifPresentOrElse(p -> {
+						p.genCheckCast(mv);
+						p.genUnboxing(mv);
+					}, () -> {
+						mv.visitTypeInsn(Opcodes.CHECKCAST, classNames.get(ctorapp.ctor()));
+					});
+				}
+				storeLocal(locals.size(), expTy);
+			} else {
+				storeLocal(locals.size(), declTy);
+			}
+			locals.add(id);
 		}
-		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
-			Type targetTy = ctor.type();
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+			CcCtor ctorDecl = ctors.get(ctor.id());
 			String subClassName = classNames.get(ctor.id());
 			if(next != null) {
-				loadLocal(targetIdx, targetTy);
-				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
-				mv.visitJumpInsn(Opcodes.IFEQ, next);
+				mv.visitInsn(Opcodes.DUP);
+				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);  // サブクラスのインスタンスなら1
+				mv.visitJumpInsn(Opcodes.IFEQ, next);  // 0なら分岐
 			}
-			if(args.size() == 0) {
+			if(args.isEmpty()) {
+				mv.visitInsn(Opcodes.POP);  // fieldを引き出すためのオブジェクトを捨てる
 				return;
 			}
-			loadLocal(targetIdx, targetTy);
 			mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
-			for(int i = 1; i < args.size(); i++) {
-				mv.visitInsn(Opcodes.DUP);
-			}
-			int argBase = locals.size();
 			for(int i = 0; i < args.size(); i++) {
-				Type fieldTy = args.get(i).type();
+				if(i < args.size()-1) {
+					mv.visitInsn(Opcodes.DUP);
+				}
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						subClassName,
 						"val"+i,
-						toDesc(fieldTy));
-				locals.add(LOCAL_DUMMY_ID);
-				storeLocal(locals.size()-1, fieldTy);
-			}
-			for(int i = 0; i < args.size(); i++) {
-				checkMatchAndStoreLocals(argBase+i, args.get(i).pattern(), next);
+						toDesc(ctorDecl.args().get(i)));
+				checkMatchAndStoreLocals(args.get(i).pattern(), ctorDecl.args().get(i), next);
 			}
 		}
 		};
@@ -782,6 +786,7 @@ public final class BytecodeGenerator {
 			return;
 		}
 
+		System.out.println("locals: "+locals);
 		neverHappen("id must be found:"+id);
 	}
 
@@ -856,7 +861,7 @@ public final class BytecodeGenerator {
 							+ "Ljava/lang/invoke/MethodType;"
 							+ ")Ljava/lang/invoke/CallSite;",
 							false),
-					"("+objectDesc+")"+objectDesc,
+					toMethodType("("+objectDesc+")"+objectDesc),
 					new Handle(
 							Opcodes.H_INVOKESTATIC,
 							module.name(),
@@ -977,7 +982,7 @@ public final class BytecodeGenerator {
 			});
 		};
 	}
-	
+
 	/**
 	 * 関数と引数の型を指定し，関数をカリー化したFunctionのapplyをinvokeするコードを生成する．
 	 * 関数の型は定義時のもの，引数の型は適用時に与えるものを指定する．
