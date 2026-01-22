@@ -2,6 +2,7 @@ package zlk.tester;
 
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.lang.reflect.AccessFlag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -122,8 +123,10 @@ public class ModuleTester {
 		try {
 			Class<?> cls = classLoader.define(className, bytecode);
 			for (Method method : cls.getDeclaredMethods()) {
-				String name = method.getName();
-				functions.put(name, ValueTester.of(method));
+				if(method.accessFlags().contains(AccessFlag.PUBLIC)) {
+					String name = method.getName();
+					functions.put(name, ValueTester.of(method));
+				}
 			}
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to load class: " + className, e);

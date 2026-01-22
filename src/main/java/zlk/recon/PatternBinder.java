@@ -23,7 +23,7 @@ final class PatternBinder {
 		case IcPattern.Var(Id id, _) -> {
 			headers.put(id, expected);
 		}
-		case IcPattern.Ctor(IcVarCtor ctor, List<Arg> args, _) -> {
+		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 			vars.addAll(ctorInfo.flexes());

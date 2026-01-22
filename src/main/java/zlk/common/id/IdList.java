@@ -53,9 +53,7 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
+		return buildString();
 	}
 
 	public static Collector<Id, ?, IdList> collector() {

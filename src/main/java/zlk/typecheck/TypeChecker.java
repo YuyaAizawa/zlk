@@ -60,7 +60,7 @@ public final class TypeChecker {
 		case IcPattern.Var(Id id, Location _) -> {
 			yield env.get(id);
 		}
-		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
 			Type ctorType = env.get(ctor.id());
 			List<Type> argTypes = ctorType.flatten();
 
