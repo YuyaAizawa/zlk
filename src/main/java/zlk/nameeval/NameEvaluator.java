@@ -277,7 +277,7 @@ public final class NameEvaluator {
 				args_.add(new IcPattern.Arg(eval(args.get(i)), argTys.get(i)));
 			}
 			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctors.get(ctor), Location.noLocation());  // TODO location
-			return new IcPattern.Ctor(icVarCtor, args_, loc);
+			return new IcPattern.Dector(icVarCtor, args_, loc);
 		}
 		}
 	}

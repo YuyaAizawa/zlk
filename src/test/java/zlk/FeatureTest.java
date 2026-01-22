@@ -127,7 +127,7 @@ public class FeatureTest {
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getType("f1").is("I32 -> I32");
-		module.getType("f2").is("Pair I32 a");
+		module.getType("f2").is("a -> Pair I32 a");
 		module.getValue("a1").is(3);
 		module.getValue("a2").is(3);
 	}
