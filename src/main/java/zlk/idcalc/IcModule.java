@@ -11,13 +11,11 @@ import zlk.util.pp.PrettyPrinter;
  * @param types 型の定義
  * @param decls トップレベルの関数の定義
  * @param recscc 関数の含まれる強連結成分
- * @param origin ソースコード名
  */
 public record IcModule(
 		String name,
 		List<IcTypeDecl> types,
-		List<IcValDecl> decls,
-		String origin
+		List<IcValDecl> decls
 ) implements PrettyPrintable {
 
 	@Override

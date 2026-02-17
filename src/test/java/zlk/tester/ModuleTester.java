@@ -24,8 +24,7 @@ import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
-import zlk.parser.Lexer;
-import zlk.parser.Parser;
+import zlk.parser.Tokenized;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
 import zlk.recon.TypeError;
@@ -50,6 +49,7 @@ public class ModuleTester {
 	}
 
 	private static final String TARGET_MODULE_NAME = "Main";
+	private static final String TARGET_FILE_NAME = "Main.zlk";
 	private final CompileLevel compileLevel;
 	private final String src;
 	private final InMemoryClassLoader classLoader;
@@ -67,7 +67,9 @@ public class ModuleTester {
 		this.src = "module " + TARGET_MODULE_NAME + "\n" + src;  // TODO: これ要る？
 		this.classLoader = new InMemoryClassLoader();
 
-		this.ast = new Parser(new Lexer(TARGET_MODULE_NAME + ".zlk", this.src)).parse();
+		Tokenized tokens = new zlk.parser.Lexer(TARGET_FILE_NAME, this.src).lex();
+		this.ast = zlk.parser.Parser.parse(tokens);
+
 		if(this.compileLevel == CompileLevel.PARSE) {
 			return;
 		}
@@ -103,7 +105,7 @@ public class ModuleTester {
 
 		record NameAndBytecode(String name, byte[] bytecode) {}
 		List<NameAndBytecode> classes = new ArrayList<>();
-		new BytecodeGenerator(clconv, types, Builtin.functions()).compile((name, bytecode) -> classes.add(new NameAndBytecode(name, bytecode)));
+		new BytecodeGenerator(clconv, types, Builtin.functions(), TARGET_FILE_NAME).compile((name, bytecode) -> classes.add(new NameAndBytecode(name, bytecode)));
 		classes.forEach(clz -> {
 			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
 			addClass(clz.name, clz.bytecode);
