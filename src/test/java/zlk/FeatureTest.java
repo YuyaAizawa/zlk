@@ -54,8 +54,8 @@ public class FeatureTest {
 
 		sum list =
 		  case list of
-		    | Nil -> 0
-		    | Cons hd tl -> add hd (sum tl)
+		    Nil -> 0
+		    Cons hd tl -> add hd (sum tl)
 
 		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";
@@ -123,7 +123,7 @@ public class FeatureTest {
 
 		a1 = f1 2
 		a2 = case f2 2 of
-		| Pair_ a b -> add a b
+		  Pair_ a b -> add a b
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getType("f1").is("I32 -> I32");
@@ -172,14 +172,14 @@ public class FeatureTest {
 	void genericTypeInLetExp() {
 		String src ="""
 		type IntList =
-		| Nil
-		| Cons I32 IntList
+		  | Nil
+		  | Cons I32 IntList
 		car list =
 		  case list of
-		  | Nil ->
-		    0
-		  | Cons hd tl ->
-		    hd
+		    Nil ->
+		      0
+		    Cons hd tl ->
+		      hd
 		rectest =
 		  let
 		    id x =
