@@ -79,7 +79,7 @@ public final class ClosureConverter {
 					throw new RuntimeException("toplevel must not be closure: "+cls.clsFunc()); }));
 
 		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
-		return new CcModule(src.name(), types, toplevels, src.origin());
+		return new CcModule(src.name(), types, toplevels);
 	}
 
 	/**

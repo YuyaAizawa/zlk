@@ -49,15 +49,15 @@ public class ReconTest {
 	void genericTypeInLetExp() {
 		String src ="""
 				type IntList =
-				| Nil
-				| Cons I32 IntList
+				  | Nil
+				  | Cons I32 IntList
 
 				car list =
 				  case list of
-				  | Nil ->
-				    0
-				  | Cons hd tl ->
-				    hd
+				    Nil ->
+				      0
+				    Cons hd tl ->
+				      hd
 
 				rectest =
 				  let
@@ -117,8 +117,8 @@ public class ReconTest {
 	void userDefinedGenericDatatype() {
 		String src ="""
 				type List a =
-				| Nil
-				| Cons a (List a)
+				  | Nil
+				  | Cons a (List a)
 
 				type Pair a b = Pair_ a b
 

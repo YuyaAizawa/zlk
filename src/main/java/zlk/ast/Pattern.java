@@ -14,6 +14,13 @@ permits Var, Ctor {
 	record Var(String name, Location loc) implements Pattern {}
 	record Ctor(String name, List<Pattern> args, Location loc) implements Pattern {}
 
+	default Pattern updateLoc(Location loc) {
+		return switch(this) {
+		case Var(String name, Location _) -> new Var(name, loc);
+		case Ctor(String name, List<Pattern> args, Location _) -> new Ctor(name, args, loc);
+		};
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {

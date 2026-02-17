@@ -34,11 +34,11 @@ permits ValDecl, TypeDecl {
 			tyArgs.forEach(arg -> pp.append(arg).append(" "));
 			pp.append("=");
 			if(ctors.size() == 1) {
-				pp.indent(() -> {
-					pp.endl().append(ctors.get(0));
-				});
+				pp.append(" ").append(ctors.get(0));
 			} else {
-				ctors.forEach(ctor -> pp.endl().append("| ").append(ctor));
+				pp.indent(() -> {
+					ctors.forEach(ctor -> pp.endl().append("| ").append(ctor));
+				});
 			}
 		}
 		}
