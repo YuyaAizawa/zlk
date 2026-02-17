@@ -11,7 +11,6 @@ import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.parser.Lexer;
 import zlk.parser.Parser;
 
 public final class TypeTester {
@@ -27,7 +26,7 @@ public final class TypeTester {
 	}
 
 	public void is(String expected) {
-		Type expectedTy = simpleEval(new Parser(new Lexer("TypeTester", expected)).parseType());
+		Type expectedTy = simpleEval(Parser.parseTypeForTest(expected));
 		expectedTy = importFromModule(expectedTy);
 		is(expectedTy);
 	}

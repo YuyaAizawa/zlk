@@ -1,30 +1,16 @@
 package zlk.parser;
 
-import static zlk.parser.Token.Kind.ARROW;
-import static zlk.parser.Token.Kind.BAR;
-import static zlk.parser.Token.Kind.BR;
-import static zlk.parser.Token.Kind.CASE;
-import static zlk.parser.Token.Kind.COLON;
-import static zlk.parser.Token.Kind.DIGITS;
-import static zlk.parser.Token.Kind.ELSE;
-import static zlk.parser.Token.Kind.EOF;
-import static zlk.parser.Token.Kind.EQUAL;
-import static zlk.parser.Token.Kind.IF;
-import static zlk.parser.Token.Kind.IN;
-import static zlk.parser.Token.Kind.LCID;
-import static zlk.parser.Token.Kind.LET;
-import static zlk.parser.Token.Kind.LPAREN;
-import static zlk.parser.Token.Kind.MODULE;
-import static zlk.parser.Token.Kind.OF;
-import static zlk.parser.Token.Kind.RPAREN;
-import static zlk.parser.Token.Kind.THEN;
-import static zlk.parser.Token.Kind.TYPE;
-import static zlk.parser.Token.Kind.UCID;
+import static zlk.parser.Peg.choice;
+import static zlk.parser.Peg.kind;
+import static zlk.parser.Peg.lazy;
+import static zlk.parser.Peg.optional;
+import static zlk.parser.Peg.plus;
+import static zlk.parser.Peg.sequence;
+import static zlk.parser.Peg.star;
 import static zlk.util.ErrorUtils.todo;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,528 +19,409 @@ import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
 import zlk.ast.Decl;
 import zlk.ast.Decl.TypeDecl;
-import zlk.ast.Decl.ValDecl;
 import zlk.ast.Exp;
-import zlk.ast.Exp.App;
-import zlk.ast.Exp.Case;
-import zlk.ast.Exp.Cnst;
-import zlk.ast.Exp.If;
-import zlk.ast.Exp.Lamb;
-import zlk.ast.Exp.Let;
-import zlk.ast.Exp.Var;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
-import zlk.common.ConstValue;
 import zlk.parser.Token.Kind;
 import zlk.util.Location;
-import zlk.util.Position;
+import zlk.util.LocationHolder;
+
 
 /**
- * 構文解析器.
+ * 構文解析器．
+ *
  * <h2>文法</h2>
+ * ※空白文字の記述を決めかねているためその点正確でない
  * <pre>{@code
  * <h3>コンパイル単位</h3>
- * <module>   ::= module <ucid> <br>+ (<topDecl> <br>+)*
+ * <module>     ::= module <ucid> <topDecl>*
  *
- * <topDecl>  ::= <typeDecl>
- *              | <valDecl>
+ * <topDecl>    ::= <tyDecl>
+ *                | <valDecl>
  *
  * <h3>宣言</h3>
- * <typeDecl> ::= type <ucid> <aType>* = <ctor> (| <ctor>)*
+ * <tyDecl>     ::= type <ctorHead> <tyVar>* = |? <ctorImpl> (| <ctorImpl>)*
  *
- * <ctor>     ::= <ucid> <tyConArg>*
+ * <ctorImpl>   ::= <ctorHead> <ctorArg>*
  *
- * <valDecl>  ::= (<lcid> : <type> <br>)? <lcid> <pattern>* = <br>? <exp>
+ * <valDecl>    ::= <tyAnno>? <lcid> <pattern>* = <exp>
  *
- * <h3>式
- * <exp>      ::= <aExp>+
- *              | \ <pattern>+ <br>? -> <exp>
- *              | let <funDecl>+ in <exp>
- *              | if <exp> then <exp> else <exp>
- *              | case <exp> of (| <pattern> -> <exp>)+
+ * <tyAnno>     ::= <lcid> : <type>
  *
- * <aExp>     ::= ( <exp> )
- *              | <aLiteral>
- *              | <lcid>
+ * <h3>式</h3>
+ * <exp>        ::= <aExp>+
+ *                | \ <pattern>+ -> <exp>
+ *                | let <valDecl>+ in <exp>
+ *                | if <exp> then <exp> else <exp>
+ *                | case <exp> of (<pattern> -> <exp>)+
+ *
+ * <aExp>       ::= ( <exp> )
+ *                | <aLiteral>
+ *                | <ctorHead>
+ *                | <lcid>
  *
  * <h3>パターン</h3>
- * <pattern>  ::= <ucid> <aPattern>*
- *              | <aPattern>
+ * <pattern>    ::= <ctorHead> <aPattern>*
+ *                | <aPattern>
  *
- * <aPattern> ::= ( <pattern> )
- *              | <lcid>
+ * <aPattern>   ::= ( <pattern> )
+ *                | <lcid>
  *
  * <h3>型注釈</h3>
- * <type>     ::= <funTyArg> (-> <type>)?
+ * <type>       ::= <funTyArg> (-> <funTyArg>)*
  *
- * <funTyArg> ::= ()
- *              | <lcid>
- *              | <ucid> <tyConArg>*
- *              | ( <type> )
+ * <funTyArg>   ::= ()
+ *                | <tyVar>
+ *                | <ctorAnno>
+ *                | ( <type> )
  *
- * <tyConArg> ::= ()
- *              | <lcid>
- *              | <ucid>
- *              | ( <type> )
+ * <ctorAnno>   ::= <ctorHead> <ctorArg>*
+ *
+ * <ctorArg>    ::= ()
+ *                | <tyVar>
+ *                | <ctorHead>
+ *                | ( <type> )
+ *
+ * <ctorHead>   ::= <ucid>
+ *
+ * <tyVar>      ::= <lcid>
  * }</pre>
  */
-public class Parser {
-
-	private static final EnumSet<Kind> cancelBr = EnumSet.of(
-			BAR,
-			THEN,
-			ELSE,
-			ARROW);
-
-	private final Lexer lexer;
-
-	private Token current;
-	private Token next;
-
-	private Position end;
-
-	public Parser(Lexer lexer) {
-		this.lexer = lexer;
-		this.current = lexer.nextToken();
-		this.next = lexer.nextToken();
-	}
-
-	public Parser(String fileName) throws IOException {
-		this(new Lexer(fileName));
-	}
-
-	public Module parse() {
-		return parseModule(lexer.getFileName().split("\\.")[0]);
-	}
-
-	public Module parseModule(String fileName) {
-		consume(MODULE);
-
-		String name = parse(UCID);
-
-		consume(BR);
-		while(maybeConsume(BR));
-
-		List<Decl> topDecls = new ArrayList<>();
-		while(current.kind() != EOF) {
-			if(current.kind() == TYPE) {
-				topDecls.add(parseTypeDecl());
-			} else {
-				topDecls.add(parseValDecl());
-			}
-			consume(BR);
-			while(maybeConsume(BR));
-		}
-
-		return new Module(name, topDecls, fileName);
-	}
-
-	public TypeDecl parseTypeDecl() {
-		Position start = current.pos();
-
-		consume(TYPE);
-
-		String name = parse(UCID);
-
-		List<AnType.Var> tyArgs = new ArrayList<>();
-		AnType.Var tyArg;
-		while((tyArg = maybeParseTyVar()) != null) {
-			tyArgs.add(tyArg);
-		}
-
-		consume(EQUAL);
-
-		maybeConsume(BAR);
-
-		List<Constructor> ctors = new ArrayList<>();
-		ctors.add(parseConstructor());
-		while(current.kind() == BAR) {
-			consume(BAR);
-			ctors.add(parseConstructor());
-		}
-
-		return new TypeDecl(name, tyArgs, ctors, location(start, end));
-	}
-
-	private Constructor parseConstructor() {
-		Position start = current.pos();
-
-		String name = parse(UCID);
-
-		List<AnType> args = new ArrayList<>();
-		AnType arg;
-		while((arg = maybeParseTyConArg()) != null) {
-			args.add(arg);
-		}
-
-		return new Constructor(name, args, location(start, end));
-	}
-
-	public ValDecl parseValDecl() {
-		Position start = current.pos();
-
-		String name = parse(LCID);
-
-		Optional<AnType> anno;
-		if(maybeConsume(COLON)) {
-			anno = Optional.of(parseType());
-
-			consume(BR);
-
-			if(!parse(LCID).equals(name)) {
-				throw new RuntimeException(
-						current.pos() + " declatarion must have the same name with annotation");
-			}
-		} else {
-			anno = Optional.empty();
-		}
-
-		List<Pattern> args = new ArrayList<>();
-		while(current.kind() != EQUAL) {
-			args.add(parsePattern());
-		}
-
-		consume(EQUAL);
-
-		maybeConsume(BR);
-
-		Exp body = parseExp();
-
-		return new ValDecl(name, anno, args, body, location(start, end));
-	}
-
-	public Exp parseExp() {
-		Position start = current.pos();
-		if(aExpStartToken(current)) {
-			Exp first = parseAExp();
-
-			if(aExpStartToken(current)) {
-				List<Exp> exps = new ArrayList<>();
-				exps.add(first);
-
-				while(aExpStartToken(current)) {
-					exps.add(parseAExp());
-				}
-				return new App(exps, location(start, end));
-			} else {
-				return first;
-			}
-		}
-
-		return switch(current.kind()) {
-		case LAMBDA -> parseLambdaExp();
-		case LET -> parseLetExp();
-		case IF -> parseIfExp();
-		case CASE -> parseCaseExp();
-		default -> throw new RuntimeException("not exp");
-		};
-	}
-
-	private static boolean aExpStartToken(Token token) {
-		switch (token.kind()) {
-		case LCID:
-		case UCID:
-		case DIGITS:
-		case TRUE:
-		case FALSE:
-		case LPAREN:
-			return true;
-		default:
-			return false;
-		}
-	}
-
-	private Exp parseAExp() {
-		Position start = current.pos();
-		return switch(current.kind()) {
-
-		case LPAREN -> parseParenExp();
-
-		case TRUE -> {
-			nextToken();
-			yield new Cnst(ConstValue.TRUE, location(start, end));
-		}
-
-		case FALSE -> {
-			nextToken();
-			yield new Cnst(ConstValue.FALSE, location(start, end));
-		}
-
-		case DIGITS -> new Cnst(Integer.valueOf(parse(DIGITS)), location(start, end));
-
-		case LCID -> new Var(parse(LCID), location(start, end));
-		case UCID -> new Var(parse(UCID), location(start, end));
-
-		default -> throw new RuntimeException("not a exp");
-		};
-	}
-
-	private Exp parseLambdaExp() {
-		Position start = current.pos();
-
-		List<Pattern> args = new ArrayList<>();
-		do {
-			args.add(parsePattern());
-		} while(current.kind() != ARROW);
-
-		consume(ARROW);
-
-		Exp body = parseExp();
-
-		return new Lamb(args, body, location(start, end));
-	}
-
-	private Exp parseLetExp() {
-		Position start = current.pos();
-
-		consume(LET);
-
-		List<ValDecl> declList = new ArrayList<>();
-		if(maybeConsume(BR)) {
-			do {
-				declList.add(parseValDecl());
-
-				consume(BR);
-			} while(current.kind() != IN);
-
-			consume(IN);
-
-			consume(BR);
-		} else {
-			declList.add(parseValDecl());
-
-			consume(IN);
-
-			maybeConsume(BR);
-		}
-
-		Exp body = parseExp();
-
-		return new Let(declList, body, location(start, end));
-	}
-
-	private Exp parseIfExp() {
-		Position start = current.pos();
-		consume(IF);
-
-		maybeConsume(BR);
-
-		Exp c = parseExp();
-
-		consume(THEN);
-
-		maybeConsume(BR);
-
-		Exp t = parseExp();
-
-		consume(ELSE);
-
-		maybeConsume(BR);
-
-		Exp e = parseExp();
-
-		return new If(c, t, e, location(start, end));
-	}
-
-	private Exp parseCaseExp() {
-		Position start = current.pos();
-
-		consume(CASE);
-
-		Exp exp = parseExp();
-
-		consume(OF);
-
-		List<CaseBranch> caseBranches = new ArrayList<>();
-		do {
-			caseBranches.add(parseCaseBranch());
-		} while(current.kind() == BAR);
-
-		return new Case(exp, caseBranches, location(start, end));
-	}
-
-	private CaseBranch parseCaseBranch() {
-		Position start = current.pos();
-
-		consume(BAR);
-
-		Pattern pattern = parsePattern();
-
-		consume(ARROW);
-
-		maybeConsume(BR);
-
-		Exp body = parseExp();
-
-		return new CaseBranch(pattern, body, location(start, end));
-	}
-
-	private Pattern parsePattern() {
-		Position start = current.pos();
-
-		if(current.kind() == UCID) {
-			String name = parse(UCID);
-
-			List<Pattern> args = new ArrayList<>();
-			while(current.kind() != ARROW) {
-				args.add(parseAPattern());
-			}
-			return new Pattern.Ctor(name, args, location(start, end));
-		}
-
-		return parseAPattern();
-	}
-
-	private Pattern parseAPattern() {
-		Position start = current.pos();
-		Pattern result;
-
-		if(current.kind() == LPAREN) {
-			consume(LPAREN);
-
-			result = parsePattern();
-
-			consume(RPAREN);
-		} else {
-			result = new Pattern.Var(parse(LCID), location(start, end));
+public final class Parser {
+
+	public static Module parse(Tokenized src) {
+		Module result = module.parse(src);
+		if(result == null) {
+			todo("error");
 		}
 		return result;
 	}
 
-	private Exp parseParenExp() {
-		consume(LPAREN);
-
-		Exp exp = parseExp();
-
-		consume(RPAREN);
-
-		return exp;
+	public static Module parse(String fileName, String src) {
+		return parse(new Lexer(fileName, src).lex());
 	}
 
-	public AnType parseType() {
-		Position start = current.pos();
-
-		AnType ty = parseFunTyArg();
-
-		if(maybeConsume(ARROW)) {
-			return new AnType.Arrow(ty, parseType(), location(start, end));
-		}
-		return ty;
+	public static Module parse(String fileName) throws IOException {
+		return parse(new Lexer(fileName).lex());
 	}
 
-	private AnType parseFunTyArg() {
-		return switch(current.kind()) {
-		case UNIT -> parseUnit();
-		case LCID -> parseTyVar();
-		case UCID -> parseTyConApp();
-		case LPAREN -> parseParenType();
-		default -> todo("syntax error");
-		};
+	public static AnType parseTypeForTest(String src) {
+		Tokenized tokens = new Lexer("TypeForTest.zlk", src).lex();
+		SAMENT.parse(tokens);
+		return type.parse(tokens);
 	}
 
-	private AnType parseTyConApp() {
-		Position start = current.pos();
-		String tyCon = parse(UCID);
+	// static fieldを上から初期化する都合で補助関数が最上部，全体のパーサは最下部にある
 
-		List<AnType> args = new ArrayList<>();
-		AnType tyConArg;
-		while((tyConArg = maybeParseTyConArg()) != null) {
-			args.add(tyConArg);
-		}
+	// TODO: blockを利用してエラー復帰機構
+	static <T> Peg<T> block(Peg<T> p) {
+		return sequence(ENDENT, SAMENT, p, DEDENT, (_, _, r, _) -> r);
+	}
 
-		return new AnType.Type(tyCon, args, location(start, end));
+	static <T> Peg<T> mayBlock(Peg<T> p) {
+		return choice(block(p), p);
 	}
 
 	/**
-	 * 失敗時にnullを返すので注意
+	 * 複数要素からなるブロックのパーサを返す
+	 * @param <T>
+	 * @param head 最初の要素のパーサ（頭カンマなしとかそういう用途）
+	 * @param head 以降の要素のパーサ
 	 * @return
 	 */
-	private AnType maybeParseTyConArg() {
-		Position start = current.pos();
-		return switch(current.kind()) {
-		case UNIT -> parseUnit();
-		case LCID -> parseTyVar();
-		case UCID -> new AnType.Type(parse(UCID), List.of(), location(start, end));
-		case LPAREN -> parseParenType();
-		default -> null;
-		};
+	static <T> Peg<List<T>> blockPlus(Peg<T> head, Peg<T> tail) {
+		Peg<T> samentHead = sequence(SAMENT, head, (_, r) -> r);
+		Peg<T> samentTail = sequence(SAMENT, tail, (_, r) -> r);
+		return sequence(ENDENT, samentHead, star(samentTail), DEDENT, (_, hd, tl, _) -> prepend(hd, tl));
+	}
+	static <T> Peg<List<T>> blockPlus(Peg<T> head) {
+		return blockPlus(head, head);
 	}
 
-	private AnType parseParenType() {
-		consume(LPAREN);
+	static <T> Peg<List<T>> join(Peg<T> p, Peg<?> delimiter) {
+		return sequence(
+				p, star(sequence(delimiter, p, (_, v) -> v)),
+				(hd, tl) -> prepend(hd, tl));
+	}
 
-		AnType type = parseType();
+	static <T> List<T> prepend(T head, List<? extends T> tail) {
+		List<T> out = new ArrayList<>(tail.size() + 1);
+		out.add(head);
+		out.addAll(tail);
+		return out;
+	}
 
-		consume(RPAREN);
+	// Locationの範囲を求める
+	static Location locRange(LocationHolder from, LocationHolder to) {
+		return Location.range(from.loc(), to.loc());
+	}
+	static Location locRange(LocationHolder from, List<? extends LocationHolder> to) {
+		if(to.isEmpty()) {
+			return from.loc();
+		}
+		return Location.range(from.loc(), to.getLast().loc());
+	}
+	static Location locRange(List<? extends LocationHolder> from, LocationHolder to) {
+		if(from.isEmpty()) {
+			return to.loc();
+		}
+		return Location.range(from.getFirst().loc(), to.loc());
+	}
+	static Location locRange(List<? extends LocationHolder> from, List<? extends LocationHolder> to) {
+		if(from.isEmpty()) {
+			if(to.isEmpty()) {
+				return Location.noLocation();
+			}
+			return Location.range(to.getFirst().loc(), to.getLast().loc());
+		}
+		return locRange(from.getFirst(), to);
+	}
 
+	static final Peg<Token> ENDENT = kind(Kind.ENDENT);
+	static final Peg<Token> DEDENT = kind(Kind.DEDENT);
+	static final Peg<Token> SAMENT = kind(Kind.SAMENT);
+
+	static final Peg<Token> ARROW = kind(Kind.ARROW);
+	static final Peg<Token> BAR = kind(Kind.BAR);
+	static final Peg<Token> CASE = kind(Kind.CASE);
+	static final Peg<Token> COLON = kind(Kind.COLON);
+	static final Peg<Token> ELSE = kind(Kind.ELSE);
+	static final Peg<Token> EQUAL = kind(Kind.EQUAL);
+	static final Peg<Token> IF = kind(Kind.IF);
+	static final Peg<Token> IN = kind(Kind.IN);
+	static final Peg<Token> LAMBDA = kind(Kind.LAMBDA);
+	static final Peg<Token> LET = kind(Kind.LET);
+	static final Peg<Token> LPAREN = kind(Kind.LPAREN);
+	static final Peg<Token> MODULE = kind(Kind.MODULE);
+	static final Peg<Token> OF = kind(Kind.OF);
+	static final Peg<Token> RPAREN = kind(Kind.RPAREN);
+	static final Peg<Token> THEN = kind(Kind.THEN);
+	static final Peg<Token> TYPE = kind(Kind.TYPE);
+
+	static final Peg<Token> FALSE = kind(Kind.FALSE);
+	static final Peg<Token> TRUE = kind(Kind.TRUE);
+
+	static final Peg<Token> UCID = kind(Kind.UCID);
+	static final Peg<Token> LCID = kind(Kind.LCID);
+	static final Peg<Token> DIGITS = kind(Kind.DIGITS);
+
+	/* 型注釈
+	 * <tyVar>      ::= <lcid>
+	 *
+	 * <ctorHead>   ::= <ucid>
+	 *
+	 * <parenType>  ::= ( <type> )
+	 *
+	 * <ctorArg>    ::= ()
+	 *                | <tyVar>
+	 *                | <ctorHead>
+	 *                | <parenType>
+	 *
+	 * <ctorAnno>   ::= <ctorHead> <ctorArg>*
+	 *
+	 * <funTyArg>   ::= ()
+	 *                | <tyVar>
+	 *                | <ctorAnno>
+	 *                | <parenType>
+	 *
+	 * <type>       ::= <funTyArg> (-> <funTyArg>)*
+	 */
+	static final Peg<AnType.Var> tyVar =
+			LCID.map(token -> new AnType.Var(token.str(), token.loc()));
+
+	static final Peg<Token> ctorHead = UCID;
+
+	static final Peg<AnType> parenType = sequence(
+			LPAREN, lazy(() -> type()), RPAREN,
+			(s, ty, e) -> ty.updateLoc(locRange(s, e)));
+
+	static final Peg<AnType> ctorArg = choice(  // コンストラクタの引数部分に来れる要素
+			tyVar,
+			ctorHead.map(t -> new AnType.Type(t.str(), List.of(), t.loc())),
+			parenType);
+
+	static final Peg<AnType.Type> ctorAnno = sequence(
+			ctorHead, star(ctorArg),
+			(h, args) -> new AnType.Type(h.str(), args, locRange(h, args)));
+
+	static final Peg<AnType> funTyArg = choice(  // 関数型の引数部分に来れる要素
+			tyVar,
+			ctorAnno,
+			parenType);
+
+	static final Peg<AnType> type = sequence(funTyArg, star(sequence(ARROW, funTyArg, (_, t) -> t)),
+			(hd, tl) -> {
+				if(tl.size() == 0) {
+					return hd;
+				}
+				AnType result = tl.removeLast();
+				for(AnType ty : tl.reversed()) {
+					result = new AnType.Arrow(ty, result, locRange(ty, result));
+				}
+				return new AnType.Arrow(hd, result, locRange(hd, result));
+			});
+
+	private static Peg<AnType> type() {
 		return type;
 	}
 
-	private AnType parseUnit() {
-		Position start = current.pos();
-		consume(Kind.UNIT);
-		return new AnType.Unit(location(start, end));
+	/* パターン
+	 * <aPattern>   ::= <lcid>
+	 *                | ( <pattern> )
+	 *
+	 * <pattern>    ::= <ctorHead> <aPattern>*
+	 *                | <aPattern>
+	 */
+	static final Peg<Pattern> aPattern = choice(
+			LCID.map(t -> new Pattern.Var(t.str(), t.loc())),
+			sequence(LPAREN, lazy(() -> pattern()), RPAREN,
+					(s, pat, e) -> pat.updateLoc(locRange(s, e))));
+
+	static final Peg<Pattern> pattern = choice(
+			sequence(ctorHead, star(aPattern),
+					(h, args) -> new Pattern.Ctor(h.str(), args, locRange(h, args))),
+			aPattern);
+
+	private static Peg<Pattern> pattern() {
+		return pattern;
 	}
 
-	private AnType.Var maybeParseTyVar() {
-		if(current.kind() != LCID) {
-			return null;
-		}
-		return parseTyVar();
+	/* 式
+	 * <literal>    ::= <digits>
+	 *                | True
+	 *                | False
+	 *
+	 * <aExp>       ::= <literal>
+	 *                | <lcid>
+	 *                | <ctorHead>
+	 *                | ( <exp> )
+	 *
+	 * <appExp>     ::= <aExp>+
+	 *
+	 * <lambdaExp>  ::= \ <pattern>+ -> <exp>
+	 *
+	 * <letExp>     ::= let <funDecl>+ in <exp>
+	 *
+	 * <ifExp>      ::= if <exp> then <exp> else <exp>
+	 *
+	 * <caseExp>    ::= case <exp> of (<pattern> -> <exp>)+
+	 *
+	 * <exp>        ::= <appExp>
+	 *                | <lambdaExp>
+	 *                | <letExp>
+	 *                | <ifExp>
+	 *                | <caseExp>
+	 */
+	static final Peg<Exp> exp_ = lazy(() -> exp());
+
+	static final Peg<Exp.Cnst> literal = choice(
+			DIGITS.map(t -> new Exp.Cnst(Integer.parseInt(t.str()), t.loc())),
+			TRUE.map(t -> new Exp.Cnst(true, t.loc())),
+			FALSE.map(t -> new Exp.Cnst(false, t.loc())));
+
+	static final Peg<Exp> aExp = choice(
+			literal,
+			LCID.map(t -> new Exp.Var(t.str(), t.loc())),
+			ctorHead.map(t -> new Exp.Var(t.str(), t.loc())),
+			sequence(
+					LPAREN, exp_, RPAREN,
+					(s, exp, e) -> exp.updateLoc(locRange(s, e))));
+
+	static final Peg<Exp> appExp =
+			plus(aExp).map(l -> new Exp.App(l, locRange(l, l)));
+
+	static final Peg<Exp.Lamb> lambdaExp = sequence(
+			LAMBDA, plus(pattern), ARROW, mayBlock(exp_),
+			(s, pat, _, e) -> new Exp.Lamb(pat, e, locRange(s, e)));
+
+	static final Peg<Exp.Let> letExp = sequence(
+			LET, blockPlus(lazy(() -> valDecl())), SAMENT, IN, mayBlock(exp_),
+			(s, decls, _, _, e) -> new Exp.Let(decls, e, locRange(s, e)));
+
+	static final Peg<Exp.If> ifExp = choice(
+			sequence(IF, exp_, THEN, exp_, ELSE, exp_,  // one-line style
+					(s, c, _, e1, _, e2) -> new Exp.If(c, e1, e2, locRange(s, e2))),
+			sequence(IF, exp_, THEN, block(exp_), SAMENT, ELSE, block(exp_),  // two-block style
+					(s, c, _, e1, _, _, e2) -> new Exp.If(c, e1, e2, locRange(s, e2))));
+
+	static final Peg<CaseBranch> caseBranch = sequence(
+			pattern, ARROW, mayBlock(exp_),
+			(pat, _, e) -> new CaseBranch(pat, e, locRange(pat, e)));
+
+	static final Peg<Exp.Case> caseExp = sequence(
+			CASE, exp_, OF, blockPlus(caseBranch),
+			(s, c, _, cases) -> new Exp.Case(c, cases, locRange(s, cases)));
+
+	static final Peg<Exp> exp = choice(
+			appExp,
+			lambdaExp,
+			letExp,
+			ifExp,
+			caseExp);
+
+	private static Peg<Exp> exp() {
+		return exp;
 	}
 
-	private AnType.Var parseTyVar() {
-		Position start = current.pos();
-		String var = parse(LCID);
-		return new AnType.Var(var, location(start, end));
+	/* 宣言
+	 * <ctorImpl>   ::= <ctorHead> <ctorArg>*
+	 *
+	 * <variants>   ::= <ctorImpl>
+	 *                | (| <ctorImpl>)+
+	 *
+	 * <tyDecl>     ::= type <ctorHead> <tyVar>* = (| <ctorImpl>)+
+	 *
+	 * <tyAnno>     ::= <lcid> : <type>
+	 *
+	 * <valDecl>    ::= <tyAnno>? <lcid> <pattern>* = <exp>
+	 *
+	 * <topDecl>    ::= <tyDecl>
+	 *                | <valDecl>
+	 */
+	static final Peg<Constructor> ctorImpl = sequence(
+			UCID, star(ctorArg),
+			(name, args) -> new Constructor(name.str(), args, locRange(name, args)));
+
+	static final Peg<List<Constructor>> variants = choice(
+			join(ctorImpl, BAR),  // one-line style
+			blockPlus(sequence(BAR, ctorImpl, (_, v) -> v))); // multi-line style
+
+	static final Peg<Decl> tyDecl = sequence(
+			TYPE, UCID, star(tyVar), EQUAL, variants,
+			(s, name, vars, _, ctors) -> new TypeDecl(name.str(), vars, ctors, locRange(s, ctors)));
+
+	private record NameAndTyAnno(String name, AnType ty, Location loc) implements LocationHolder {};
+
+	static final Peg<NameAndTyAnno> tyAnno = sequence(
+			LCID, COLON, type, SAMENT,
+			(name, _, ty, _) -> new NameAndTyAnno(name.str(), ty, locRange(name, ty)));
+
+	static final Peg<Decl.ValDecl> valDecl = sequence(
+			optional(tyAnno), LCID, star(pattern), EQUAL, mayBlock(exp),
+			(maybe, name, args, _, e) -> {
+				if(maybe.isEmpty()) {
+					return new Decl.ValDecl(name.str(), Optional.empty(), args, e, locRange(name, e));
+				}
+				NameAndTyAnno anno = maybe.get();
+				if(!anno.name.equals(name.str())) {
+					todo("type annotaion name missmatch");
+				}
+				return new Decl.ValDecl(name.str(), Optional.of(anno.ty), args, e, locRange(anno, e));
+			});
+
+	private static Peg<Decl.ValDecl> valDecl() {
+		return valDecl;
 	}
 
+	// コンパイル単位
+	static final Peg<String> headLine = sequence(SAMENT, MODULE, UCID, (_, _, name) -> name.str());
 
+	static final Peg<Decl> topDecl = choice(
+			tyDecl,
+			valDecl);
 
-	private void nextToken() {
-		end = current.endPos();
-		current = next;
-		next = lexer.nextToken();
-
-		if(current.kind()==BR && cancelBr.contains(next.kind())) {
-			current = next;
-			next = lexer.nextToken();
-		}
-	}
-
-	private String parse(Kind expected) {
-		if(current.kind() == expected) {
-			String ret = current.value();
-			nextToken();
-			return ret;
-		} else {
-			throw new RuntimeException(
-					current.pos() + " cannot parse. "
-					+ "expected: " + expected
-					+ ", actual: " + current.kind());
-		}
-	}
-
-	private void consume(Kind expected) {
-		if(current.kind() == expected) {
-			nextToken();
-		} else {
-			throw new RuntimeException(
-					current.pos() + " cannot consume. "
-					+ "expected: " + expected
-					+ ", actual: " + current.kind());
-		}
-	}
-
-	private boolean maybeConsume(Kind expected) {
-		if(current.kind() == expected) {
-			nextToken();
-			return true;
-		}
-		return false;
-	}
-
-	private Location location(Position start, Position end) {
-		return new Location(lexer.getFileName(), start, end);
-	}
+	static final Peg<Module> module = sequence(
+			sequence(SAMENT, MODULE, UCID, (_, _, name) -> name.str()),
+			star(sequence(SAMENT, topDecl, (_, d) -> d)),
+			(name, decls) -> new Module(name, decls));
 }

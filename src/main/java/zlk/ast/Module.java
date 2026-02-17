@@ -7,8 +7,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public record Module(
 		String name,
-		List<Decl> decls,
-		String origin     // ファイル名
+		List<Decl> decls
 ) implements PrettyPrintable {
 
 	@Override

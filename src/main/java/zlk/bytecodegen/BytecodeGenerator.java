@@ -48,6 +48,7 @@ import zlk.util.Stack;
 public final class BytecodeGenerator {
 
 	private final CcModule module;
+	private final String origin;
 	private final IdMap<String> classNames;
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
@@ -62,11 +63,12 @@ public final class BytecodeGenerator {
 	private MethodVisitor mv;
 	private Stack<Runnable> pendings;
 
-	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins) {
+	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins, String origin) {
 		this.module = module;
 		this.classNames = new IdMap<>();
 		this.types = types;
 		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
+		this.origin = origin;
 		this.toplevelDescs = new IdMap<>();
 		this.toplevelDecls = new IdMap<>();
 		this.ctors = new IdMap<>();
@@ -125,7 +127,7 @@ public final class BytecodeGenerator {
 				null,
 				"java/lang/Object",
 				null);
-		cw.visitSource(module.origin() + ".zlk", null);
+		cw.visitSource(origin, null);
 		cw.visitNestHost(module.name().replace(".", "/"));
 		cw.visitEnd();
 	}
@@ -139,7 +141,7 @@ public final class BytecodeGenerator {
 				null,
 				"java/lang/Object",
 				new String[] {classNames.get(union.id())});
-		cw.visitSource(module.origin() + ".zlk", null);
+		cw.visitSource(origin, null);
 
 		for(int i = 0; i < ctor.args().size(); i++) {
 			Type type = ctor.args().get(i);
@@ -213,7 +215,7 @@ public final class BytecodeGenerator {
 				"java/lang/Object",
 				null);
 
-		cw.visitSource(module.origin() + ".zlk", null);
+		cw.visitSource(origin, null);
 
 		genConstructor();
 
@@ -228,7 +230,7 @@ public final class BytecodeGenerator {
 
 		cw.visitEnd();
 
-		fileWriter.accept(module.origin(), cw.toByteArray());
+		fileWriter.accept(origin.substring(0, origin.indexOf('.')), cw.toByteArray());
 	}
 
 	private void genConstructor() {

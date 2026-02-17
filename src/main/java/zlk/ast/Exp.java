@@ -44,6 +44,18 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		return exp instanceof Let;
 	}
 
+	default Exp updateLoc(Location loc) {
+		return switch (this) {
+		case Cnst(ConstValue value, Location _) -> new Cnst(value, loc);
+		case Var(String name, Location _) -> new Var(name, loc);
+		case Lamb(List<Pattern> args, Exp body, Location _) -> new Lamb(args, body, loc);
+		case App(List<Exp> exps, Location _) -> new App(exps, loc);
+		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> new If(cond, thenExp, elseExp, loc);
+		case Let(List<ValDecl> decls, Exp body, Location _) -> new Let(decls, body, loc);
+		case Case(Exp exp, List<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
+		};
+	}
+
 	/**
 	 * Appends the string representation of this expression to specified printer.
 	 * It does not terminate the line.
@@ -121,9 +133,9 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		}
 		case Case(Exp exp, List<CaseBranch> branches, _) -> {
 			pp.append("case ").append(exp).append(" of");
-			for(CaseBranch branch : branches) {
-				pp.endl().append(branch);
-			}
+			pp.indent(() -> {
+				branches.forEach(branch -> pp.endl().append(branch));
+			});
 		}
 		}
 	}

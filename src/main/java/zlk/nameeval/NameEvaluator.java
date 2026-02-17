@@ -147,7 +147,7 @@ public final class NameEvaluator {
 		if(env.scoped.size() != 0) {
 			throw new AssertionError();
 		}
-		return new IcModule(module.name(), icTypes, icDecls, module.origin());
+		return new IcModule(module.name(), icTypes, icDecls);
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {

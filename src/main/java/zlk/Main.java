@@ -25,6 +25,7 @@ import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
 import zlk.parser.Parser;
+import zlk.parser.Tokenized;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
 import zlk.recon.TypeReconstructor;
@@ -35,21 +36,23 @@ public class Main {
 	public static Class<?> clazz;
 
 	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchFieldException {
+
 		String name = "HelloMyLang.zlk";
 		String src =
 				"""
 				module HelloMyLang
 
 				type IntList =
-				| Nil
-				| Cons I32 IntList
+				  | Nil
+				  | Cons I32 IntList
 
-				sq a  =
+				sq a =
 				  let
 				    pow b c =
-				      if isZero c
-				      then 1
-				      else mul b (pow b (sub c 1))
+				      if isZero c then
+				        1
+				      else
+				        mul b (pow b (sub c 1))
 				  in
 				    pow a 2
 
@@ -75,8 +78,8 @@ public class Main {
 
 				sum list =
 				  case list of
-				  | Nil -> 0
-				  | Cons hd tl -> add hd (sum tl)
+				    Nil -> 0
+				    Cons hd tl -> add hd (sum tl)
 
 				ans1 =
 				  sq 42
@@ -92,16 +95,21 @@ public class Main {
 		System.out.println(src);
 		System.out.println();
 
+		System.out.println("-- TOKENS --");
+		Tokenized tokens = new Lexer(name, src).lex();
+		tokens.forEach(token -> System.out.println(token));
+		System.out.println();
+
 		System.out.println("-- AST --");
-		Module ast = new Parser(new Lexer(name, src)).parse();
-		ast.pp(System.out);
+		Module ast = Parser.parse(tokens);
+		System.out.println(ast.buildString());
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
 		NameEvaluator ne = new NameEvaluator(ast);
 		IcModule idcalc = ne.eval();
-		idcalc.pp(System.out);
+		System.out.println(idcalc.buildString());
 		System.out.println();
 
 		System.out.println("-- CONSTRAIN EXTRACTION --");
@@ -118,12 +126,6 @@ public class Main {
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
-
-//		System.out.println("-- TYPE CHECK --");  // TODO remove or support type variables
-//		TypeChecker typeChecker = new TypeChecker(types);
-//		typeChecker.check(idcalc);
-//		System.out.println(types);
-//		System.out.println();
 
 		System.out.println("-- CL CONV --");
 		CcModule clconv = new ClosureConverter(idcalc, types, builtinIds).convert();
@@ -146,7 +148,7 @@ public class Main {
 				}
 			};
 
-		new BytecodeGenerator(clconv, types, Builtin.functions()).compile(fileWriter);
+		new BytecodeGenerator(clconv, types, Builtin.functions(), name).compile(fileWriter);
 
 		System.out.println();
 		System.out.println("-- EXECUTE --");
