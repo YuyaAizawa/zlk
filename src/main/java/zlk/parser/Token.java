@@ -4,8 +4,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 
 public final class Token implements LocationHolder {
 	private final Source info;

@@ -3,7 +3,9 @@ package zlk.bytecodegen;
 import static zlk.util.ErrorUtils.neverHappen;
 import static zlk.util.ErrorUtils.todo;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -31,6 +33,7 @@ import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -38,7 +41,6 @@ import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcPattern;
-import zlk.util.Location;
 import zlk.util.Stack;
 
 /**
@@ -55,6 +57,7 @@ public final class BytecodeGenerator {
 	private final IdMap<String> toplevelDescs;
 	private final IdMap<CcFunDecl> toplevelDecls;
 	private final IdMap<CcCtor> ctors;
+	private final Map<String, String> unionSuperClassNames;
 	private ClassWriter cw;
 
 	// for compileDecl
@@ -72,6 +75,7 @@ public final class BytecodeGenerator {
 		this.toplevelDescs = new IdMap<>();
 		this.toplevelDecls = new IdMap<>();
 		this.ctors = new IdMap<>();
+		this.unionSuperClassNames = new HashMap<>();
 		this.pendings = new Stack<>();
 	}
 
@@ -83,10 +87,13 @@ public final class BytecodeGenerator {
 	 */
 	public void compile(BiConsumer<String, byte[]> fileWriter) {
 		module.types().forEach(union -> {
-			classNames.put(union.id(), unionSuperName(union));
+			String unionSuperName = unionSuperName(union);
+			classNames.put(union.id(), unionSuperName);
 			union.ctors().forEach(ctor -> {
-				classNames.put(ctor.id(), unionSubName(union, ctor));
+				String unionSubName = unionSubName(union, ctor);
+				classNames.put(ctor.id(), unionSubName);
 				ctors.put(ctor.id(), ctor);
+				unionSuperClassNames.put(unionSubName, unionSuperName);
 			});
 		});
 		module.funcs().forEach(decl -> {
@@ -106,6 +113,15 @@ public final class BytecodeGenerator {
 		return module.name().replace('.', '/')+"$"+union.id().simpleName()+"$"+ctor.id().simpleName();
 	}
 
+	/**
+	 * カスタムクラスのバイトコードを生成する．
+	 *
+	 * カスタムクラスは（今のところ）共通のinterfaceと各バリアントのfinal classで実装される．
+	 * 命名はmoduleName$interfaceName$variantName
+	 * nestのhostは（暫定的に）記述されたmoduleとなる
+	 * @param union
+	 * @param fileWriter
+	 */
 	private void genUnionClass(CcTypeDecl union, BiConsumer<String, byte[]> fileWriter) {
 		// super class
 		genUnionSuperClass(union);
@@ -196,7 +212,7 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private static String toDesc(Type type) {
+	private String toDesc(Type type) {
 		return switch(type) {
 		case Type.CtorApp atom -> toBinary(atom);
 		case Type.Arrow _ -> functionDesc;  // todo();
@@ -205,7 +221,23 @@ public final class BytecodeGenerator {
 	}
 
 	private void genMainClass(BiConsumer<String, byte[]> fileWriter) {
-		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
+			/*
+			 * フロー合流箇所のframeの計算でCustomTypeNameを求める．
+			 * CustomTypeのVariant以外の型はここに持ち込まなれない想定．
+			 * FUTURE: Record型もここで合流するか？
+			 */
+			@Override
+			protected String getCommonSuperClass(String type1, String type2) {
+				String type1Super = unionSuperClassNames.get(type1);
+				String type2Super = unionSuperClassNames.get(type2);
+				if(type1Super != null && type1Super.equals(type2Super)) {
+					return type1Super;
+				}
+				throw new IllegalArgumentException(
+						"super type not match: arg1="+ type1 + ", arg2=" + type2);
+			}
+		};
 
 		cw.visit(
 				Opcodes.V16,
@@ -219,14 +251,14 @@ public final class BytecodeGenerator {
 
 		genConstructor();
 
-		module.funcs().forEach(decl -> compileDecl(decl));
-
 		module.types().forEach(union -> {
-			cw.visitNestMember(toClassName(union.id()));
+			cw.visitNestMember(classNames.get(union.id()));
 			union.ctors().forEach(ctor -> {
-				cw.visitNestMember(toClassName(ctor.id()));
+				cw.visitNestMember(classNames.get(ctor.id()));
 			});
 		});
+
+		module.funcs().forEach(decl -> compileDecl(decl));
 
 		cw.visitEnd();
 
@@ -1004,7 +1036,7 @@ public final class BytecodeGenerator {
 		return funTy.ret();
 	}
 
-	private static String toFunctionApplyDescErased(Type.Arrow ty) {
+	private String toFunctionApplyDescErased(Type.Arrow ty) {
 		return toDesc(ty.arg(), ty.ret(), _ -> objectDesc);
 	}
 
@@ -1013,11 +1045,11 @@ public final class BytecodeGenerator {
 	 * @param ty
 	 * @return ディスクリプション
 	 */
-	private static String toBoxedDesc(Type.Arrow ty) {
+	private String toBoxedDesc(Type.Arrow ty) {
 		return toDesc(ty.arg(), ty.ret(), t -> toBoxed(t));
 	}
 
-	private static String getDescription(CcFunDecl decl, IdMap<Type> types) {
+	private String getDescription(CcFunDecl decl, IdMap<Type> types) {
 
 		List<Type> argTys = decl.args().stream()
 				.map(pat -> types.get(pat.headId()))
@@ -1026,7 +1058,7 @@ public final class BytecodeGenerator {
 		return toDesc(argTys, retTy);
 	}
 
-	private static String toDesc(Type argTy, Type retTy, Function<Type, String> mapper) {
+	private String toDesc(Type argTy, Type retTy, Function<Type, String> mapper) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		sb.append(mapper.apply(argTy));
@@ -1035,7 +1067,7 @@ public final class BytecodeGenerator {
 		return sb.toString();
 	}
 
-	private static String toDesc(List<Type> argTys, Type retTy) {
+	private String toDesc(List<Type> argTys, Type retTy) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		argTys.forEach(ty -> sb.append(toParamDesc(ty)));
@@ -1043,7 +1075,7 @@ public final class BytecodeGenerator {
 		sb.append(toParamDesc(retTy));
 		return sb.toString();
 	}
-	private static String toParamDesc(Type ty) {
+	private String toParamDesc(Type ty) {
 		return switch(ty) {
 		case Type.CtorApp atom -> toBinary(atom);
 		case Type.Arrow arow -> toFunctionClassDesc(arow);
@@ -1051,7 +1083,7 @@ public final class BytecodeGenerator {
 		};
 	}
 
-	private static String toBoxedDesc(List<Type> argTys, Type retTy) {
+	private String toBoxedDesc(List<Type> argTys, Type retTy) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		argTys.forEach(ty -> sb.append(toBoxed(ty)));
@@ -1060,7 +1092,7 @@ public final class BytecodeGenerator {
 		return sb.toString();
 	}
 
-	private static String toBoxedSignature(List<Type> argTys, Type retTy) {
+	private String toBoxedSignature(List<Type> argTys, Type retTy) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		argTys.forEach(ty -> sb.append(toBoxedSignature(ty)));
@@ -1072,35 +1104,14 @@ public final class BytecodeGenerator {
 	private static final String objectDesc = "Ljava/lang/Object;";
 	private static final String functionDesc = "Ljava/util/function/Function;";
 
-	private static String toBinary(Type.CtorApp ty) {
+	private String toBinary(Type.CtorApp ty) {
 		if(ty.equals(Type.BOOL)) { return "Z";}
 		if(ty.equals(Type.I32))  { return "I";}
 		if(ty.equals(Type.UNIT)) { return "V";}
-		return "L"+toClassName(ty.ctor())+";";
+		return "L"+classNames.get(ty.ctor())+";";
 	}
 
-	private static String toClassName(Id id) {
-		Id parent = id.parent();
-		if(parent == null) {
-			return id.simpleName();
-		}
-		if(Character.isUpperCase(parent.simpleName().charAt(0))) {
-			return toClassName(parent)+"$"+id.simpleName();
-		}
-		return id.canonicalName().replace(".", "/");
-	}
-	private static String toClassName(Type ty) {
-		return switch(ty) {
-		case Type.CtorApp atom ->
-			Primitive.tryFrom(ty)
-					.map(p -> p.boxedClassName)
-					.orElseGet(() -> toClassName(atom.ctor()));
-		case Type.Arrow _ -> functionDesc;
-		case Type.Var _ -> objectDesc;
-		};
-	}
-
-	private static String toBoxed(Type ty) {
+	private String toBoxed(Type ty) {
 		return switch(ty) {
 		case Type.CtorApp atom -> {
 			if (atom.equals(Type.I32) || atom.equals(Type.BOOL)) {
@@ -1113,7 +1124,7 @@ public final class BytecodeGenerator {
 		};
 	}
 
-	private static String toBoxedSignature(Type ty) {
+	private String toBoxedSignature(Type ty) {
 		return switch(ty) {
 		case Type.CtorApp atom -> {
 			if (atom.equals(Type.I32) || atom.equals(Type.BOOL)) {
@@ -1141,6 +1152,7 @@ public final class BytecodeGenerator {
 		return org.objectweb.asm.Type.getMethodType(descriptor);
 	}
 
+	// TODO: expIdで型を引く．switchじゃなくていいかも．
 	private Type getType(CcExp exp) {
 		return switch (exp) {
 		case CcCnst(ConstValue value, Location _) -> value.type();

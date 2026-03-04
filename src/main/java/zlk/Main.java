@@ -42,9 +42,9 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type IntList =
+				type List a =
 				  | Nil
-				  | Cons I32 IntList
+				  | Cons a (List a)
 
 				sq a =
 				  let
@@ -124,7 +124,7 @@ public class Main {
 		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
+			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id(), union.vars())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");

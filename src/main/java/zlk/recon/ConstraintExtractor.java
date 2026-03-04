@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -34,7 +35,6 @@ import zlk.recon.constraint.Constraint.CPhase;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
-import zlk.util.Location;
 
 public final class ConstraintExtractor {
 

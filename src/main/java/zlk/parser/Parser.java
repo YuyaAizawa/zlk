@@ -19,12 +19,12 @@ import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
 import zlk.ast.Decl;
 import zlk.ast.Decl.TypeDecl;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
 import zlk.parser.Token.Kind;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 
 
 /**
