@@ -2,7 +2,7 @@ package zlk.parser;
 
 import java.util.Arrays;
 
-import zlk.util.Position;
+import zlk.common.Position;
 
 public final class Source {
 	public final String fileName;

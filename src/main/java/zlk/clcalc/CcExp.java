@@ -10,12 +10,12 @@ import zlk.clcalc.CcExp.CcLet;
 import zlk.clcalc.CcExp.CcMkCls;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.common.ConstValue;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

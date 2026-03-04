@@ -2,8 +2,8 @@ package zlk.ast;
 
 import java.util.List;
 
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

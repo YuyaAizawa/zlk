@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.Set;
 
 import zlk.common.ConstValue;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -19,8 +21,6 @@ import zlk.idcalc.IcExp.IcLet;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

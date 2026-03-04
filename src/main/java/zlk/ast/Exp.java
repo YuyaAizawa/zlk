@@ -11,8 +11,8 @@ import zlk.ast.Exp.Lamb;
 import zlk.ast.Exp.Let;
 import zlk.ast.Exp.Var;
 import zlk.common.ConstValue;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
