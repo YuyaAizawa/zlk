@@ -24,6 +24,7 @@ import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -45,7 +46,6 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
-import zlk.util.Location;
 
 /**
  * クロージャ変換と関数のトップレベルへのflattenを行う

@@ -1,4 +1,4 @@
-package zlk.util;
+package zlk.common;
 
 import zlk.parser.Source;
 import zlk.util.pp.PrettyPrintable;

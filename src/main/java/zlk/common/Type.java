@@ -218,9 +218,17 @@ permits CtorApp, Arrow, Var {
 		return switch(this) {
 		case CtorApp _ -> throw invalidTypeApply(this, arg);
 		case Arrow(Type pattern, Type ret) -> {
-			BindList binds = new BindList();
-			pattern.bind(arg, binds);
-			yield ret.subst(binds);
+//			try {
+				BindList binds = new BindList();
+				System.out.println("this: "+this.buildString());
+				System.out.println("arg: "+arg.buildString());
+				pattern.bind(arg, binds);
+				System.out.println("binds: "+binds);
+				System.out.println("ret: "+ret.buildString());
+				yield ret.subst(binds);
+//			} catch (IllegalArgumentException e) {
+//				throw invalidTypeApply(this, arg);
+//			}
 		}
 		case Var _ -> throw invalidTypeApply(this, arg);
 		};
@@ -259,6 +267,10 @@ permits CtorApp, Arrow, Var {
 		case CtorApp(Id ctor, List<Type> args) -> {
 			if(target instanceof CtorApp(Id targetCtor, List<Type> targetArgs)) {
 				if(ctor.equals(targetCtor)) {
+					if(args.size() != targetArgs.size()) {
+						throw new IllegalArgumentException(
+								String.format("Invalid type bind. this: %s, target: %s", this, target));
+					}
 					for (int i = 0; i < args.size(); i++) {
 						args.get(i).bind(targetArgs.get(i), binds);
 					}
