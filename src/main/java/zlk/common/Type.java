@@ -71,7 +71,7 @@ permits CtorApp, Arrow, Var {
 
 	public static final List<CtorApp> BUILTIN = List.of(UNIT, BOOL, I32);
 
-	public static Type arrow(Type... rest) {
+	public static Type.Arrow arrow(Type... rest) {
 		if(rest.length < 2) {
 			throw new IllegalArgumentException("length: "+rest.length);
 		}
@@ -95,7 +95,7 @@ permits CtorApp, Arrow, Var {
 		return result;
 	}
 
-	public static Type arrow(List<Type> types) {
+	public static Type.Arrow arrow(List<Type> types) {
 		return arrow(types.toArray(Type[]::new));
 	}
 
