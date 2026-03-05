@@ -6,7 +6,6 @@ import static zlk.util.ErrorUtils.todo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -212,14 +211,6 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private String toDesc(Type type) {
-		return switch(type) {
-		case Type.CtorApp atom -> toBinary(atom);
-		case Type.Arrow _ -> functionDesc;  // todo();
-		case Type.Var _ -> objectDesc;  // { throw new Error(name); }
-		};
-	}
-
 	private void genMainClass(BiConsumer<String, byte[]> fileWriter) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
 			/*
@@ -396,7 +387,7 @@ public final class BytecodeGenerator {
 					}
 
 					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(nextId),
-							"()" + functionDesc, false);
+							"()" + FUNCTION_DESC, false);
 				} else {
 					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(id),
 							descriptor, false);
@@ -434,7 +425,7 @@ public final class BytecodeGenerator {
 						nextId = lambdaId;
 					}
 					mv.visitMethodInsn(Opcodes.INVOKESTATIC, module.name(), javaMethodName(nextId),
-							"()" + functionDesc, false);
+							"()" + FUNCTION_DESC, false);
 				}
 
 			});
@@ -526,7 +517,7 @@ public final class BytecodeGenerator {
 								Opcodes.INVOKESPECIAL,
 								subclassName,
 								"<init>",
-								toDesc(ctor.args(), Type.UNIT),
+								toMethodDesc(ctor.args(), Type.UNIT),
 								false);
 					} else {  // 一旦Functionにしてapplyのチェーンで部分適用を実現
 						// TODO: indyで最適化する余地がある
@@ -566,16 +557,16 @@ public final class BytecodeGenerator {
 				loadLocal(locals.indexOf(cap), types.get(cap));
 			});
 
-			mv.visitInvokeDynamicInsn("apply", toDesc(indyArgTys, indyReturnTy), new Handle(
+			mv.visitInvokeDynamicInsn("apply", toMethodDesc(indyArgTys, indyReturnTy), new Handle(
 					Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
 					"(Ljava/lang/invoke/MethodHandles$Lookup;" + "Ljava/lang/String;"
 							+ "Ljava/lang/invoke/MethodType;" + "Ljava/lang/invoke/MethodType;"
 							+ "Ljava/lang/invoke/MethodHandle;" + "Ljava/lang/invoke/MethodType;"
 							+ ")Ljava/lang/invoke/CallSite;",
-					false), toMethodType(toFunctionApplyDescErased(indyReturnTy)),
+					false), toMethodType(toTypeErasedMethodDesc(indyReturnTy.arg(), indyReturnTy.ret())),
 					new Handle(Opcodes.H_INVOKESTATIC, module.name(), javaMethodName(impl),
 							toplevelDescs.get(impl), false),
-					toMethodType(toBoxedDesc(indyReturnTy)));
+					toMethodType(toBoxedMethodDesc(indyReturnTy.arg(), indyReturnTy.ret())));
 		}
 		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
 			Label l1 = new Label();
@@ -753,7 +744,7 @@ public final class BytecodeGenerator {
 		String subclassName = classNames.get(id);
 		String argsDesc = ctor.args()
 				.stream()
-				.map(arg -> toParamDesc(arg))
+				.map(arg -> toDesc(arg))
 				.collect(Collectors.joining(""));
 		String retDesc = "L"+subclassName+";";
 		String desc = "("+argsDesc+")"+retDesc;
@@ -780,7 +771,7 @@ public final class BytecodeGenerator {
 					Opcodes.INVOKESPECIAL,
 					subclassName,
 					"<init>",
-					toDesc(argTys, Type.UNIT),
+					toMethodDesc(argTys, Type.UNIT),
 					false);
 
 			mv.visitInsn(Opcodes.ARETURN);
@@ -827,7 +818,7 @@ public final class BytecodeGenerator {
 	// TODO 名前に「計画に追加する」ニュアンスを
 	// TODO retTyからSignatureTypeを書く
 	private void genBoxedMethod(Id name, List<Type> argTys, Id original, Type retTy) {
-		String desc = toBoxedDesc(argTys, retTy);
+		String desc = toBoxedMethodDesc(argTys, retTy);
 		toplevelDescs.put(name, desc);
 		pendings.push(() -> {
 			mv = cw.visitMethod(
@@ -862,8 +853,8 @@ public final class BytecodeGenerator {
 		});
 	}
 
-	private void genCurryingStep(Id name, List<Type> argTys, Id target, Type retTy) {
-		String desc = toBoxedDesc(argTys, retTy);
+	private void genCurryingStep(Id name, List<Type> argTys, Id target, Type.Arrow retTy) {
+		String desc = toBoxedMethodDesc(argTys, retTy);
 		String sign = toBoxedSignature(argTys, retTy);
 		toplevelDescs.put(name, desc);
 		pendings.push(() -> {
@@ -895,14 +886,14 @@ public final class BytecodeGenerator {
 							+ "Ljava/lang/invoke/MethodType;"
 							+ ")Ljava/lang/invoke/CallSite;",
 							false),
-					toMethodType("("+objectDesc+")"+objectDesc),
+					toMethodType("("+OBJECT_DESC+")"+OBJECT_DESC),
 					new Handle(
 							Opcodes.H_INVOKESTATIC,
 							module.name(),
 							javaMethodName(target),
 							toplevelDescs.get(target),
 							false),
-					toMethodType(toBoxedDesc(retTy.asArrow())));
+					toMethodType(toBoxedMethodDesc(retTy.arg(), retTy.ret())));
 
 			mv.visitInsn(Opcodes.ARETURN);
 
@@ -1001,14 +992,14 @@ public final class BytecodeGenerator {
 		// カリー化されている前提
 		mv.visitMethodInsn(
 				Opcodes.INVOKEINTERFACE,
-				"java/util/function/Function",
+				FUNCTION_CLASS_NAME,
 				"apply",
 				"(Ljava/lang/Object;)Ljava/lang/Object;",
 				true);
 
 		Type retTy = ty.ret();
 		if(retTy.isArrow()) {
-			mv.visitTypeInsn(Opcodes.CHECKCAST, toFunctionClassName(retTy.asArrow()));
+			mv.visitTypeInsn(Opcodes.CHECKCAST, FUNCTION_CLASS_NAME);
 		} else {
 			Primitive.tryFrom(retTy).ifPresent(p -> {
 				p.genCheckCast(mv);
@@ -1029,24 +1020,11 @@ public final class BytecodeGenerator {
 		Primitive.tryFrom(argTy).ifPresent(p -> p.genBoxing(mv));
 		mv.visitMethodInsn(
 				Opcodes.INVOKEINTERFACE,
-				"java/util/function/Function",
+				FUNCTION_CLASS_NAME,
 				"apply",
 				"(Ljava/lang/Object;)Ljava/lang/Object;",
 				true);
 		return funTy.ret();
-	}
-
-	private String toFunctionApplyDescErased(Type.Arrow ty) {
-		return toDesc(ty.arg(), ty.ret(), _ -> objectDesc);
-	}
-
-	/**
-	 * （カリー化された）関数オブジェクトに適用する際のディスクリプションを返す．
-	 * @param ty
-	 * @return ディスクリプション
-	 */
-	private String toBoxedDesc(Type.Arrow ty) {
-		return toDesc(ty.arg(), ty.ret(), t -> toBoxed(t));
 	}
 
 	private String getDescription(CcFunDecl decl, IdMap<Type> types) {
@@ -1055,41 +1033,46 @@ public final class BytecodeGenerator {
 				.map(pat -> types.get(pat.headId()))
 				.toList();
 		Type retTy = types.get(decl.id()).dropArgs(argTys.size());
-		return toDesc(argTys, retTy);
+		return toMethodDesc(argTys, retTy);
 	}
 
-	private String toDesc(Type argTy, Type retTy, Function<Type, String> mapper) {
+	/**
+	 * 指定した型のディスクリプタ表現を返す
+	 * @param type
+	 * @return
+	 */
+	private String toDesc(Type type) {
+		return switch(type) {
+		case Type.CtorApp atom -> {
+			if(type.equals(Type.BOOL)) { yield "Z";}
+			if(type.equals(Type.I32))  { yield "I";}
+			if(type.equals(Type.UNIT))  { yield "V";}  // コンストラクタ用
+			yield "L"+classNames.get(atom.ctor())+";";
+		}
+		case Type.Arrow _ -> FUNCTION_DESC;
+		case Type.Var _ -> OBJECT_DESC;
+		};
+	}
+
+	private static String toMethodDesc(List<Type> argTys, Type retTy, Function<Type, String> mapper) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
-		sb.append(mapper.apply(argTy));
+		argTys.forEach(ty -> sb.append(mapper.apply(ty)));
 		sb.append(")");
 		sb.append(mapper.apply(retTy));
 		return sb.toString();
 	}
-
-	private String toDesc(List<Type> argTys, Type retTy) {
-		StringBuilder sb = new StringBuilder();
-		sb.append("(");
-		argTys.forEach(ty -> sb.append(toParamDesc(ty)));
-		sb.append(")");
-		sb.append(toParamDesc(retTy));
-		return sb.toString();
+	private String toMethodDesc(List<Type> argTys, Type retTy) {
+		return toMethodDesc(argTys, retTy, this::toDesc);
 	}
-	private String toParamDesc(Type ty) {
-		return switch(ty) {
-		case Type.CtorApp atom -> toBinary(atom);
-		case Type.Arrow arow -> toFunctionClassDesc(arow);
-		case Type.Var _ -> objectDesc;
-		};
+	private String toBoxedMethodDesc(List<Type> argTys, Type retTy) {
+		return toMethodDesc(argTys, retTy, this::toBoxed);
 	}
-
-	private String toBoxedDesc(List<Type> argTys, Type retTy) {
-		StringBuilder sb = new StringBuilder();
-		sb.append("(");
-		argTys.forEach(ty -> sb.append(toBoxed(ty)));
-		sb.append(")");
-		sb.append(toBoxed(retTy));
-		return sb.toString();
+	private String toBoxedMethodDesc(Type argTy, Type retTy) {
+		return toMethodDesc(List.of(argTy), retTy, this::toBoxed);
+	}
+	private String toTypeErasedMethodDesc(Type argTy, Type retTy) {
+		return toMethodDesc(List.of(argTy), retTy, _ -> OBJECT_DESC);
 	}
 
 	private String toBoxedSignature(List<Type> argTys, Type retTy) {
@@ -1101,51 +1084,24 @@ public final class BytecodeGenerator {
 		return sb.toString();
 	}
 
-	private static final String objectDesc = "Ljava/lang/Object;";
-	private static final String functionDesc = "Ljava/util/function/Function;";
-
-	private String toBinary(Type.CtorApp ty) {
-		if(ty.equals(Type.BOOL)) { return "Z";}
-		if(ty.equals(Type.I32))  { return "I";}
-		if(ty.equals(Type.UNIT)) { return "V";}
-		return "L"+classNames.get(ty.ctor())+";";
-	}
+	private static final String FUNCTION_CLASS_NAME = "java/util/function/Function";
+	private static final String OBJECT_DESC = "Ljava/lang/Object;";
+	private static final String FUNCTION_DESC = "L" + FUNCTION_CLASS_NAME + ";";
 
 	private String toBoxed(Type ty) {
-		return switch(ty) {
-		case Type.CtorApp atom -> {
-			if (atom.equals(Type.I32) || atom.equals(Type.BOOL)) {
-				yield Primitive.of(atom).boxedClassDesc;
-			}
-			yield toBinary(atom);
+		if (ty.equals(Type.I32) || ty.equals(Type.BOOL)) {
+			return Primitive.of((Type.CtorApp)ty).boxedClassDesc;
 		}
-		case Type.Arrow _ -> functionDesc;
-		case Type.Var _ -> objectDesc;
-		};
+		return toDesc(ty);
 	}
 
 	private String toBoxedSignature(Type ty) {
 		return switch(ty) {
-		case Type.CtorApp atom -> {
-			if (atom.equals(Type.I32) || atom.equals(Type.BOOL)) {
-				yield Primitive.of(atom).boxedClassDesc;
-			} else {
-				yield toBinary(atom);
-			}
-		}
+		case Type.CtorApp atom -> toBoxed(atom);
 		case Type.Arrow(Type arg, Type ret) ->
 			"Ljava/util/function/Function<"+toBoxedSignature(arg)+toBoxedSignature(ret)+">;";
-		case Type.Var _ -> objectDesc;  // TODO: できるだけ正確な型を
+		case Type.Var _ -> OBJECT_DESC;  // TODO: できるだけ正確な型を
 		};
-	}
-
-	private static String toFunctionClassDesc(Type.Arrow ty) {
-		return "L"+toFunctionClassName(ty)+";";
-	}
-
-	private static String toFunctionClassName(Type.Arrow fun) {
-		Objects.requireNonNull(fun);
-		return "java/util/function/Function";
 	}
 
 	private static org.objectweb.asm.Type toMethodType(String descriptor) {
