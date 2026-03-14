@@ -63,8 +63,8 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case FlexVar(int id, Optional<String> name) ->
-			pp.append("[").append(name.orElseGet(() -> String.valueOf(id))).append("]");
+		case FlexVar(int id, Optional<String> _) ->
+			pp.append("[").append(id).append("]");
 		case RigidVar(String name) ->
 			pp.append("<").append(name).append(">");
 		case Structure(FlatType flatType) ->

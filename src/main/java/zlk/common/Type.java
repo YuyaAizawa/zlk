@@ -8,7 +8,6 @@ import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
-import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -34,6 +33,11 @@ permits CtorApp, Arrow, Var {
 		public CtorApp(Id id) {
 			this(id, List.of());
 		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
 	}
 
 	/**
@@ -57,13 +61,23 @@ permits CtorApp, Arrow, Var {
 			}
 			return args;
 		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
 	}
 
 	/**
 	 * 型変数
 	 * @param name 変数名
 	 */
-	record Var(String name) implements Type {}
+	record Var(String name) implements Type {
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
 
 	public static final CtorApp UNIT = new CtorApp(Id.fromCanonicalName("Unit"));
 	public static final CtorApp BOOL = new CtorApp(Id.fromCanonicalName("Bool"));
@@ -173,14 +187,10 @@ permits CtorApp, Arrow, Var {
 		return flatten;
 	}
 
-	default Type toTree(List<Type> tail) {
-		Stack<Type> stack = new Stack<>();
-		stack.push(this);
-		tail.forEach(stack::push);
-
-		Type result = stack.pop();
-		while(!stack.isEmpty()) {
-			result = new Arrow(stack.pop(), result);
+	public static Type fromList(List<Type> list) {
+		Type result = list.getLast();
+		for(int i = list.size()-2; i >= 0; i--) {
+			result = new Arrow(list.get(i), result);
 		}
 		return result;
 	}
@@ -218,17 +228,13 @@ permits CtorApp, Arrow, Var {
 		return switch(this) {
 		case CtorApp _ -> throw invalidTypeApply(this, arg);
 		case Arrow(Type pattern, Type ret) -> {
-//			try {
+			try {
 				BindList binds = new BindList();
-				System.out.println("this: "+this.buildString());
-				System.out.println("arg: "+arg.buildString());
 				pattern.bind(arg, binds);
-				System.out.println("binds: "+binds);
-				System.out.println("ret: "+ret.buildString());
 				yield ret.subst(binds);
-//			} catch (IllegalArgumentException e) {
-//				throw invalidTypeApply(this, arg);
-//			}
+			} catch (IllegalArgumentException e) {
+				throw invalidTypeApply(this, arg);
+			}
 		}
 		case Var _ -> throw invalidTypeApply(this, arg);
 		};

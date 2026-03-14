@@ -93,12 +93,10 @@ public final class ClosureConverter {
 		IdList frees = fvFunc(ccBody, args_);
 
 		if(frees.isEmpty()) {
-//			System.out.println(id + " is not cloeure.");
 			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
-//			System.out.println(id + " is cloeure. frees: "+frees);
 			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).dropArgs(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
@@ -129,7 +127,7 @@ public final class ClosureConverter {
 		args_.forEach(pat -> types.add(type.get(pat.headId())));
 		types.add(retTy);
 
-		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));  // TODO: Type.arrow(types)
+		Type clsTy = Type.fromList(types);
 		Id clsId = freshId(original);
 		type.put(clsId, clsTy);
 

@@ -267,14 +267,16 @@ public final class ConstraintExtractor {
 
 	private Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
 		PatternBinder pb = new PatternBinder();
+		System.out.println(branch.pattern());
 		pb.bind(branch.pattern(), patExpected, freshFlex);
-
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		ArrayList<Constraint> cons = new ArrayList<>(pb.cons.size()+1);
 		cons.addAll(pb.cons);
 		cons.add(bodyCon);
-
+		System.out.println("extractFromCaseBranch");
+		System.out.println(pb.headers);
+		System.out.println(pb.vars);
 		return new CLet(
 				List.of(),
 				pb.vars,

@@ -78,4 +78,3 @@ permits Var, Dector {
 		}
 	}
 }
-

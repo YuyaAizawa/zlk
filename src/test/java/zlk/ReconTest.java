@@ -48,9 +48,9 @@ public class ReconTest {
 	@Test
 	void genericTypeInLetExp() {
 		String src ="""
-				type IntList =
+				type List a =
 				  | Nil
-				  | Cons I32 IntList
+				  | Cons a (List a)
 
 				car list =
 				  case list of
@@ -71,7 +71,7 @@ public class ReconTest {
 
 		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
 		module.getType("rectest.id").is("a -> a");
-		module.getType("rectest.res").is("IntList");
+		module.getType("rectest.res").is("List I32");
 	}
 
 	@Test

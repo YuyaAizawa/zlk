@@ -60,6 +60,13 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 * @param header スコープ内で導入された変数と型情報の対応
 	 * @param headerCons 定義部の制約(要素は強連結成分ごとで順序は依存関係を反映)
 	 * @param bodyCons スコープ（letやcaseの分岐）の中で得られた本体式に対する制約
+	 *
+	 * <h3>注意する箇所</h3>
+	 * <li>header に現れる自由変数のうち CLet 内で新規に作ったものは flexes に入っている
+	 * <li>headerCons でのみ使われる fresh も、その CLet 内で新規なら flexes に入っている
+	 * <li>外から渡された expected 由来の変数は flexes に入れない
+	 * <li>genTargets に入る binder だけが generalize 対象
+	 *
 	 */
 	record CLet(
 			List<Variable> rigids,
