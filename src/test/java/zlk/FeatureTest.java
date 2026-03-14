@@ -3,7 +3,6 @@ package zlk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import zlk.common.Type;
 import zlk.tester.DumpOnFailureWatcher;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
@@ -114,7 +113,7 @@ public class FeatureTest {
 		  map isZero_ (Cons 0 (Cons 1 (Cons 2 Nil)))
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("map").is(Type.I32);
+		module.getType("map").is("(a -> b) -> List a -> List b");
 		module.getValue("test").is("Cons True (Cons False (Cons False Nil))");
 	}
 
