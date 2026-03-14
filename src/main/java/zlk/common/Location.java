@@ -44,6 +44,10 @@ public final class Location implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
+		if(this == NO_LOC) {
+			pp.append("NO_LOC");
+			return;
+		}
 		Position start = src.getPosition(this.start);
 		Position end = src.getPosition(this.end);
 		pp.append(start).append("-").append(end).append("@").append(src.fileName);

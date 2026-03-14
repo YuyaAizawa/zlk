@@ -85,6 +85,9 @@ public class ModuleTester {
 			return;
 		}
 
+		System.out.println("------------ before -------------");
+		System.out.println(cint);
+
 		this.types = new IdMap<>();
 		Builtin.functions().forEach(fun -> types.put(fun.id(), fun.type()));
 		module.types().forEach(union ->
@@ -95,6 +98,9 @@ public class ModuleTester {
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
+		System.out.println("------------ after -------------");
+		System.out.println(cint);
+		System.out.println(types);
 
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());

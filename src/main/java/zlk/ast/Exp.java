@@ -31,7 +31,15 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 	}
 	record Var(String name, Location loc) implements Exp {}
 	record Lamb(List<Pattern> args, Exp body, Location loc) implements Exp {}
-	record App(List<Exp> exps, 	Location loc) implements Exp {}
+	record App(List<Exp> exps, 	Location loc) implements Exp {
+		public App(List<Exp> exps, 	Location loc) {
+			if(exps.size() <= 1) {
+				throw new IllegalArgumentException();
+			}
+			this.exps = exps;
+			this.loc = loc;
+		}
+	}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
 	record Let(List<ValDecl> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, List<CaseBranch> branches, Location loc) implements Exp {}

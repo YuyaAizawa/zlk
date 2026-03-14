@@ -24,6 +24,7 @@ final class PatternBinder {
 			headers.put(id, expected);
 		}
 		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
+			System.out.println("PatternBinder.bind: "+ctor.type());
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 			vars.addAll(ctorInfo.flexes());
