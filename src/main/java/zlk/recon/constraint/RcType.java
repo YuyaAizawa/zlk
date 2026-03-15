@@ -57,14 +57,14 @@ permits VarN, AppN, FunN {
 			}
 		};
 
-		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
-
 		RcType resultTy = conv.apply(ty);
 		List<RcType> argTys = new java.util.ArrayList<>();
 		while (resultTy instanceof RcType.FunN(RcType arg, RcType ret)) {
 			argTys.add(arg);
 			resultTy = ret;
 		}
+
+		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
 
 		return new FromType(flexes, argTys, resultTy);
 	}

@@ -23,14 +23,16 @@ final class PatternBinder {
 		case IcPattern.Var(Id id, _) -> {
 			headers.put(id, expected);
 		}
+
 		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
-			System.out.println("PatternBinder.bind: "+ctor.type());
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
-			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 			vars.addAll(ctorInfo.flexes());
+
 			if (args.size() != ctorInfo.argTys().size()) {
 				throw new RuntimeException("arity missmatch");  // TODO: コンパイルエラーに
 			}
+			cons.add(new CEqual(ctorInfo.resultTy(), expected));
+
 			for (int i = 0; i < args.size(); i++) {
 				bind(args.get(i).pattern(), ctorInfo.argTys().get(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
 			}

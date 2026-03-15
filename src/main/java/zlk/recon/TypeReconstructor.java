@@ -81,13 +81,8 @@ public class TypeReconstructor {
 		}
 		case CLocal(Id id, RcType expectation) -> {
 			Variable actual = instantiateIfGeneralized(letRank, env.get(id));
-			System.out.println("id: "+id.buildString()+", value: "+env.get(id).buildString()+", rank: "+env.get(id).get().rank);
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			System.out.println("actual: "+actual.buildString());
-			System.out.println("expected: "+expected.buildString());
 			Unify.unify(actual, expected);
-			System.out.println("unified: "+actual.buildString());
-			System.out.println();
 		}
 		case CForeign(Id id, Type type, RcType expectation) -> {
 			Map<String, Variable> typeVars =
@@ -119,8 +114,6 @@ public class TypeReconstructor {
 			introduce(flexes, nextRank);
 
 			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
-			System.out.println("CLet local:");
-			locals.forEach((id, v) -> System.out.println("    id: "+id+", var: "+v.buildString()+", rank: "+v.get().rank));
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
 
 			// 強連結成分ごとに解決
@@ -128,7 +121,6 @@ public class TypeReconstructor {
 				solve(phase.cons(), nextRank, newEnv);
 
 				// let宣言の関数を一般化
-				System.out.println("phase.genTargets(): "+phase.genTargets());
 				List<Variable> anchors = phase.genTargets().stream().map(locals::get).toList();
 				final int youngMark = gMarkCounter++;
 				final int visitMark = gMarkCounter++;
