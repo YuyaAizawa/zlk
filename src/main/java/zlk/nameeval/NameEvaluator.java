@@ -20,6 +20,7 @@ import zlk.ast.Exp.Var;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -41,7 +42,6 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
-import zlk.util.Location;
 
 public final class NameEvaluator {
 

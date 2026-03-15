@@ -1,11 +1,10 @@
 package zlk.recon;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -34,7 +33,6 @@ import zlk.recon.constraint.Constraint.CPhase;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
-import zlk.util.Location;
 
 public final class ConstraintExtractor {
 
@@ -85,7 +83,7 @@ public final class ConstraintExtractor {
 					List.of(),
 					args_.binder.vars,
 					args_.binder.headers,
-					List.of(new CPhase(args_.binder.cons, extractIds(args))),
+					List.of(new CPhase(args_.binder.cons, new IdList())),  // argsは一般化対象でない
 					extract(body, args_.resultTy)),
 				new CEqual(args_.funTy, expected));
 			yield new CExists(args_.vars, argsCons);
@@ -268,13 +266,11 @@ public final class ConstraintExtractor {
 	private Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
 		PatternBinder pb = new PatternBinder();
 		pb.bind(branch.pattern(), patExpected, freshFlex);
-
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		ArrayList<Constraint> cons = new ArrayList<>(pb.cons.size()+1);
 		cons.addAll(pb.cons);
 		cons.add(bodyCon);
-
 		return new CLet(
 				List.of(),
 				pb.vars,
@@ -282,14 +278,6 @@ public final class ConstraintExtractor {
 				List.of(new CPhase(cons, new IdList())),  // case branchは一般化する対象なし
 				new CEqual(branchExpected, branchExpected)  // TODO: 特に制約がないことを表せた方が良いか？
 		);
-	}
-
-	private static IdList extractIds(List<IcPattern> patterns) {
-		Set<Id> ids = new HashSet<>();
-		for(IcPattern pattern : patterns) {
-			pattern.accumulateVars(ids);
-		}
-		return new IdList(ids);
 	}
 
 	// let内での依存を関係を取得する

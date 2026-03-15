@@ -6,8 +6,8 @@ import zlk.ast.AnType.Arrow;
 import zlk.ast.AnType.Type;
 import zlk.ast.AnType.Unit;
 import zlk.ast.AnType.Var;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

@@ -57,8 +57,6 @@ permits VarN, AppN, FunN {
 			}
 		};
 
-		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
-
 		RcType resultTy = conv.apply(ty);
 		List<RcType> argTys = new java.util.ArrayList<>();
 		while (resultTy instanceof RcType.FunN(RcType arg, RcType ret)) {
@@ -66,7 +64,21 @@ permits VarN, AppN, FunN {
 			resultTy = ret;
 		}
 
+		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
+
 		return new FromType(flexes, argTys, resultTy);
+	}
+
+	default List<RcType> flatten() {
+		List<RcType> flatten = new ArrayList<>();
+
+		RcType ret = this;
+		while(ret instanceof FunN fun) {
+			flatten.add(fun.arg());
+			ret = fun.ret();
+		}
+		flatten.add(ret);
+		return flatten;
 	}
 
 	@Override
@@ -75,8 +87,19 @@ permits VarN, AppN, FunN {
 		case VarN(Variable var) -> {
 			pp.append(var);
 		}
-		case AppN(Id id, _) -> {
+		case AppN(Id id, List<RcType> args) -> {
 			pp.append(id);
+			for(RcType arg : args) {
+				pp.append(" ");
+				switch(arg) {
+				case VarN _ ->
+					pp.append(arg);
+				case AppN(Id _, List<RcType> args_) when args_.isEmpty() ->
+					pp.append(arg);
+				default ->
+					pp.append("(").append(arg).append(")");
+				}
+			}
 		}
 		case FunN(RcType arg, RcType ret) -> {
 			switch(arg) {

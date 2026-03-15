@@ -80,7 +80,7 @@ public class TypeReconstructor {
 			Unify.unify(actual, expected);
 		}
 		case CLocal(Id id, RcType expectation) -> {
-			Variable actual = instanciateIfNeed(letRank, env.get(id));
+			Variable actual = instantiateIfGeneralized(letRank, env.get(id));
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
 			Unify.unify(actual, expected);
 		}
@@ -266,7 +266,7 @@ public class TypeReconstructor {
 	}
 
 	// rank == 0のものを具体化（コピー）
-	private Variable instanciateIfNeed(int letRank, Variable v) {
+	private Variable instantiateIfGeneralized(int letRank, Variable v) {
 		Variable copy = instanciateIfNeedHelp(letRank, v);
 		restore(v);
 		return copy;

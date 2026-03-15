@@ -11,8 +11,8 @@ import zlk.ast.Exp.Lamb;
 import zlk.ast.Exp.Let;
 import zlk.ast.Exp.Var;
 import zlk.common.ConstValue;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -31,7 +31,15 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 	}
 	record Var(String name, Location loc) implements Exp {}
 	record Lamb(List<Pattern> args, Exp body, Location loc) implements Exp {}
-	record App(List<Exp> exps, 	Location loc) implements Exp {}
+	record App(List<Exp> exps, 	Location loc) implements Exp {
+		public App(List<Exp> exps, 	Location loc) {
+			if(exps.size() <= 1) {
+				throw new IllegalArgumentException();
+			}
+			this.exps = exps;
+			this.loc = loc;
+		}
+	}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
 	record Let(List<ValDecl> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, List<CaseBranch> branches, Location loc) implements Exp {}

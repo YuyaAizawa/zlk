@@ -1,5 +1,7 @@
 package zlk.util;
 
+import zlk.common.Location;
+
 public final class ErrorUtils {
 	private ErrorUtils() {}
 

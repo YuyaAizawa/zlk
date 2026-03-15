@@ -95,9 +95,34 @@ public class FeatureTest {
 	}
 
 	@Test
+	void genericFunction() {
+		String src="""
+		type List a =
+		  | Nil
+		  | Cons a (List a)
+
+		map f list=
+		  case list of
+		    Nil -> Nil
+		    Cons e rest ->
+		      Cons (f e) (map f rest)
+
+		isZero_ i = isZero i
+
+		test =
+		  map isZero_ (Cons 0 (Cons 1 (Cons 2 Nil)))
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("map").is("(a -> b) -> List a -> List b");
+		// TODO: Zlkデータの文字列表現
+		// module.getValue("test").is("Cons True (Cons False (Cons False Nil))");
+	}
+
+	@Test
 	void genericAndClosure() {
 		String src="""
 		type Pair a b = Pair_ a b
+
 		test =
 		  let
 		    id x = x
@@ -109,7 +134,6 @@ public class FeatureTest {
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getType("test").is("Pair I32 Bool");
-		// module.getValue("intBoolPair").isWrittenIn("Pair I32 Bool"); TODO: 作る
 	}
 
 	@Test
@@ -142,17 +166,17 @@ public class FeatureTest {
 //		  let
 //		    map f xs =
 //		      case xs of
-//		      | Nil ->
+//		        Nil ->
 //		          Nil
-//		      | Cons x xs1 ->
+//		        Cons x xs1 ->
 //		          Cons (f x) (map f xs1)
-//		   incAll xs =
+//		    incAll xs =
 //		      map (\\x -> x + 1) xs
 //		    negateAll xs =
 //		      map (\\b -> if b then False else True) xs
 //		    ints = Cons 1 (Cons 2 (Cons 3 Nil))
 //		    bools = Cons True (Cons False Nil)
-//		    incResult    = incAll ints
+//		    incResult = incAll ints
 //		    negateResult = negateAll bools
 //		  in
 //		    Pair_ incResult negateResult

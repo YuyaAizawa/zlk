@@ -3,6 +3,7 @@ package zlk.recon;
 import java.util.List;
 
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -21,7 +22,6 @@ import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcValDecl;
-import zlk.util.Location;
 
 public class LetDependencyExtractor {
 	private LetDependencyExtractor() {}

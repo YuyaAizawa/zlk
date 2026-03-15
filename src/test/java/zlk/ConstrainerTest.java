@@ -54,42 +54,30 @@ public class ConstrainerTest {
 				                        Local: Main.fact.n = [5],
 				                        [6] = Bool,
 				                      ],
-				                    Exists:
-				                      vars: [[7], [8]]
-				                      cons: [
-				                        I32 = [7],
-				                        [7] = [8],
-				                        [8] = [3],
-				                      ],
+				                    I32 = [3],
 				                    Let:
 				                      rigids: []
 				                      flexes: []
 				                      header: {
-				                        Main.fact.nn: [17],
-				                        Main.fact.one: [16],
+				                        Main.fact.nn: [15],
+				                        Main.fact.one: [14],
 				                      }
 				                      headerCons: [
 				                        Phase:
 				                          cons: [
 				                            Let:
 				                              rigids: []
-				                              flexes: [[18]]
+				                              flexes: [[16]]
 				                              header: {}
 				                              headerCons: [
 				                                Phase:
 				                                  cons: [
-				                                    Exists:
-				                                      vars: [[19], [20]]
-				                                      cons: [
-				                                        I32 = [19],
-				                                        [19] = [20],
-				                                        [20] = [18],
-				                                      ],
+				                                    I32 = [16],
 				                                  ]
 				                                  genTargets: [],
 				                              ]
 				                              bodyCons:[
-				                                [18] = [16],
+				                                [16] = [14],
 				                              ],
 				                          ]
 				                          genTargets: [Main.fact.one],
@@ -97,45 +85,45 @@ public class ConstrainerTest {
 				                          cons: [
 				                            Let:
 				                              rigids: []
-				                              flexes: [[21]]
+				                              flexes: [[17]]
 				                              header: {}
 				                              headerCons: [
 				                                Phase:
 				                                  cons: [
 				                                    Exists:
-				                                      vars: [[22], [23], [24], [25]]
+				                                      vars: [[18], [19], [20], [21]]
 				                                      cons: [
-				                                        Foreign: Basic.sub:I32 -> I32 -> I32 = [22],
-				                                        [22] = [23] -> [24] -> [25],
-				                                        Local: Main.fact.n = [23],
-				                                        Local: Main.fact.one = [24],
-				                                        [25] = [21],
+				                                        Foreign: Basic.sub:I32 -> I32 -> I32 = [18],
+				                                        [18] = [19] -> [20] -> [21],
+				                                        Local: Main.fact.n = [19],
+				                                        Local: Main.fact.one = [20],
+				                                        [21] = [17],
 				                                      ],
 				                                  ]
 				                                  genTargets: [],
 				                              ]
 				                              bodyCons:[
-				                                [21] = [17],
+				                                [17] = [15],
 				                              ],
 				                          ]
 				                          genTargets: [Main.fact.nn],
 				                      ]
 				                      bodyCons:[
 				                        Exists:
-				                          vars: [[9], [10], [11], [15]]
+				                          vars: [[7], [8], [9], [13]]
 				                          cons: [
-				                            Foreign: Basic.mul:I32 -> I32 -> I32 = [9],
-				                            [9] = [10] -> [11] -> [15],
-				                            Local: Main.fact.n = [10],
+				                            Foreign: Basic.mul:I32 -> I32 -> I32 = [7],
+				                            [7] = [8] -> [9] -> [13],
+				                            Local: Main.fact.n = [8],
 				                            Exists:
-				                              vars: [[12], [13], [14]]
+				                              vars: [[10], [11], [12]]
 				                              cons: [
-				                                Local: Main.fact = [12],
-				                                [12] = [13] -> [14],
-				                                Local: Main.fact.nn = [13],
-				                                [14] = [11],
+				                                Local: Main.fact = [10],
+				                                [10] = [11] -> [12],
+				                                Local: Main.fact.nn = [11],
+				                                [12] = [9],
 				                              ],
-				                            [15] = [3],
+				                            [13] = [3],
 				                          ],
 				                      ],
 				                    [3] = [2],
@@ -154,6 +142,7 @@ public class ConstrainerTest {
 				      vars: []
 				      cons: [],
 				  ]""";
+
 		assertEquals(expected, module.getConstraint().buildString().replace("\r", ""));
 	}
 
@@ -188,54 +177,48 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[17], [18]]
+				          flexes: [[15], [16]]
 				          header: {
-				            Main.isOdd.n: [17],
+				            Main.isOdd.n: [15],
 				          }
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[19]]
+				                  vars: [[17]]
 				                  cons: [
 				                    Exists:
-				                      vars: [[20], [21], [22]]
+				                      vars: [[18], [19], [20]]
 				                      cons: [
-				                        Foreign: Basic.isZero:I32 -> Bool = [20],
-				                        [20] = [21] -> [22],
-				                        Local: Main.isOdd.n = [21],
-				                        [22] = Bool,
+				                        Foreign: Basic.isZero:I32 -> Bool = [18],
+				                        [18] = [19] -> [20],
+				                        Local: Main.isOdd.n = [19],
+				                        [20] = Bool,
 				                      ],
+				                    Foreign: Basic.False:Bool = [17],
 				                    Exists:
-				                      vars: [[23], [24]]
+				                      vars: [[21], [22], [27]]
 				                      cons: [
-				                        Foreign: Basic.False:Bool = [23],
-				                        [23] = [24],
-				                        [24] = [19],
-				                      ],
-				                    Exists:
-				                      vars: [[25], [26], [31]]
-				                      cons: [
-				                        Local: Main.isEven = [25],
-				                        [25] = [26] -> [31],
+				                        Local: Main.isEven = [21],
+				                        [21] = [22] -> [27],
 				                        Exists:
-				                          vars: [[27], [28], [29], [30]]
+				                          vars: [[23], [24], [25], [26]]
 				                          cons: [
-				                            Foreign: Basic.sub:I32 -> I32 -> I32 = [27],
-				                            [27] = [28] -> [29] -> [30],
-				                            Local: Main.isOdd.n = [28],
-				                            I32 = [29],
-				                            [30] = [26],
+				                            Foreign: Basic.sub:I32 -> I32 -> I32 = [23],
+				                            [23] = [24] -> [25] -> [26],
+				                            Local: Main.isOdd.n = [24],
+				                            I32 = [25],
+				                            [26] = [22],
 				                          ],
-				                        [31] = [19],
+				                        [27] = [17],
 				                      ],
-				                    [19] = [18],
+				                    [17] = [16],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [17] -> [18] = [1],
+				            [15] -> [16] = [1],
 				          ],
 				        Let:
 				          rigids: []
@@ -257,28 +240,22 @@ public class ConstrainerTest {
 				                        Local: Main.isEven.n = [6],
 				                        [7] = Bool,
 				                      ],
+				                    Foreign: Basic.True:Bool = [4],
 				                    Exists:
-				                      vars: [[8], [9]]
+				                      vars: [[8], [9], [14]]
 				                      cons: [
-				                        Foreign: Basic.True:Bool = [8],
-				                        [8] = [9],
-				                        [9] = [4],
-				                      ],
-				                    Exists:
-				                      vars: [[10], [11], [16]]
-				                      cons: [
-				                        Local: Main.isOdd = [10],
-				                        [10] = [11] -> [16],
+				                        Local: Main.isOdd = [8],
+				                        [8] = [9] -> [14],
 				                        Exists:
-				                          vars: [[12], [13], [14], [15]]
+				                          vars: [[10], [11], [12], [13]]
 				                          cons: [
-				                            Foreign: Basic.sub:I32 -> I32 -> I32 = [12],
-				                            [12] = [13] -> [14] -> [15],
-				                            Local: Main.isEven.n = [13],
-				                            I32 = [14],
-				                            [15] = [11],
+				                            Foreign: Basic.sub:I32 -> I32 -> I32 = [10],
+				                            [10] = [11] -> [12] -> [13],
+				                            Local: Main.isEven.n = [11],
+				                            I32 = [12],
+				                            [13] = [9],
 				                          ],
-				                        [16] = [4],
+				                        [14] = [4],
 				                      ],
 				                    [4] = [3],
 				                  ],
@@ -296,6 +273,7 @@ public class ConstrainerTest {
 				      vars: []
 				      cons: [],
 				  ]""";
+
 		assertEquals(expected, module.getConstraint().buildString().replace("\r", ""));
 	}
 
@@ -346,15 +324,9 @@ public class ConstrainerTest {
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[4], [7]]
+				                  vars: [[4], [5]]
 				                  cons: [
-				                    Exists:
-				                      vars: [[5], [6]]
-				                      cons: [
-				                        Local: Main.car.list = [5],
-				                        [5] = [6],
-				                        [6] = [4],
-				                      ],
+				                    Local: Main.car.list = [4],
 				                    Let:
 				                      rigids: []
 				                      flexes: []
@@ -363,18 +335,12 @@ public class ConstrainerTest {
 				                        Phase:
 				                          cons: [
 				                            Main.IntList = [4],
-				                            Exists:
-				                              vars: [[8], [9]]
-				                              cons: [
-				                                I32 = [8],
-				                                [8] = [9],
-				                                [9] = [7],
-				                              ],
+				                            I32 = [5],
 				                          ]
 				                          genTargets: [],
 				                      ]
 				                      bodyCons:[
-				                        [7] = [7],
+				                        [5] = [5],
 				                      ],
 				                    Let:
 				                      rigids: []
@@ -387,20 +353,14 @@ public class ConstrainerTest {
 				                        Phase:
 				                          cons: [
 				                            Main.IntList = [4],
-				                            Exists:
-				                              vars: [[10], [11]]
-				                              cons: [
-				                                Local: Main.car._1.hd = [10],
-				                                [10] = [11],
-				                                [11] = [7],
-				                              ],
+				                            Local: Main.car._1.hd = [5],
 				                          ]
 				                          genTargets: [],
 				                      ]
 				                      bodyCons:[
-				                        [7] = [7],
+				                        [5] = [5],
 				                      ],
-				                    [7] = [3],
+				                    [5] = [3],
 				                  ],
 				              ]
 				              genTargets: [],
@@ -414,7 +374,7 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[12]]
+				          flexes: [[6]]
 				          header: {}
 				          headerCons: [
 				            Phase:
@@ -423,33 +383,27 @@ public class ConstrainerTest {
 				                  rigids: []
 				                  flexes: []
 				                  header: {
-				                    Main.rectest.id: [15],
-				                    Main.rectest.res: [16],
+				                    Main.rectest.id: [7],
+				                    Main.rectest.res: [8],
 				                  }
 				                  headerCons: [
 				                    Phase:
 				                      cons: [
 				                        Let:
 				                          rigids: []
-				                          flexes: [[17], [18]]
+				                          flexes: [[9], [10]]
 				                          header: {
-				                            Main.rectest.id.x: [17],
+				                            Main.rectest.id.x: [9],
 				                          }
 				                          headerCons: [
 				                            Phase:
 				                              cons: [
-				                                Exists:
-				                                  vars: [[19], [20]]
-				                                  cons: [
-				                                    Local: Main.rectest.id.x = [19],
-				                                    [19] = [20],
-				                                    [20] = [18],
-				                                  ],
+				                                Local: Main.rectest.id.x = [10],
 				                              ]
 				                              genTargets: [],
 				                          ]
 				                          bodyCons:[
-				                            [17] -> [18] = [15],
+				                            [9] -> [10] = [7],
 				                          ],
 				                      ]
 				                      genTargets: [Main.rectest.id],
@@ -457,80 +411,74 @@ public class ConstrainerTest {
 				                      cons: [
 				                        Let:
 				                          rigids: []
-				                          flexes: [[21]]
+				                          flexes: [[11]]
 				                          header: {}
 				                          headerCons: [
 				                            Phase:
 				                              cons: [
 				                                Exists:
-				                                  vars: [[22], [23], [27], [42]]
+				                                  vars: [[12], [13], [17], [32]]
 				                                  cons: [
-				                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [22],
-				                                    [22] = [23] -> [27] -> [42],
+				                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [12],
+				                                    [12] = [13] -> [17] -> [32],
 				                                    Exists:
-				                                      vars: [[24], [25], [26]]
+				                                      vars: [[14], [15], [16]]
 				                                      cons: [
-				                                        Local: Main.rectest.id = [24],
-				                                        [24] = [25] -> [26],
-				                                        I32 = [25],
-				                                        [26] = [23],
+				                                        Local: Main.rectest.id = [14],
+				                                        [14] = [15] -> [16],
+				                                        I32 = [15],
+				                                        [16] = [13],
 				                                      ],
 				                                    Exists:
-				                                      vars: [[28], [29], [40], [41]]
+				                                      vars: [[18], [19], [30], [31]]
 				                                      cons: [
-				                                        Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [28],
-				                                        [28] = [29] -> [40] -> [41],
+				                                        Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [18],
+				                                        [18] = [19] -> [30] -> [31],
 				                                        Exists:
-				                                          vars: [[30], [31], [39]]
+				                                          vars: [[20], [21], [29]]
 				                                          cons: [
-				                                            Local: Main.car = [30],
-				                                            [30] = [31] -> [39],
+				                                            Local: Main.car = [20],
+				                                            [20] = [21] -> [29],
 				                                            Exists:
-				                                              vars: [[32], [33], [38]]
+				                                              vars: [[22], [23], [28]]
 				                                              cons: [
-				                                                Local: Main.rectest.id = [32],
-				                                                [32] = [33] -> [38],
+				                                                Local: Main.rectest.id = [22],
+				                                                [22] = [23] -> [28],
 				                                                Exists:
-				                                                  vars: [[34], [35], [36], [37]]
+				                                                  vars: [[24], [25], [26], [27]]
 				                                                  cons: [
-				                                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [34],
-				                                                    [34] = [35] -> [36] -> [37],
-				                                                    I32 = [35],
-				                                                    Foreign: Main.Nil:Main.IntList = [36],
-				                                                    [37] = [33],
+				                                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [24],
+				                                                    [24] = [25] -> [26] -> [27],
+				                                                    I32 = [25],
+				                                                    Foreign: Main.Nil:Main.IntList = [26],
+				                                                    [27] = [23],
 				                                                  ],
-				                                                [38] = [31],
+				                                                [28] = [21],
 				                                              ],
-				                                            [39] = [29],
+				                                            [29] = [19],
 				                                          ],
-				                                        Foreign: Main.Nil:Main.IntList = [40],
-				                                        [41] = [27],
+				                                        Foreign: Main.Nil:Main.IntList = [30],
+				                                        [31] = [17],
 				                                      ],
-				                                    [42] = [21],
+				                                    [32] = [11],
 				                                  ],
 				                              ]
 				                              genTargets: [],
 				                          ]
 				                          bodyCons:[
-				                            [21] = [16],
+				                            [11] = [8],
 				                          ],
 				                      ]
 				                      genTargets: [Main.rectest.res],
 				                  ]
 				                  bodyCons:[
-				                    Exists:
-				                      vars: [[13], [14]]
-				                      cons: [
-				                        Local: Main.rectest.res = [13],
-				                        [13] = [14],
-				                        [14] = [12],
-				                      ],
+				                    Local: Main.rectest.res = [6],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [12] = [1],
+				            [6] = [1],
 				          ],
 				      ]
 				      genTargets: [Main.rectest],
@@ -540,6 +488,7 @@ public class ConstrainerTest {
 				      vars: []
 				      cons: [],
 				  ]""";
+
 		assertEquals(expected, module.getConstraint().buildString().replace("\r", ""));
 	}
 
@@ -616,26 +565,20 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[34], [35], [36]]
+				          flexes: [[32], [33], [34]]
 				          header: {
-				            Main.snd_.x: [34],
-				            Main.snd_.y: [35],
+				            Main.snd_.x: [32],
+				            Main.snd_.y: [33],
 				          }
 				          headerCons: [
 				            Phase:
 				              cons: [
-				                Exists:
-				                  vars: [[37], [38]]
-				                  cons: [
-				                    Local: Main.snd_.y = [37],
-				                    [37] = [38],
-				                    [38] = [36],
-				                  ],
+				                Local: Main.snd_.y = [34],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [34] -> [35] -> [36] = [4],
+				            [32] -> [33] -> [34] = [4],
 				          ],
 				      ]
 				      genTargets: [Main.snd_],
@@ -643,26 +586,26 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[29], [30]]
+				          flexes: [[27], [28]]
 				          header: {
-				            Main.snd.p: [29],
+				            Main.snd.p: [27],
 				          }
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[31], [32], [33]]
+				                  vars: [[29], [30], [31]]
 				                  cons: [
-				                    Local: Main.snd.p = [31],
-				                    [31] = [32] -> [33],
-				                    Local: Main.snd_ = [32],
-				                    [33] = [30],
+				                    Local: Main.snd.p = [29],
+				                    [29] = [30] -> [31],
+				                    Local: Main.snd_ = [30],
+				                    [31] = [28],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [29] -> [30] = [3],
+				            [27] -> [28] = [3],
 				          ],
 				      ]
 				      genTargets: [Main.snd],
@@ -670,25 +613,19 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[39], [40]]
+				          flexes: [[35], [36]]
 				          header: {
-				            Main.id.x: [39],
+				            Main.id.x: [35],
 				          }
 				          headerCons: [
 				            Phase:
 				              cons: [
-				                Exists:
-				                  vars: [[41], [42]]
-				                  cons: [
-				                    Local: Main.id.x = [41],
-				                    [41] = [42],
-				                    [42] = [40],
-				                  ],
+				                Local: Main.id.x = [36],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [39] -> [40] = [5],
+				            [35] -> [36] = [5],
 				          ],
 				      ]
 				      genTargets: [Main.id],
@@ -696,25 +633,25 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[43]]
+				          flexes: [[37]]
 				          header: {}
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[44], [45], [46], [47]]
+				                  vars: [[38], [39], [40], [41]]
 				                  cons: [
-				                    Local: Main.pair = [44],
-				                    [44] = [45] -> [46] -> [47],
-				                    Local: Main.id = [45],
-				                    Local: Main.id = [46],
-				                    [47] = [43],
+				                    Local: Main.pair = [38],
+				                    [38] = [39] -> [40] -> [41],
+				                    Local: Main.id = [39],
+				                    Local: Main.id = [40],
+				                    [41] = [37],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [43] = [6],
+				            [37] = [6],
 				          ],
 				      ]
 				      genTargets: [Main.p],
@@ -722,24 +659,24 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[52]]
+				          flexes: [[46]]
 				          header: {}
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[53], [54], [55]]
+				                  vars: [[47], [48], [49]]
 				                  cons: [
-				                    Local: Main.snd = [53],
-				                    [53] = [54] -> [55],
-				                    Local: Main.p = [54],
-				                    [55] = [52],
+				                    Local: Main.snd = [47],
+				                    [47] = [48] -> [49],
+				                    Local: Main.p = [48],
+				                    [49] = [46],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [52] = [8],
+				            [46] = [8],
 				          ],
 				      ]
 				      genTargets: [Main.v],
@@ -747,24 +684,24 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[60]]
+				          flexes: [[54]]
 				          header: {}
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[61], [62], [63]]
+				                  vars: [[55], [56], [57]]
 				                  cons: [
-				                    Local: Main.v = [61],
-				                    [61] = [62] -> [63],
-				                    Foreign: Basic.True:Bool = [62],
-				                    [63] = [60],
+				                    Local: Main.v = [55],
+				                    [55] = [56] -> [57],
+				                    Foreign: Basic.True:Bool = [56],
+				                    [57] = [54],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [60] = [10],
+				            [54] = [10],
 				          ],
 				      ]
 				      genTargets: [Main.r2],
@@ -780,13 +717,7 @@ public class ConstrainerTest {
 				          headerCons: [
 				            Phase:
 				              cons: [
-				                Exists:
-				                  vars: [[27], [28]]
-				                  cons: [
-				                    Local: Main.fst_.x = [27],
-				                    [27] = [28],
-				                    [28] = [26],
-				                  ],
+				                Local: Main.fst_.x = [26],
 				              ]
 				              genTargets: [],
 				          ]
@@ -826,24 +757,24 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[48]]
+				          flexes: [[42]]
 				          header: {}
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[49], [50], [51]]
+				                  vars: [[43], [44], [45]]
 				                  cons: [
-				                    Local: Main.fst = [49],
-				                    [49] = [50] -> [51],
-				                    Local: Main.p = [50],
-				                    [51] = [48],
+				                    Local: Main.fst = [43],
+				                    [43] = [44] -> [45],
+				                    Local: Main.p = [44],
+				                    [45] = [42],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [48] = [7],
+				            [42] = [7],
 				          ],
 				      ]
 				      genTargets: [Main.u],
@@ -851,24 +782,24 @@ public class ConstrainerTest {
 				      cons: [
 				        Let:
 				          rigids: []
-				          flexes: [[56]]
+				          flexes: [[50]]
 				          header: {}
 				          headerCons: [
 				            Phase:
 				              cons: [
 				                Exists:
-				                  vars: [[57], [58], [59]]
+				                  vars: [[51], [52], [53]]
 				                  cons: [
-				                    Local: Main.u = [57],
-				                    [57] = [58] -> [59],
-				                    I32 = [58],
-				                    [59] = [56],
+				                    Local: Main.u = [51],
+				                    [51] = [52] -> [53],
+				                    I32 = [52],
+				                    [53] = [50],
 				                  ],
 				              ]
 				              genTargets: [],
 				          ]
 				          bodyCons:[
-				            [56] = [9],
+				            [50] = [9],
 				          ],
 				      ]
 				      genTargets: [Main.r1],
@@ -878,6 +809,7 @@ public class ConstrainerTest {
 				      vars: []
 				      cons: [],
 				  ]""";
+
 		assertEquals(expected, module.getConstraint().buildString().replace("\r", ""));
 	}
 }
