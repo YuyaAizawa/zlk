@@ -22,9 +22,9 @@ import zlk.ast.Decl.TypeDecl;
 import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.ast.Pattern;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.parser.Token.Kind;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 
 
 /**
@@ -306,7 +306,8 @@ public final class Parser {
 	 *
 	 * <caseExp>    ::= case <exp> of (<pattern> -> <exp>)+
 	 *
-	 * <exp>        ::= <appExp>
+	 * <exp>        ::= <varExp>
+	 *                | <appExp>
 	 *                | <lambdaExp>
 	 *                | <letExp>
 	 *                | <ifExp>
@@ -328,7 +329,7 @@ public final class Parser {
 					(s, exp, e) -> exp.updateLoc(locRange(s, e))));
 
 	static final Peg<Exp> appExp =
-			plus(aExp).map(l -> new Exp.App(l, locRange(l, l)));
+			plus(aExp).map(l -> l.size() == 1 ? l.getFirst() : new Exp.App(l, locRange(l, l)));
 
 	static final Peg<Exp.Lamb> lambdaExp = sequence(
 			LAMBDA, plus(pattern), ARROW, mayBlock(exp_),

@@ -2,10 +2,10 @@ package zlk.clcalc;
 
 import java.util.List;
 
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

@@ -7,7 +7,7 @@ import org.objectweb.asm.Opcodes;
 
 import zlk.common.Type;
 
-enum Primitive {
+public enum Primitive {
 	BOOL ("java/lang/Boolean", "booleanValue", "()Z", "(Z)Ljava/lang/Boolean;"),
 	INT  ("java/lang/Integer",     "intValue", "()I", "(I)Ljava/lang/Integer;");
 
@@ -35,13 +35,13 @@ enum Primitive {
 		throw new IllegalArgumentException("Unexpected value: " + ty);
 	}
 
-	static Optional<Primitive> tryFrom(Type ty) {
+	public static Optional<Primitive> tryFrom(Type ty) {
 		if(ty.equals(Type.BOOL)) { return Optional.of(BOOL); }
 		if(ty.equals(Type.I32))  { return Optional.of(INT); }
 		return Optional.empty();
 	}
 
-	void genBoxing(MethodVisitor mv) {
+	public void genBoxing(MethodVisitor mv) {
 		mv.visitMethodInsn(
 				Opcodes.INVOKESTATIC,
 				this.boxedClassName,
@@ -50,7 +50,7 @@ enum Primitive {
 				false);
 	}
 
-	void genUnboxing(MethodVisitor mv) {
+	public void genUnboxing(MethodVisitor mv) {
 		mv.visitMethodInsn(
 				Opcodes.INVOKEVIRTUAL,
 				this.boxedClassName,
@@ -58,8 +58,8 @@ enum Primitive {
 				this.unboxMethodDesc,
 				false);
 	}
-	
-	void genCheckCast(MethodVisitor mv) {
+
+	public void genCheckCast(MethodVisitor mv) {
 		mv.visitTypeInsn(
 				Opcodes.CHECKCAST,
 				this.boxedClassName);

@@ -3,12 +3,12 @@ package zlk.idcalc;
 import java.util.List;
 import java.util.Set;
 
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern.Dector;
 import zlk.idcalc.IcPattern.Var;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -78,4 +78,3 @@ permits Var, Dector {
 		}
 	}
 }
-
