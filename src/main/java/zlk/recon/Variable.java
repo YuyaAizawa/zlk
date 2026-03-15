@@ -119,9 +119,7 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
+		return buildString();
 	}
 }
 

@@ -8,7 +8,6 @@ import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
-import zlk.util.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -34,6 +33,11 @@ permits CtorApp, Arrow, Var {
 		public CtorApp(Id id) {
 			this(id, List.of());
 		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
 	}
 
 	/**
@@ -57,13 +61,23 @@ permits CtorApp, Arrow, Var {
 			}
 			return args;
 		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
 	}
 
 	/**
 	 * 型変数
 	 * @param name 変数名
 	 */
-	record Var(String name) implements Type {}
+	record Var(String name) implements Type {
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
 
 	public static final CtorApp UNIT = new CtorApp(Id.fromCanonicalName("Unit"));
 	public static final CtorApp BOOL = new CtorApp(Id.fromCanonicalName("Bool"));
@@ -71,7 +85,7 @@ permits CtorApp, Arrow, Var {
 
 	public static final List<CtorApp> BUILTIN = List.of(UNIT, BOOL, I32);
 
-	public static Type arrow(Type... rest) {
+	public static Type.Arrow arrow(Type... rest) {
 		if(rest.length < 2) {
 			throw new IllegalArgumentException("length: "+rest.length);
 		}
@@ -95,7 +109,7 @@ permits CtorApp, Arrow, Var {
 		return result;
 	}
 
-	public static Type arrow(List<Type> types) {
+	public static Type.Arrow arrow(List<Type> types) {
 		return arrow(types.toArray(Type[]::new));
 	}
 
@@ -173,14 +187,10 @@ permits CtorApp, Arrow, Var {
 		return flatten;
 	}
 
-	default Type toTree(List<Type> tail) {
-		Stack<Type> stack = new Stack<>();
-		stack.push(this);
-		tail.forEach(stack::push);
-
-		Type result = stack.pop();
-		while(!stack.isEmpty()) {
-			result = new Arrow(stack.pop(), result);
+	public static Type fromList(List<Type> list) {
+		Type result = list.getLast();
+		for(int i = list.size()-2; i >= 0; i--) {
+			result = new Arrow(list.get(i), result);
 		}
 		return result;
 	}
@@ -218,9 +228,13 @@ permits CtorApp, Arrow, Var {
 		return switch(this) {
 		case CtorApp _ -> throw invalidTypeApply(this, arg);
 		case Arrow(Type pattern, Type ret) -> {
-			BindList binds = new BindList();
-			pattern.bind(arg, binds);
-			yield ret.subst(binds);
+			try {
+				BindList binds = new BindList();
+				pattern.bind(arg, binds);
+				yield ret.subst(binds);
+			} catch (IllegalArgumentException e) {
+				throw invalidTypeApply(this, arg);
+			}
 		}
 		case Var _ -> throw invalidTypeApply(this, arg);
 		};
@@ -259,6 +273,10 @@ permits CtorApp, Arrow, Var {
 		case CtorApp(Id ctor, List<Type> args) -> {
 			if(target instanceof CtorApp(Id targetCtor, List<Type> targetArgs)) {
 				if(ctor.equals(targetCtor)) {
+					if(args.size() != targetArgs.size()) {
+						throw new IllegalArgumentException(
+								String.format("Invalid type bind. this: %s, target: %s", this, target));
+					}
 					for (int i = 0; i < args.size(); i++) {
 						args.get(i).bind(targetArgs.get(i), binds);
 					}

@@ -1,7 +1,7 @@
 package zlk.ast;
 
-import zlk.util.Location;
-import zlk.util.LocationHolder;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
