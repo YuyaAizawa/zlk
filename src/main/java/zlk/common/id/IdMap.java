@@ -1,14 +1,16 @@
 package zlk.common.id;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
@@ -62,6 +64,17 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return impl.getOrDefault(id, value);
 	}
 
+	public void processIfPresent(Id id, Consumer<? super V> action) {
+		V v = getOrNull(id);
+		if(v != null) {
+			action.accept(v);
+		}
+	}
+
+	public V computeIfAbsent(Id id, Function<? super Id, ? extends V> mappingFunction) {
+		return impl.computeIfAbsent(id, mappingFunction);
+	}
+
 	public void put(Id id, V value) {
 		V old = impl.put(Objects.requireNonNull(id), Objects.requireNonNull(value));
 		if(old != null) {
@@ -78,6 +91,14 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public boolean containsKey(Id id) {
 		return impl.containsKey(id);
+	}
+
+	public IdList keys() {
+		return new IdList(impl.keySet());
+	}
+
+	public List<V> values() {
+		return new ArrayList<>(impl.values());
 	}
 
 	@Override
@@ -138,18 +159,12 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		Function<Map.Entry<Id, V>, PrettyPrintable> entryMapper = entry ->
-				pp_ -> {
-					pp_.append(entry.getKey()).append(": ");
-					if(entry.getValue() instanceof PrettyPrintable pp__) {
-						pp_.append(pp__);
-					} else {
-						pp_.append("--cannot print--");
-					}
-				};
+		pp.append(PrettyPrintable.tailComma(impl));
+	}
 
-		Iterator<PrettyPrintable> entryIter = impl.entrySet().stream().map(entryMapper).iterator();
-		pp.append(PrettyPrintable.toElmListStyle(entryIter));
+	@Override
+	public String toString() {
+		return buildString();
 	}
 }
 

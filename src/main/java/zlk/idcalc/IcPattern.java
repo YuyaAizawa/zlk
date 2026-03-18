@@ -3,23 +3,23 @@ package zlk.idcalc;
 import java.util.List;
 import java.util.Set;
 
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.idcalc.IcPattern.Ctor;
+import zlk.idcalc.IcPattern.Dector;
 import zlk.idcalc.IcPattern.Var;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcPattern extends PrettyPrintable, LocationHolder
-permits Var, Ctor {
+permits Var, Dector {
 
 	record Var(
 			Id id,
 			Location loc) implements IcPattern {}
 
-	record Ctor(
+	record Dector(
 			IcExp.IcVarCtor ctor,
 			List<Arg> args,
 			Location loc) implements IcPattern {
@@ -35,7 +35,7 @@ permits Var, Ctor {
 		case Var(Id id, Location _) -> {
 			yield id;
 		}
-		case Ctor(IcExp.IcVarCtor ctor, List<Arg> _, Location _) -> {
+		case Dector(IcExp.IcVarCtor ctor, List<Arg> _, Location _) -> {
 			yield ctor.id();
 		}
 		};
@@ -46,7 +46,7 @@ permits Var, Ctor {
 		case Var(Id id, Location _) -> {
 			known.add(id);
 		}
-		case Ctor(IcExp.IcVarCtor _, List<Arg> args, Location _) -> {
+		case Dector(IcExp.IcVarCtor _, List<Arg> args, Location _) -> {
 			args.forEach(arg -> arg.pattern().accumulateVars(known));
 		}
 		}
@@ -58,7 +58,7 @@ permits Var, Ctor {
 		case Var(Id id, Location _) -> {
 			pp.append(id);
 		}
-		case Ctor(IcExp.IcVarCtor ctor, List<Arg> args, Location _) -> {
+		case Dector(IcExp.IcVarCtor ctor, List<Arg> args, Location _) -> {
 			pp.append(ctor);
 			for(Arg arg: args) {
 				pp.append(" ").append(arg);
@@ -78,4 +78,3 @@ permits Var, Ctor {
 		}
 	}
 }
-

@@ -3,25 +3,24 @@ package zlk.typecheck;
 import java.util.List;
 
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
-import zlk.util.Location;
+import zlk.idcalc.IcValDecl;
 
 public final class TypeChecker {
 
@@ -37,12 +36,12 @@ public final class TypeChecker {
 	}
 
 	public void check(IcModule module) {
-		for(IcFunDecl decl : module.decls()) {
+		for(IcValDecl decl : module.decls()) {
 			check(decl);
 		}
 	}
 
-	public Type check(IcFunDecl decl) {
+	public Type check(IcValDecl decl) {
 		Type ret = check(decl.body());
 		for(IcPattern arg : decl.args()) {
 			ret = new Type.Arrow(check(arg), ret);
@@ -61,7 +60,7 @@ public final class TypeChecker {
 		case IcPattern.Var(Id id, Location _) -> {
 			yield env.get(id);
 		}
-		case IcPattern.Ctor(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
 			Type ctorType = env.get(ctor.id());
 			List<Type> argTypes = ctorType.flatten();
 
@@ -82,8 +81,8 @@ public final class TypeChecker {
 			case IcVarLocal(Id id, Location _) -> env.get(id);
 			case IcVarForeign(Id id, Type _, Location _) -> env.get(id);
 			case IcVarCtor(Id id, Type _, Location _) -> env.get(id);
-			case IcAbs(Id id, Type _, IcExp body, Location _) -> {
-				yield Type.arrow(env.get(id), check(body));
+			case IcLamb(List<IcPattern> args, IcExp body, _) -> {
+				yield Type.arrow(args.stream().map(arg -> check(arg)).toList(), check(body));
 			}
 			case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
 				List<Type> funTy = check(fun).flatten();
@@ -108,12 +107,8 @@ public final class TypeChecker {
 				typeAssertion(elseExp, thenType);
 				yield thenType;
 			}
-			case IcLet(IcFunDecl decl, IcExp body, Location _) -> {
-				check(decl);
-				yield check(body);
-			}
-			case IcLetrec(List<IcFunDecl> decls, IcExp body, Location _) -> {
-				for(IcFunDecl decl : decls) {
+			case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
+				for(IcValDecl decl : decls) {
 					check(decl);
 				}
 				yield check(body);

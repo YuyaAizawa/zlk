@@ -1,25 +1,34 @@
 package zlk.parser;
 
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import zlk.util.Position;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 
-public record Token(Kind kind, String value, Position pos) {
+public final class Token implements LocationHolder {
+	private final Source info;
+	public final Kind kind;
+	public final int start;
+	public final int end;
 
 	public enum Kind {
 		UCID(""),
 		LCID(""),
 		DIGITS(""),
-		BR(""),
-		EOF(""),
+
+		ENDENT(""),
+		DEDENT(""),
+		SAMENT(""),  // no indentation change
+
 		ILL(""),
 
 		ARROW     ("->"),
 		BAR       ("|"),
 		COLON     (":"),
 		EQUAL     ("="),
+		LAMBDA    ("\\"),
 		LPAREN    ("("),
 		RPAREN    (")"),
 
@@ -36,8 +45,21 @@ public record Token(Kind kind, String value, Position pos) {
 		ELSE("else"),
 		;
 
+		private static final Map<Character, Kind> punctuatorLookup =
+				Stream.of(
+						ARROW,
+						BAR,
+						COLON,
+						EQUAL,
+						LAMBDA,
+						LPAREN,
+						RPAREN)
+				.collect(Collectors.toMap(
+						k -> k.str().charAt(0),  // 1文字目が被ったら実行時例外
+						k -> k));
+
 		private static final Map<String, Kind> keywordLookup =
-				List.of(
+				Stream.of(
 						TRUE,
 						FALSE,
 						MODULE,
@@ -48,9 +70,7 @@ public record Token(Kind kind, String value, Position pos) {
 						OF,
 						IF,
 						THEN,
-						ELSE
-						)
-				.stream()
+						ELSE)
 				.collect(Collectors.toMap(Kind::str, t -> t));
 
 		private final String str;
@@ -63,25 +83,44 @@ public record Token(Kind kind, String value, Position pos) {
 			return str;
 		}
 
-		public static Kind lookupKeywordType(String id) {
+		/**
+		 * srcのoffsetの位置からはじまるpunctuatorがあればそれを返す．なければnull．
+		 * @param src
+		 * @param offset
+		 * @return
+		 */
+		public static Kind lookupPunctuator(String src, int offset) {
+			Kind kind = punctuatorLookup.getOrDefault(src.charAt(offset), null);
+			if(kind != null && src.startsWith(kind.str, offset)) {
+				return kind;
+			}
+			return null;
+		}
+
+		public static Kind lookupKeyword(String id) {
 			return keywordLookup.getOrDefault(id, null);
 		}
 	}
 
-	public Token(Kind kind, Position pos) {
-		this(kind, kind.str(), pos);
+	public Token(Source info, Kind kind, int start, int end) {
+		this.info = info;
+		this.kind = kind;
+		this.start = start;
+		this.end = end;
 	}
 
-	public int line() {
-		return pos.line();
+	public String str() {
+		return info.content.substring(start, end);
 	}
 
-	public int column() {
-		return pos.column();
+	@Override
+	public Location loc() {
+		return new Location(info, start, end);
 	}
 
-	public Position endPos() {
-		int codepoints = value.codePointCount(0, value.length());
-		return new Position(line(), column() + codepoints);
+	// TODO 試したら消してよい
+	@Override
+	public String toString() {
+		return kind + ": \"" + str() + "\" " + loc();
 	}
 }

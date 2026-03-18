@@ -1,7 +1,6 @@
 package zlk.clconv;
 
 import static zlk.util.ErrorUtils.neverHappen;
-import static zlk.util.ErrorUtils.todo;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,6 +24,7 @@ import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
 import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
@@ -32,35 +32,37 @@ import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcExp;
-import zlk.idcalc.IcExp.IcAbs;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
+import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
-import zlk.idcalc.IcExp.IcLetrec;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
-import zlk.idcalc.IcFunDecl;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
 import zlk.idcalc.IcTypeDecl;
-import zlk.util.Location;
+import zlk.idcalc.IcValDecl;
 
-public final class ClosureConveter {
+/**
+ * クロージャ変換と関数のトップレベルへのflattenを行う
+ */
+public final class ClosureConverter {
 
 	private final IcModule src;
-	private final IdMap<Type> type; // 変換後のIdの型を追加
+	private final IdMap<Type> type;  // 変換後のIdの型を追加
 	private final Set<Id> knowns;
 
 	private final List<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
-	public ClosureConveter(IcModule src, IdMap<Type> type, IdList builtins) {
+	public ClosureConverter(IcModule src, IdMap<Type> type, IdList builtins) {
 		this.src = src;
 		this.type = type;
+
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
 		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
@@ -77,9 +79,8 @@ public final class ClosureConveter {
 					throw new RuntimeException("toplevel must not be closure: "+cls.clsFunc()); }));
 
 		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
-		return new CcModule(src.name(), types, toplevels, src.origin());
+		return new CcModule(src.name(), types, toplevels);
 	}
-
 
 	/**
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
@@ -92,13 +93,11 @@ public final class ClosureConveter {
 		IdList frees = fvFunc(ccBody, args_);
 
 		if(frees.isEmpty()) {
-//			System.out.println(id + " is not cloeure.");
 			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 
 		} else {
-//			System.out.println(id + " is cloeure. frees: "+frees);
-			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).apply(args_.size()), body.loc());
+			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).dropArgs(args_.size()), body.loc());
 			toplevels.add(closureFunc);
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
@@ -115,20 +114,31 @@ public final class ClosureConveter {
 	 * @param loc 元の関数のLocation
 	 * @return
 	 */
-	private CcFunDecl makeClosure(Id original, IdList frees, List<IcPattern> args_, CcExp body, Type retTy, Location loc) {
+	private CcFunDecl makeClosure(
+			Id original,
+			IdList frees,
+			List<IcPattern> args_,
+			CcExp body,
+			Type retTy,
+			Location loc
+	) {
 		List<Type> types = new ArrayList<>();
 		frees.forEach(id -> types.add(type.get(id)));
 		args_.forEach(pat -> types.add(type.get(pat.headId())));
 		types.add(retTy);
 
-		Type clsTy = types.get(0).toTree(types.subList(1, types.size()));
+		Type clsTy = Type.fromList(types);
 		Id clsId = freshId(original);
 		type.put(clsId, clsTy);
 
+		// 自由変数を外に出すために置き換えを作る
 		IdMap<Id> idMap =
 				frees.stream().collect(IdMap.collector(
 						Function.identity(),
 						id -> Id.fromParentAndSimpleName(clsId, id.simpleName())));
+		// 自己再帰のために元の関数名も置換対象
+		idMap.put(original, clsId);
+
 		List<IcPattern> clsArgs = new ArrayList<>(args_);
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
@@ -155,7 +165,7 @@ public final class ClosureConveter {
 		case IcVarCtor(Id id, Type _, Location loc) -> {
 			yield new CcVar(id, loc);
 		}
-		case IcAbs(Id _, Type _, IcExp body, Location _) -> {
+		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
 			yield neverHappen("no anonymous abs in this version.", body.loc());
 		}
 		case IcApp(IcExp fun, List<IcExp> args, Location loc) -> {
@@ -172,37 +182,47 @@ public final class ClosureConveter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(IcFunDecl decl, IcExp body, Location loc) -> {
-			Id id = decl.id();
-			List<IcPattern> args = decl.args();
-			IcExp bounded = decl.body();
-			CcExp letBody = compile(body);
+		case IcLet(List<IcValDecl> decls, IcExp body, Location loc) -> {
+			// 関数と値に分ける
+			List<IcValDecl> funDecls = new ArrayList<>();
+			List<IcValDecl> valDecls = new ArrayList<>();
+			for(IcValDecl decl : decls) {
+				if(decl.args().isEmpty()) {
+					valDecls.add(decl);
+				} else {
+					funDecls.add(decl);
+				}
+			}
 
-			if(!args.isEmpty()) {
-				yield compileFunc(id, decl.args(), bounded)
-						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-						.orElse(letBody); // トップレベルで定義されているのでletは要らない
-			} else {
-				yield new CcLet(id, compile(bounded), letBody, loc);
-			}
-		}
-		case IcLetrec(List<IcFunDecl> decls, IcExp body, Location loc) -> {
-			if(decls.size() != 1) {
-				todo();
-			}
-			IcFunDecl decl = decls.get(0);
-			Id id = decl.id();
-			List<IcPattern> args = decl.args();
-			IcExp bounded = decl.body();
-			CcExp letBody = compile(body);
+			// 相互再帰のために先にknownsに登録しておく
+			funDecls.forEach(decl -> knowns.add(decl.id()));
 
-			if(!args.isEmpty()) {
-				yield compileFunc(id, decl.args(), bounded)
-						.map(mkCls -> (CcExp)new CcLet(id, mkCls, letBody, loc))
-						.orElse(letBody);
-			} else {
-				yield new CcLet(id, compile(bounded), letBody, loc);
+			// 各関数を変換（クロージャが必要ならCcMkClsが返る）
+			IdMap<Optional<CcMkCls>> closures = funDecls.stream().collect(IdMap.collector(
+					decl -> decl.id(),
+					decl -> compileFunc(decl.id(), decl.args(), decl.body())
+			));
+
+			// 各値を変換
+			IdMap<CcExp> valRhs = valDecls.stream().collect(IdMap.collector(
+					decl -> decl.id(),
+					decl -> compile(decl.body())
+			));
+
+			// 逆順に畳み込む
+			CcExp result = compile(body);
+			for(IcValDecl decl : decls.reversed()) {
+				Id id = decl.id();
+				if(decl.args().isEmpty()) {
+					result = new CcLet(id, valRhs.get(id), result, decl.loc());
+				} else {
+					CcExp cap = result;
+					result = closures.get(id)
+							.map(cls -> (CcExp)new CcLet(id, cls, cap, decl.loc()))
+							.orElse(cap);
+				}
 			}
+			yield result;
 		}
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
 			CcExp compiledTarget = compile(target);

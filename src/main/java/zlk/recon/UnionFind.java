@@ -10,12 +10,12 @@ package zlk.recon;
  */
 class UnionFind<T, S extends UnionFind<T,S>> {
 	private UnionFind<T, S> link;
-	private T desc;
+	private T content;
 	private int weight;
 
 	public UnionFind(T value) {
 		this.link = null;
-		this.desc = value;
+		this.content = value;
 		this.weight = 1;
 	}
 
@@ -27,34 +27,38 @@ class UnionFind<T, S extends UnionFind<T,S>> {
 	}
 
 	public T get() {
-		return root().desc;
+		return root().content;
 	}
 
 	public void set(T value) {
-		root().desc = value;
+		root().content = value;
 	}
 
 	public boolean isSame(UnionFind<T, S> other) {
 		return this.root() == other.root();
 	}
+	
+	public boolean isRedundant() {
+		return link != null;
+	}
 
-	public void unite(UnionFind<T, S> other, T newDesc) {
+	public void unite(UnionFind<T, S> other, T newContent) {
 		UnionFind<T, S> a = this.root();
 		UnionFind<T, S> b = other.root();
 		if(a == b) {
-			a.desc = newDesc;
+			a.content = newContent;
 		}
 		int newWeight = a.weight + b.weight;
 
 		if(a.weight >= b.weight) {
-			b.desc = null;
+			b.content = null;
 			b.link = a;
-			a.desc = newDesc;
+			a.content = newContent;
 			a.weight = newWeight;
 		} else {
-			a.desc = null;
+			a.content = null;
 			a.link = b;
-			b.desc = newDesc;
+			b.content = newContent;
 			b.weight = newWeight;
 		}
 	}

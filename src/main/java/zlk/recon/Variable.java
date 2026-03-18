@@ -1,129 +1,115 @@
 package zlk.recon;
 
-import static zlk.util.ErrorUtils.todo;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.constraint.Content;
-import zlk.recon.constraint.FlatType;
 import zlk.recon.constraint.Content.FlexVar;
+import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public class Variable extends UnionFind<Descriptor, Variable> implements PrettyPrintable {
-	public static final int NO_RANK = 0;
-	public static final int OUTERMOST_RANK = 1;
+public class Variable extends UnionFind<VariableState, Variable> implements PrettyPrintable {
 
-	public static final int NO_MARK = 2;
-	public static final int OCCUERS_MARK = 1;
-	public static final int GET_VER_NAMES_MARK = 0;
-
-	private static final AtomicInteger idCounter = new AtomicInteger();
-	public static Variable mkFlexVar() {
-		return new Variable(new Descriptor(
-				new FlexVar(idCounter.getAndIncrement()),
-				NO_RANK,
-				NO_MARK
-		));
+	public Variable(VariableState state) {
+		super(state);
 	}
 
-	public static Content mkFlexVar(String name) {
-		return new FlexVar(idCounter.getAndIncrement(), name);
+	public static Variable ofFlex(int flexId, Optional<String> maybeName, int letRank) {
+		return new Variable(new VariableState(new FlexVar(flexId, maybeName), letRank));
 	}
 
-	public Variable(Descriptor root) {
-		super(root);
+	public Variable(Content con, int letRank) {
+		this(new VariableState(con, letRank));
 	}
 
+
+	/**
+	 * この変数の注釈用の型を生成する
+	 * @return 型
+	 */
 	public Type toType() {
-		return switch(get().content) {
-		case FlexVar(int id, Optional<String> maybeName) ->
-			new Type.Var(maybeName.orElseGet(() -> "?"+id+"?"));
-		case Structure(FlatType flatType) ->
-				flatType.toType();
-		};
+		// TODO: flexの推奨名を反映する
+		// TODO: rigidとの被り防止
+		// TODO: 自動の命名アルゴリズム含めもう少し何とか
+		return this.toType(new IntFunction<String>() {
+			Map<Integer, String> named = new HashMap<>();
+			@Override
+			public String apply(int value) {
+				return named.computeIfAbsent(value, _ -> named.size() > 'z' - 'a'
+						? "ty" + (named.size() - ('z' - 'a'))
+								: "" + (char)('a' + named.size()));
+			}
+		});
 	}
-
-	public Type toAnnotation() {
-		Map<String, Variable> userNames = new HashMap<>();
-		accumlateVarNames(userNames);
-		return toAnnotation(userNames);
-	}
-
-	private Type toAnnotation(Map<String, Variable> userNames) {
+	private Type toType(IntFunction<String> namer) {
 		return switch(get().content) {
-		case FlexVar(int id, Optional<String> maybeName) ->
-			maybeName.map(name -> new Type.Var(name))
-					.orElseGet(() -> todo());
-//			if(name == null) {
-//				System.out.println(this);
-//				name = todo();
-//				set(new Descriptor(new FlexVar(flex.id(), name), dtor.rank, dtor.mark));
-//			}
-//			return new TyVar(name);
-		case Structure(FlatType.App1(Id id, _)) ->
-			new Type.Atom(id);
+		case FlexVar(int id, Optional<String> _) -> new Type.Var(namer.apply(id));
+		case RigidVar(String name) -> new Type.Var(name);
+		case Structure(FlatType.CtorApp1(Id id, List<Variable> args)) ->
+			new Type.CtorApp(id, args.stream().map(arg -> arg.toType(namer)).toList());
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			Type.arrow(List.of(arg.toAnnotation(), ret.toAnnotation()));
+			Type.arrow(List.of(arg.toType(namer), ret.toType(namer)));
+		case Content.Error _ ->
+			throw new RuntimeException("error type cannot convert");
 		};
 	}
 
 	/**
-	 * この変数のIdを指定されたIdMapに登録する
-	 * @param takenNames
-	 * @return
+	 * 無限型の出現をエラーにまとめる
 	 */
-	private void accumlateVarNames(Map<String, Variable> takenNames) {
-		Descriptor dtor = get();
-		if(dtor.mark == GET_VER_NAMES_MARK) {
-			return;
-		}
-		set(new Descriptor(dtor.content, dtor.rank, GET_VER_NAMES_MARK));
-		switch(dtor.content) {
-		case FlexVar(int id, Optional<String> maybeName) -> {
-			maybeName.ifPresent(name -> {
-				if(takenNames.containsKey(name)) {
-					todo();
-				} else {
-					takenNames.put(name, this);
-				}
-			});
-		}
-		case Structure(FlatType.App1(_, List<Variable> args)) ->
-			args.forEach(arg -> arg.accumlateVarNames(takenNames));
-		case Structure(FlatType.Fun1(Variable arg, Variable ret)) -> {
-			arg.accumlateVarNames(takenNames);
-			ret.accumlateVarNames(takenNames);
-		}
-		}
-	}
-
 	public boolean occurs() {
 		return occursHelp(new ArrayList<>(), false);
 	}
 	private boolean occursHelp(List<Variable> seen, boolean foundCycle) {
-		// 等価性判定にisSameを使っていないが，元のコードもそうなので多分参照等価をみてる
-		if(seen.contains(this)) {
+		if(seen.contains(this)) {  // 再出現を確認するのは内部の等価性ではない
 			return true;
 		}
 
 		seen.add(this);
 		return switch(get().content) {
-		case FlexVar _ ->
-			foundCycle;
-		case Structure(FlatType.App1(_, List<Variable> args)) ->
+		case FlexVar _ -> foundCycle;
+		case RigidVar _ -> foundCycle;
+		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
 			args.stream().anyMatch(arg -> arg.occursHelp(seen, foundCycle));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			arg.occursHelp(seen, ret.occursHelp(new ArrayList<>(seen), foundCycle));
+		case Content.Error() -> foundCycle;
 		};
+	}
+
+	/**
+	 * この変数の内部を再帰的に訪問し，各部分に対してactionを行う．
+	 * 訪問の判定にgMarkをmarkする．
+	 *
+	 * @param mark
+	 * @param action
+	 */
+	public void markAndWalk(int mark, Consumer<Variable> action) {
+		VariableState s = get();
+		if(s.gMark == mark) {
+			return;
+		}
+		action.accept(this);
+		s.gMark = mark;
+		switch(s.content) {
+		case Content.Structure(FlatType.CtorApp1(_, List<Variable> args)) -> {
+			args.forEach(arg -> arg.markAndWalk(mark, action));
+		}
+		case Content.Structure(FlatType.Fun1(Variable a, Variable b)) -> {
+			a.markAndWalk(mark, action);
+			b.markAndWalk(mark, action);
+		}
+		default -> {}
+		}
 	}
 
 	@Override
@@ -133,20 +119,32 @@ public class Variable extends UnionFind<Descriptor, Variable> implements PrettyP
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
+		return buildString();
 	}
 }
 
-class Descriptor {
-	public Content content;
-	public int rank;
-	public int mark;
+/**
+ * 推論中の型変数が指す状態．
+ *
+ * @param content 現在の構造や束縛（自由変数や関数型など）
+ * @param rank let多相のネストレベル 0であれば汎化された型
+ * @param cacheOnCopy 具体化時のキャッシュ用 普段はnull
+ * @param gMark 汎化時に外部から参照されているかを記録する用
+ */
+class VariableState {
+	final Content content;
+	int rank;
+	Variable cacheOnCopy;
+	int gMark;
 
-	public Descriptor(Content content, int rank, int mark) {
+	public VariableState(Content content, int letRank) {
 		this.content = content;
-		this.rank = rank;
-		this.mark = mark;
+		this.rank = letRank;
+		this.cacheOnCopy = null;
+		this.gMark = 0;
+	}
+
+	boolean isQuantified() {
+		return rank == 0;
 	}
 }

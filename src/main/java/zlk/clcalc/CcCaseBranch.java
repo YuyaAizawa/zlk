@@ -3,10 +3,10 @@ package zlk.clcalc;
 import java.util.HashSet;
 import java.util.Set;
 
+import zlk.common.Location;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcPattern;
-import zlk.util.Location;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

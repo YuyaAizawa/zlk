@@ -1,6 +1,7 @@
 package zlk.ast;
 
-import zlk.util.Location;
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -8,12 +9,12 @@ public record CaseBranch(
 	Pattern pattern,
 	Exp body,
 	Location loc)
-implements PrettyPrintable {
+implements PrettyPrintable, LocationHolder {
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("| ").append(pattern).append(" ->").endl();
+		pp.append(pattern).append(" ->");
 		pp.indent(() -> {
-			pp.append(body);
+			pp.endl().append(body);
 		});
 	}
 }
