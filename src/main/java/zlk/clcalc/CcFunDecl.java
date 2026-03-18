@@ -2,10 +2,10 @@ package zlk.clcalc;
 
 import java.util.List;
 
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -31,7 +31,7 @@ implements PrettyPrintable, LocationHolder {
 		pp.indent(() -> {
 			pp.append("id: ").append(id).endl();
 			pp.append("args: [");
-			pp.append(PrettyPrintable.join(args.iterator(), ", "));
+			pp.append(PrettyPrintable.join(args, ", "));
 			pp.append("]").endl();
 			pp.append("body:").endl();
 			pp.indent(() -> {

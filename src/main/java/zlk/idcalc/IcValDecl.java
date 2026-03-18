@@ -1,21 +1,19 @@
 package zlk.idcalc;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 
+import zlk.common.Location;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.util.Location;
-import zlk.util.LocationHolder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public record IcFunDecl(
+public record IcValDecl(
 		Id id,
 		Optional<Type> anno,
 		List<IcPattern> args,
-		Optional<List<IcFunDecl>> recs,
 		IcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {
@@ -26,16 +24,9 @@ implements PrettyPrintable, LocationHolder {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(id).append(" ");
-		recs.ifPresent(recList -> {
-			Iterator<Id> idIter = recList.stream().map(decl -> decl.id).iterator();
-			PrettyPrintable elmStyleIdList = PrettyPrintable.toElmListStyle(idIter);
-			pp.withoutLineBreak(
-					pp_ -> pp_.append(elmStyleIdList)
-			);
-		});
+		pp.append(id);
 		anno.ifPresent(ty -> {
-			pp.append(": ").append(ty).endl();
+			pp.append(" : ").append(ty).endl();
 			pp.append(id);
 		});
 		args.forEach(arg -> {
@@ -43,9 +34,5 @@ implements PrettyPrintable, LocationHolder {
 		});
 		pp.append(" =").endl();
 		pp.inc().append(body).dec();
-	}
-
-	public IcFunDecl norec() {
-		return new IcFunDecl(id, anno, args, Optional.empty(), body, loc);
 	}
 }
