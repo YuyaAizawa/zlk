@@ -8,8 +8,7 @@ import zlk.util.pp.PrettyPrinter;
 public record CcModule(
 		String name,
 		List<CcTypeDecl> types,
-		List<CcFunDecl> funcs,
-		String origin)
+		List<CcFunDecl> funcs)
 implements PrettyPrintable {
 
 	@Override
@@ -17,7 +16,6 @@ implements PrettyPrintable {
 		pp.append("module:").endl();
 		pp.indent(() -> {
 			pp.append("name: ").append(name).endl();
-			pp.append("origin: ").append(origin).endl();
 			pp.append("decls:");
 			pp.indent(() -> {
 				types.forEach(type -> pp.endl().append(type));

@@ -19,6 +19,15 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 		super(ids);
 	}
 
+	public boolean addIfNotContains(Id id) {
+		if(this.contains(id)) {
+			return false;
+		} else {
+			this.add(id);
+			return true;
+		}
+	}
+
 	public IdList substId(IdMap<Id> map) {
 		if(stream().anyMatch(map::containsKey)) {
 			IdList retVal = new IdList(size());
@@ -39,14 +48,12 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append("[").append(PrettyPrintable.join(iterator(), ", ")).append("]");
+		pp.append("[").append(PrettyPrintable.join(this, ", ")).append("]");
 	}
 
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder();
-		pp(sb);
-		return sb.toString();
+		return buildString();
 	}
 
 	public static Collector<Id, ?, IdList> collector() {
