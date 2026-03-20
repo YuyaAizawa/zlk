@@ -114,7 +114,8 @@ public class Main {
 
 		System.out.println("-- CONSTRAIN EXTRACTION --");
 		FreshFlex freshFlex = new FreshFlex();
-		Constraint cint = ConstraintExtractor.extract(idcalc, freshFlex);
+		ConstraintExtractor.Result extractResult = ConstraintExtractor.extract(idcalc, freshFlex);
+		Constraint cint = extractResult.constraint();
 		System.out.println(cint.buildString());
 		System.out.println();
 

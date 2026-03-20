@@ -12,7 +12,7 @@ import zlk.idcalc.IcPattern.Var;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcPattern extends PrettyPrintable, LocationHolder
+public sealed interface IcPattern extends PrettyPrintable, LocationHolder, ExpOrPattern
 permits Var, Dector {
 
 	record Var(
