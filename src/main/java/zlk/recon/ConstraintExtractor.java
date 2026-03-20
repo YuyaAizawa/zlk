@@ -1,6 +1,7 @@
 package zlk.recon;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 import zlk.common.ConstValue;
@@ -9,6 +10,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcExp.IcApp;
@@ -38,21 +40,36 @@ public final class ConstraintExtractor {
 
 	private FreshFlex freshFlex;
 	private IdMap<IdList> letDependers; // dependee -> dependers
+	private IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
 	private ConstraintExtractor(IdMap<IdList> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
+		this.nodeTypes = new IdentityHashMap<>();
 	}
 
-	public static Constraint extract(IcModule module, FreshFlex freshFlex) {
-		return new ConstraintExtractor(
+	public static Result extract(IcModule module, FreshFlex freshFlex) {
+		ConstraintExtractor extractor = new ConstraintExtractor(
 				LetDependencyExtractor.extract(module),
 				freshFlex
-		).extractFromDef(
+		);
+		Constraint constraint = extractor.extractFromDef(
 				module.decls(),
 				new CExists(  // TODO: main関数のletにする
 						List.of(),
 						List.of()));
+		return new Result(constraint, extractor.nodeTypes);
+	}
+
+	public record Result(
+			Constraint constraint,
+			IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
+
+		public IdentityHashMap<ExpOrPattern, Type> resolvedNodeTypes() {
+			IdentityHashMap<ExpOrPattern, Type> result = new IdentityHashMap<>();
+			nodeTypes.forEach((node, rcType) -> result.put(node, rcType.toType()));
+			return result;
+		}
 	}
 
 	/**
@@ -61,6 +78,7 @@ public final class ConstraintExtractor {
 	 * @param expected 期待される型
 	 */
 	public Constraint extract(IcExp exp, RcType expected) {
+		nodeTypes.put(exp, expected);
 		return switch (exp) {
 
 		case IcCnst(ConstValue value, Location _) ->
@@ -233,7 +251,7 @@ public final class ConstraintExtractor {
 	}
 
 	public Args extractFromArgs(List<IcPattern> args) {
-		PatternBinder pb = new PatternBinder();
+		PatternBinder pb = new PatternBinder(nodeTypes);
 
 		// 引数型に変数を割当て
 		List<RcType> argTys = new ArrayList<>(args.size());
@@ -264,7 +282,7 @@ public final class ConstraintExtractor {
 	}
 
 	private Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
-		PatternBinder pb = new PatternBinder();
+		PatternBinder pb = new PatternBinder(nodeTypes);
 		pb.bind(branch.pattern(), patExpected, freshFlex);
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 

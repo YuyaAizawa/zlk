@@ -2,6 +2,12 @@ package zlk;
 
 import org.junit.jupiter.api.Test;
 
+import zlk.idcalc.IcCaseBranch;
+import zlk.idcalc.IcExp.IcApp;
+import zlk.idcalc.IcExp.IcCase;
+import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcVarLocal;
+import zlk.idcalc.IcPattern;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 
@@ -145,5 +151,47 @@ public class ReconTest {
 
 		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
 		module.getType("idLet").is("a -> a");
+	}
+
+	void capturesExpressionAndPatternTypes() {
+		String src ="""
+				type List a =
+				  | Nil
+				  | Cons a (List a)
+
+				head list =
+				  case list of
+				    Nil ->
+				      0
+				    Cons hd tl ->
+				      add hd 1
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+
+		var head = module.getIdcalcModule().decls().getFirst();
+		IcPattern.Var listPat = (IcPattern.Var) head.args().getFirst();
+		IcCase body = (IcCase) head.body();
+		IcVarLocal target = (IcVarLocal) body.target();
+		IcCaseBranch nilBranch = body.branches().get(0);
+		IcCnst zero = (IcCnst) nilBranch.body();
+		IcCaseBranch consBranch = body.branches().get(1);
+		IcPattern.Dector consPat = (IcPattern.Dector) consBranch.pattern();
+		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().get(0).pattern();
+		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().get(1).pattern();
+		IcApp addCall = (IcApp) consBranch.body();
+		IcVarLocal hdRef = (IcVarLocal) addCall.args().get(0);
+		IcCnst one = (IcCnst) addCall.args().get(1);
+
+		module.getCallSiteType(addCall).is("I32");
+		module.getCallSiteType(hdRef).is("I32");
+		module.getCallSiteType(one).is("I32");
+		module.getCallSiteType(zero).is("I32");
+		module.getCallSiteType(target).is("List I32");
+
+		module.getCallSiteType(listPat).is("List I32");
+		module.getCallSiteType(consPat).is("List I32");
+		module.getCallSiteType(hdPat).is("I32");
+		module.getCallSiteType(tlPat).is("List I32");
 	}
 }
