@@ -24,7 +24,7 @@ import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcExp extends PrettyPrintable, LocationHolder
+public sealed interface IcExp extends PrettyPrintable, LocationHolder, ExpOrPattern
 permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet, IcCase {
 
 	record IcCnst(
