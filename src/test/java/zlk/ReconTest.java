@@ -3,11 +3,14 @@ package zlk;
 import org.junit.jupiter.api.Test;
 
 import zlk.idcalc.IcCaseBranch;
+import zlk.idcalc.IcExp;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
+import zlk.idcalc.IcExp.IcLet;
 import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcPattern;
+import zlk.repopt.RepKey;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 
@@ -193,5 +196,47 @@ public class ReconTest {
 		module.getCallSiteType(consPat).is("List I32");
 		module.getCallSiteType(hdPat).is("I32");
 		module.getCallSiteType(tlPat).is("List I32");
+	}
+
+	@Test
+	void collectsRepKeys() {
+		String src ="""
+				calc =
+				  add (add 1 2) 3
+
+				id x =
+				  let
+				    y = x
+				  in
+				    y
+
+				applyInt = id 1
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.REP_OPT);
+
+		var calc = module.getIdcalcModule().decls().get(0);
+		IcApp outerAdd = (IcApp) calc.body();
+		IcApp innerAdd = (IcApp) outerAdd.args().get(0);
+		IcCnst one = (IcCnst) innerAdd.args().get(0);
+		IcCnst two = (IcCnst) innerAdd.args().get(1);
+		IcCnst three = (IcCnst) outerAdd.args().get(1);
+
+		var id = module.getIdcalcModule().decls().get(1);
+		IcLet idBody = (IcLet) id.body();
+		IcVarLocal y = (IcVarLocal) idBody.body();
+
+		var applyInt = module.getIdcalcModule().decls().get(2);
+		IcExp appliedInt = ((IcApp) applyInt.body()).args().getFirst();
+
+		module.getRepKeys(outerAdd).is(RepKey.UNBOXED);
+		module.getRepKeys(innerAdd).is(RepKey.UNBOXED);
+		module.getRepKeys(one).is(RepKey.UNBOXED);
+		module.getRepKeys(two).is(RepKey.UNBOXED);
+		module.getRepKeys(three).is(RepKey.UNBOXED);
+		module.getRepKeys(y).is();
+		module.getType("id").is("a -> a");
+		module.getType("applyInt").is("I32");
+		module.getRepKeys(appliedInt).is(RepKey.UNBOXED, RepKey.FIXED_TYARG);
 	}
 }

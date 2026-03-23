@@ -42,53 +42,14 @@ public class Main {
 				"""
 				module HelloMyLang
 
-				type List a =
-				  | Nil
-				  | Cons a (List a)
-
-				sq a =
+				idLet x =
 				  let
-				    pow b c =
-				      if isZero c then
-				        1
-				      else
-				        mul b (pow b (sub c 1))
+				    y = x
 				  in
-				    pow a 2
+				    y
 
-				fact n =
-				  if isZero n then
-				    1
-				  else
-				    let
-				      one = 1
-				      nn = sub n one
-				    in
-				      mul n (fact nn)
-
-				make_adder x =
-				  let
-				    adder y =
-				      let
-				        adder2 z = add (add x y) z
-				      in
-				        adder2
-				  in
-				    adder
-
-				sum list =
-				  case list of
-				    Nil -> 0
-				    Cons hd tl -> add hd (sum tl)
-
-				ans1 =
-				  sq 42
-
-				ans2 =
-				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
-
-				ans3 =
-				  make_adder 3 4 5
+				idCall =
+				  idLet 42
 				""";
 
 		System.out.println("-- SOURCE --");

@@ -53,7 +53,7 @@ public class TypeReconstructor {
 	/**
 	 * 汎化するときに使う
 	 */
-	private int gMarkCounter;
+	private int gMarkCounter = 1;  // 0からにすると一般化対象と混ざる
 
 	private TypeReconstructor(FreshFlex freshFlex) {
 		this.result = new IdMap<>();
@@ -207,11 +207,12 @@ public class TypeReconstructor {
 	}
 
 	private void generalizeAnchors(int youngMark, int visitMark, int youngRank, List<Variable> anchors) {
-		// 外部に触れていたらrankを下げる
-		anchors.forEach(anchor -> anchor.markAndWalk(visitMark,
-				v -> adjustRank(youngMark, visitMark, youngRank, v)));
+		// 到達可能なノードすべてに youngMark を付ける
+		anchors.forEach(anchor -> anchor.markAndWalk(youngMark, _ -> {}));
+		// 到達可能部分を再訪し，外側の rank を内部へ伝播させる
+		anchors.forEach(anchor -> adjustRank(youngMark, visitMark, youngRank, anchor));
 
-		// 一般化できるものをする
+		// まだ youngRank に残っているものだけ一般化する
 		anchors.forEach(anchor -> anchor.markAndWalk(youngMark,
 				v -> {
 					VariableState s = v.get();
@@ -232,19 +233,26 @@ public class TypeReconstructor {
 	 */
 	private int adjustRank(int youngMark, int visitMark, int groupRank, Variable var) {
 		VariableState state = var.get();
-		if(state.gMark == youngMark) {
-			state.gMark = visitMark;
-			int maxRank = adjustRankContent(youngMark, visitMark, groupRank, state.content);
-			state.rank = maxRank;
-			return maxRank;
-		} else if(state.gMark == visitMark) {
+
+		// すでにこの pass で処理済み
+		if (state.gMark == visitMark) {
 			return state.rank;
-		} else {
-			int minRank = Math.min(groupRank, state.rank);  // TODO groupRankの方が低いってことある？
-			state.gMark = visitMark;
-			state.rank = minRank;
-			return minRank;
 		}
+		int nextRank = Math.min(groupRank, state.rank);
+
+		// 1 pass 目で youngMark が付いていないものは，anchor から見た外部参照
+		if (state.gMark != youngMark) {
+			state.gMark = visitMark;
+			state.rank = nextRank;
+			return nextRank;
+		}
+
+		// 到達可能グラフ内のノード
+		state.gMark = visitMark;
+
+		int contentRank = adjustRankContent(youngMark, visitMark, nextRank, state.content);
+		state.rank = contentRank;
+		return contentRank;
 	}
 	private int adjustRankContent(int youngMark, int visitMark, int groupRank, Content content) {
 		ToIntFunction<Variable> go = c -> adjustRank(youngMark, visitMark, groupRank, c);

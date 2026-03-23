@@ -82,7 +82,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 		return acc;
 	}
 
-	public default Optional<Id> getName() {
+	public default Optional<Id> getId() {
 		switch (this) {
 		case IcVarLocal(Id id, Location _) -> {
 			return Optional.of(id);

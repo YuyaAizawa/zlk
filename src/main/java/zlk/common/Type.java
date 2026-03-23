@@ -312,6 +312,27 @@ permits CtorApp, Arrow, Var {
 		};
 	}
 
+	default boolean in(Type... types) {
+		for(Type type : types) {
+			if(this.equals(type)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * この型が型変数を含むか判定する
+	 * @return 含めばtrue
+	 */
+	default boolean isGeneric() {
+		return switch(this) {
+		case Var(_) -> true;
+		case CtorApp(_, List<Type> args) -> args.stream().anyMatch(Type::isGeneric);
+		case Arrow(Type arg, Type ret) -> arg.isGeneric() || ret.isGeneric();
+		};
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {

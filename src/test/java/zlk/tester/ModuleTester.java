@@ -31,6 +31,8 @@ import zlk.recon.FreshFlex;
 import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
+import zlk.repopt.RepKeys;
+import zlk.repopt.RepresentationOptimizer;
 import zlk.util.Result;
 
 public class ModuleTester {
@@ -40,6 +42,7 @@ public class ModuleTester {
 		NAME_EVAL,
 		TYPE_CINT,
 		TYPE_RECON,
+		REP_OPT,
 		CLOSURE_CONV,
 		BYTECODE_GEN,
 		;
@@ -59,7 +62,8 @@ public class ModuleTester {
 	private Module ast = null;
 	private IcModule module = null;
 	private Constraint cint = null;
-	private Map<ExpOrPattern, Type> callSiteTypes = null;
+	public Map<ExpOrPattern, Type> callSiteTypes = null;
+	private RepKeys repKeys = null;
 	private IdMap<Type> types = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
@@ -100,6 +104,13 @@ public class ModuleTester {
 			return;
 		}
 
+		RepresentationOptimizer repOpt = new RepresentationOptimizer(module, types, callSiteTypes);
+		repOpt.collectCandidates();
+		repKeys = repOpt.getRepKeys();
+		if(this.compileLevel == CompileLevel.REP_OPT) {
+			return;
+		}
+
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
 		this.clconv = new ClosureConverter(module, types, builtinIds).convert();
@@ -131,6 +142,10 @@ public class ModuleTester {
 			throw new IllegalArgumentException("Type not found for node: " + node);
 		}
 		return toTypeTester(ty);
+	}
+
+	public RepKeysTester getRepKeys(ExpOrPattern node) {
+		return new RepKeysTester(repKeys.get(node));
 	}
 
 	public IcModule getIdcalcModule() {
