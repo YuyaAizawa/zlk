@@ -114,6 +114,7 @@ public class TypeReconstructor {
 			introduce(flexes, nextRank);
 
 			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
+			introduce(locals.values(), nextRank);
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
 
 			// 強連結成分ごとに解決
@@ -227,7 +228,7 @@ public class TypeReconstructor {
 
 	/**
 	 * 型変数の結びつきをたどり，最も高いものにrankを合わせる．
-	 * 修正後のrankを返す．
+	 * @return 修正後の rank
 	 */
 	private int adjustRank(int youngMark, int visitMark, int groupRank, Variable var) {
 		VariableState state = var.get();
@@ -252,9 +253,9 @@ public class TypeReconstructor {
 		case Content.RigidVar _ -> groupRank;
 		case Content.FlexVar _ -> groupRank;
 		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
-			args.stream().mapToInt(go).max().orElse(0);
+			args.stream().mapToInt(go).max().orElse(groupRank);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			Math.max(go.applyAsInt(ret), go.applyAsInt(arg));
+			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
 		case Content.Error() -> groupRank;
 		};
 	}

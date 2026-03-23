@@ -131,4 +131,19 @@ public class ReconTest {
 		module.getType("boolList").is("List Bool");
 		module.getType("pair").is("Pair I32 Bool");
 	}
+
+	@Test
+	void unifiedInLet() {
+		String src =
+				"""
+				idLet x =
+				  let
+				    y = x
+				  in
+				    y
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+		module.getType("idLet").is("a -> a");
+	}
 }
