@@ -48,6 +48,25 @@ public class FeatureTest {
 	}
 
 	@Test
+	void selfRecursiveAndClosure() {
+		String src ="""
+				f d n =
+				  let
+				    fuctplus m =
+				      if isZero m then
+				        1
+				      else
+				        add d (mul m (fuctplus (sub m 1)))
+				  in
+				    fuctplus n
+
+				ans = f 1 3
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getValue("ans").is(16);
+	}
+
+	@Test
 	void enumDeclAndCaseExp() {
 		String src="""
 		type IntList = Nil | Cons I32 IntList
@@ -60,8 +79,7 @@ public class FeatureTest {
 		ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var ans = module.getValue("ans");
-		ans.is(6);
+		module.getValue("ans").is(6);
 	}
 
 	@Test
