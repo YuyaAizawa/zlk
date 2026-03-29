@@ -7,6 +7,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
@@ -21,6 +22,7 @@ import zlk.common.Type;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
@@ -124,12 +126,14 @@ public class Main {
 		System.out.println(types.buildString());
 		System.out.println();
 
+		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
+
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
 			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id(), union.vars())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConverter(idcalc, types, builtinIds).convert();
+		CcModule clconv = new ClosureConverter(idcalc, types, nodeTypes, builtinIds).convert();
 		clconv.pp(System.out);
 		System.out.println();
 
