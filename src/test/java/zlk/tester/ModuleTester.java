@@ -6,6 +6,7 @@ import java.lang.reflect.AccessFlag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +23,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Tokenized;
@@ -58,6 +60,7 @@ public class ModuleTester {
 	private Module ast = null;
 	private IcModule module = null;
 	private Constraint cint = null;
+	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
@@ -80,7 +83,8 @@ public class ModuleTester {
 		}
 
 		FreshFlex freshFlex = new FreshFlex();
-		this.cint = ConstraintExtractor.extract(module, freshFlex);
+		var result = ConstraintExtractor.extract(module, freshFlex);
+		this.cint = result.constraint();
 		if(this.compileLevel == CompileLevel.TYPE_CINT) {
 			return;
 		}
@@ -92,13 +96,14 @@ public class ModuleTester {
 					types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
 		Result<List<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
 		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
+		callSiteTypes = result.resolvedNodeTypes();
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
 
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
-		this.clconv = new ClosureConverter(module, types, builtinIds).convert();
+		this.clconv = new ClosureConverter(module, types, callSiteTypes, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
@@ -118,7 +123,26 @@ public class ModuleTester {
 
 	public TypeTester getType(String name) {
 		Type ty = types.get(Id.fromCanonicalName(TARGET_MODULE_NAME+"."+name));
-		return new TypeTester(ty, Id.fromCanonicalName(TARGET_MODULE_NAME), module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.CtorApp(i, List.of()))));
+		return toTypeTester(ty);
+	}
+
+	public TypeTester getCallSiteType(ExpOrPattern node) {
+		Type ty = callSiteTypes.get(node);
+		if(ty == null) {
+			throw new IllegalArgumentException("Type not found for node: " + node);
+		}
+		return toTypeTester(ty);
+	}
+
+	public IcModule getIdcalcModule() {
+		return module;
+	}
+
+	private TypeTester toTypeTester(Type ty) {
+		return new TypeTester(
+				ty,
+				Id.fromCanonicalName(TARGET_MODULE_NAME),
+				module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.CtorApp(i, List.of()))));
 	}
 
 	public void addClass(String className, byte[] bytecode) {

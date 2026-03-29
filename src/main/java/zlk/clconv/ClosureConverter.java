@@ -4,6 +4,7 @@ import static zlk.util.ErrorUtils.neverHappen;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -13,9 +14,10 @@ import java.util.function.Function;
 import zlk.clcalc.CcCaseBranch;
 import zlk.clcalc.CcCtor;
 import zlk.clcalc.CcExp;
-import zlk.clcalc.CcExp.CcApp;
 import zlk.clcalc.CcExp.CcCase;
+import zlk.clcalc.CcExp.CcClosureApp;
 import zlk.clcalc.CcExp.CcCnst;
+import zlk.clcalc.CcExp.CcDirectApp;
 import zlk.clcalc.CcExp.CcIf;
 import zlk.clcalc.CcExp.CcLet;
 import zlk.clcalc.CcExp.CcMkCls;
@@ -29,6 +31,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcExp;
@@ -49,24 +52,39 @@ import zlk.idcalc.IcValDecl;
 
 /**
  * クロージャ変換と関数のトップレベルへのflattenを行う
+ * 関数適用をトップレベルの呼出しと関数オブジェクトへのapplyに分離する
  */
 public final class ClosureConverter {
 
 	private final IcModule src;
 	private final IdMap<Type> type;  // 変換後のIdの型を追加
+	private final IdentityHashMap<ExpOrPattern, Type> nodeTypes;  // 項の型 TODO: caseのcondしか使っていないので消せそう
 	private final Set<Id> knowns;
+	private final IdMap<Integer> arities;  // その時点で直接呼出し可能であることが確定した関数の引数の数
 
 	private final List<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
-	public ClosureConverter(IcModule src, IdMap<Type> type, IdList builtins) {
+	public ClosureConverter(IcModule src, IdMap<Type> type, IdentityHashMap<ExpOrPattern, Type> nodeTypes, IdList builtins) {
 		this.src = src;
 		this.type = type;
+		this.nodeTypes = nodeTypes;
 
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
 		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
 		knowns.addAll(builtins);
+
+		this.arities = new IdMap<>();
+		src.decls().forEach(decl ->
+			arities.put(decl.id(), decl.args().size())
+		);
+		src.types().forEach(union ->
+			union.ctors().forEach(ctor ->
+				arities.put(ctor.id(), ctor.args().size())
+			)
+		);
+
 		this.toplevels = new ArrayList<>();
 		this.closureCount = new AtomicInteger();
 	}
@@ -76,7 +94,7 @@ public final class ClosureConverter {
 				.stream()
 				.map(decl -> compileFunc(decl.id(), decl.args(), decl.body()))
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
-					throw new RuntimeException("toplevel must not be closure: "+cls.clsFunc()); }));
+					throw new RuntimeException("toplevel must not be closure: "+cls.implId()); }));
 
 		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
 		return new CcModule(src.name(), types, toplevels);
@@ -99,8 +117,12 @@ public final class ClosureConverter {
 		} else {
 			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).dropArgs(args_.size()), body.loc());
 			toplevels.add(closureFunc);
+			arities.remove(id);  // 直接呼出し出来なかったので取り除く
 			knowns.add(closureFunc.id());
-			return Optional.of(new CcMkCls(closureFunc.id(), frees, closureFunc.loc()));
+			return Optional.of(new CcMkCls(
+					closureFunc.id(),
+					frees.stream().map(id_ -> (CcExp) new CcVar(id_, Location.noLocation())).toList(),
+					closureFunc.loc()));
 		}
 	}
 
@@ -139,16 +161,91 @@ public final class ClosureConverter {
 		// 自己再帰のために元の関数名も置換対象
 		idMap.put(original, clsId);
 
-		List<IcPattern> clsArgs = new ArrayList<>(args_);
+		List<IcPattern> clsArgs = new ArrayList<>();
+		List<CcVar> caps = new ArrayList<>();
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
 			clsArgs.add(new Var(newId, Location.noLocation()));
+			caps.add(new CcVar(newId, Location.noLocation()));
 			type.put(newId, type.get(free));
 		}
+		clsArgs.addAll(args_);
 
-		CcExp clsBody = body.substId(idMap);
+		CcExp clsBody = rewriteCls(original, clsId, caps, idMap, body);  // body.substId(idMap);
 
 		return new CcFunDecl(clsId, clsArgs, clsBody, loc);
+	}
+	private CcExp rewriteCls(Id origId, Id clsId, List<CcVar> caps,  IdMap<Id> idMap, CcExp target) {
+		Function<CcExp, CcExp> go = exp -> rewriteCls(origId, clsId, caps, idMap, exp);
+
+		return switch (target) {
+		case CcCnst _ -> {
+			yield target;
+		}
+		case CcVar(Id id, Location loc) -> {
+			yield new CcVar(idMap.getOrDefault(id, id), loc);
+		}
+		case CcDirectApp(Id funId, List<CcExp> args, Location loc) -> {
+			if(funId.equals(origId)) {
+				List<CcExp> args_ = new ArrayList<>();
+				args_.addAll(caps);  // キャプチャした変数が明示的に引数に
+				args.stream().map(go).forEach(args_::add);
+				yield new CcDirectApp(
+						clsId,
+						args_,
+						loc);
+			}
+			yield new CcDirectApp(
+					funId,
+					args.stream().map(go).toList(),
+					loc);
+		}
+		case CcClosureApp(CcExp funExp, List<CcExp> args, Location loc) -> {
+			yield new CcClosureApp(
+					go.apply(funExp),
+					args.stream().map(go).toList(),
+					loc);
+		}
+		case CcMkCls(Id clsFunc, List<CcExp> caps_, Location loc) -> {
+			if(clsFunc.equals(origId)) {
+				List<CcExp> caps__ = new ArrayList<>();
+				caps__.addAll(caps);  // 部分適用の前にキャプチャした変数を含める
+				caps_.stream().map(go).forEach(caps__::add);
+				yield new CcMkCls(
+						clsId,
+						caps__,
+						loc);
+			}
+			yield new CcMkCls(
+					clsFunc,
+					caps_.stream().map(go).toList(),
+					loc);
+		}
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) -> {
+			yield new CcIf(
+					go.apply(cond),
+					go.apply(thenExp),
+					go.apply(elseExp),
+					loc);
+		}
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Location loc) -> {
+			yield new CcLet(
+					varName,
+					go.apply(boundExp),
+					go.apply(body),
+					loc);
+		}
+		case CcCase(CcExp cond, Type targetTy, List<CcCaseBranch> branches, Location loc) -> {
+			yield new CcCase(
+					go.apply(cond),
+					targetTy,
+					branches.stream().map(branch -> new CcCaseBranch(
+							branch.pattern(),
+							go.apply(branch.body()),
+							branch.loc())).toList(),
+					loc);
+		}
+		};
 	}
 
 	private CcExp compile(IcExp exp) {
@@ -157,23 +254,55 @@ public final class ClosureConverter {
 			yield new CcCnst(value, loc);
 		}
 		case IcVarLocal(Id id, Location loc) -> {
+			if(arities.containsKey(id)) {  // IcApp以外の形で関数がでてくる場合
+				yield new CcMkCls(id, List.of(), loc);
+			}
 			yield new CcVar(id, loc);
 		}
-		case IcVarForeign(Id id, Type _, Location loc) -> {
-			yield new CcVar(id, loc);
+		case IcVarForeign(Id id, Type ty, Location loc) -> {
+			if(arities.containsKey(id) && !ty.isArrow()) {  // 組込みへの対処 TODO 分離
+				yield new CcDirectApp(id, List.of(), loc);
+			}
+			yield new CcMkCls(id, List.of(), loc);
 		}
-		case IcVarCtor(Id id, Type _, Location loc) -> {
-			yield new CcVar(id, loc);
+		case IcVarCtor(Id id, Type ty, Location loc) -> {
+			if(!ty.isArrow()) {  // 引数をとらない場合
+				yield new CcDirectApp(id, List.of(), loc);
+			}
+			yield new CcMkCls(id, List.of(), loc);
 		}
 		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
 			yield neverHappen("no anonymous abs in this version.", body.loc());
 		}
 		case IcApp(IcExp fun, List<IcExp> args, Location loc) -> {
-			CcExp funExp = compile(fun);
-			List<CcExp> argExps = args.stream()
-					.map(arg -> compile(arg))
-					.toList();
-			yield new CcApp(funExp, argExps, loc);
+			// 直接呼び出せて引数が揃っていればCcDirectApp
+			Id callableId =
+					switch(fun) {
+					case IcVarLocal v -> arities.containsKey(v.id()) ? v.id() : null;  // クロージャでない
+					case IcVarForeign v -> v.id();
+					case IcVarCtor v -> v.id();
+					default -> null;
+					};
+
+			List<CcExp> ccArgs = args.stream().map(arg -> compile(arg)).toList();
+
+			if(callableId != null) {
+				int arity = arities.containsKey(callableId)
+						? arities.get(callableId)
+						: type.get(callableId).flatten().size() - 1;  // TODO: 組込み関数のアリティを求めるまともな方法
+
+				if(arity > args.size()) {
+					yield new CcMkCls(callableId, ccArgs, loc);
+				} else {
+					CcExp result = new CcDirectApp(callableId, ccArgs.subList(0, arity), loc);
+					if(arity < args.size()) {
+						result = new CcClosureApp(result, ccArgs.subList(arity, args.size()), loc);
+					}
+					yield result;
+				}
+			} else {
+				yield new CcClosureApp(compile(fun), ccArgs, loc);
+			}
 		}
 		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location loc) -> {
 			yield new CcIf(
@@ -182,7 +311,7 @@ public final class ClosureConverter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(List<IcValDecl> decls, IcExp body, Location loc) -> {
+		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
 			// 関数と値に分ける
 			List<IcValDecl> funDecls = new ArrayList<>();
 			List<IcValDecl> valDecls = new ArrayList<>();
@@ -196,6 +325,9 @@ public final class ClosureConverter {
 
 			// 相互再帰のために先にknownsに登録しておく
 			funDecls.forEach(decl -> knowns.add(decl.id()));
+
+			// 暫定的に直接呼出し可能とする
+			funDecls.forEach(decl -> arities.put(decl.id(), decl.args().size()));  // 暫定的に直接呼出し可能とする
 
 			// 各関数を変換（クロージャが必要ならCcMkClsが返る）
 			IdMap<Optional<CcMkCls>> closures = funDecls.stream().collect(IdMap.collector(
@@ -225,7 +357,7 @@ public final class ClosureConverter {
 			yield result;
 		}
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
-			CcExp compiledTarget = compile(target);
+			CcExp ccTarget = compile(target);
 			List<CcCaseBranch> compiledBranches =
 					branches.stream()
 							.map(branch -> new CcCaseBranch(
@@ -233,7 +365,7 @@ public final class ClosureConverter {
 									compile(branch.body()),
 									branch.loc()))
 							.toList();
-			yield new CcCase(compiledTarget, compiledBranches, loc);
+			yield new CcCase(ccTarget, nodeTypes.get(target), compiledBranches, loc);
 		}
 		};
 	}
@@ -255,16 +387,21 @@ public final class ClosureConverter {
 				free.add(id);
 			}
 		}
-		case CcApp(CcExp fun, List<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, List<CcExp> args, Location _) -> {
+			if (!bounded.contains(funId) && !free.contains(funId)) {
+				free.add(funId);
+			}
+			args.forEach(arg -> fv(arg, bounded, free));
+		}
+		case CcClosureApp(CcExp fun, List<CcExp> args, Location _) -> {
 			fv(fun, bounded, free);
 			args.forEach(arg -> fv(arg, bounded, free));
 		}
-		case CcMkCls(Id clsFunc, IdList caps, Location _) -> {
+		case CcMkCls(Id clsFunc, List<CcExp> caps, Location _) -> {
 			if (!bounded.contains(clsFunc)) {
 				throw new AssertionError();
 			}
-			caps.stream().filter(id -> !bounded.contains(id) && !free.contains(id))
-					.forEach(free::add);
+			caps.forEach(exp_ -> fv(exp_, bounded, free));
 		}
 		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
 			fv(cond, bounded, free);
@@ -276,7 +413,7 @@ public final class ClosureConverter {
 			fv(boundExp, bounded, free);
 			fv(body, bounded, free);
 		}
-		case CcCase(CcExp target, List<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Type _, List<CcCaseBranch> branches, Location _) -> {
 			fv(target, bounded, free);
 			for (CcCaseBranch branch : branches) {
 				branch.pattern().accumulateVars(bounded);

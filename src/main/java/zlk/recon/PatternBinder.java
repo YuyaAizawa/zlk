@@ -1,10 +1,12 @@
 package zlk.recon;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Arg;
@@ -16,8 +18,14 @@ final class PatternBinder {
 	final List<Variable> vars = new ArrayList<>();
 	final IdMap<RcType> headers = new IdMap<>();
 	final List<Constraint> cons = new ArrayList<>();
+	final IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
+
+	PatternBinder(IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
+		this.nodeTypes = nodeTypes;
+	}
 
 	void bind(IcPattern pat, RcType expected, FreshFlex freshFlex) {
+		nodeTypes.put(pat, expected);
 		switch(pat) {
 		// TODO: リテラル
 		case IcPattern.Var(Id id, _) -> {
