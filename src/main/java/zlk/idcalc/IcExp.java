@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
@@ -78,11 +79,32 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 	default IdList fv(Collection<Id> known) {
 		IdList acc = new IdList();
 		Set<Id> knownSet = new HashSet<>(known);
-		fv(acc, knownSet);
+
+		walk(exp -> {
+			switch(exp) {
+			case IcVarLocal(Id id, Location _) -> {
+				if (!knownSet.contains(id)) {
+					acc.add(id);
+				}
+			}
+
+			case IcLamb(List<IcPattern> args, IcExp _, Location _) ->
+				args.forEach(pat -> pat.accumulateVars(knownSet));
+
+			case IcLet(List<IcValDecl> decls, IcExp _, Location _) ->
+				decls.forEach(decl -> decl.args().forEach(pat -> pat.accumulateVars(knownSet)));
+
+			case IcCase(IcExp _, List<IcCaseBranch> branches, Location _) ->
+				branches.forEach(branch -> branch.pattern().accumulateVars(knownSet));
+
+			default -> {}
+			}
+		});
+
 		return acc;
 	}
 
-	public default Optional<Id> getName() {
+	public default Optional<Id> getId() {
 		switch (this) {
 		case IcVarLocal(Id id, Location _) -> {
 			return Optional.of(id);
@@ -99,43 +121,33 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 		}
 	}
 
-	private void fv(IdList acc, Set<Id> known) {
+	/**
+	 * 式を行きがけ順に捜査する
+	 * @param action
+	 */
+	default void walk(Consumer<? super IcExp> action) {
+		action.accept(this);
 		switch (this) {
-		case IcCnst(ConstValue _, Location _) -> {}
-		case IcVarLocal(Id id, Location _) -> {
-			if (!known.contains(id)) {
-				acc.add(id);
-			}
-		}
-		case IcVarForeign(Id _, Type _, Location _) -> {}
-		case IcVarCtor(Id _, Type _, Location _) -> {}
-		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
-			args.forEach(pat -> pat.accumulateVars(known));
-			body.fv(acc, known);
-		}
+		case IcLamb(List<IcPattern> _, IcExp body, Location _) ->
+			body.walk(action);
 		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
-			fun.fv(acc, known);
-			args.forEach(arg -> arg.fv(acc, known));
+			fun.walk(action);
+			args.forEach(arg -> arg.walk(action));
 		}
 		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
-			cond.fv(acc, known);
-			thenExp.fv(acc, known);
-			elseExp.fv(acc, known);
+			cond.walk(action);
+			thenExp.walk(action);
+			elseExp.walk(action);
 		}
 		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
-			decls.forEach(decl -> {
-				decl.args().forEach(pat -> pat.accumulateVars(known));
-				decl.body().fv(acc, known);
-			});
-			body.fv(acc, known);
+			decls.forEach(decl -> decl.body().walk(action));
+			body.walk(action);
 		}
 		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
-			target.fv(acc, known);
-			branches.forEach(branch -> {
-				branch.pattern().accumulateVars(known);
-				branch.body().fv(acc, known);
-			});
+			target.walk(action);
+			branches.forEach(branch -> branch.body().walk(action));
 		}
+		default -> {}
 		}
 	}
 
