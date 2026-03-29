@@ -1,7 +1,7 @@
 package zlk.idcalc;
 
+import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
@@ -41,7 +41,7 @@ permits Var, Dector {
 		};
 	}
 
-	public default void accumulateVars(Set<Id> known) {
+	public default void accumulateVars(Collection<Id> known) {
 		switch(this) {
 		case Var(Id id, Location _) -> {
 			known.add(id);

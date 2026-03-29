@@ -93,6 +93,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return impl.containsKey(id);
 	}
 
+	public void remove(Id id) {
+		impl.remove(id);
+	}
+
 	public IdList keys() {
 		return new IdList(impl.keySet());
 	}

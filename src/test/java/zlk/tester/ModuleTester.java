@@ -6,6 +6,7 @@ import java.lang.reflect.AccessFlag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +60,7 @@ public class ModuleTester {
 	private Module ast = null;
 	private IcModule module = null;
 	private Constraint cint = null;
-	private Map<ExpOrPattern, Type> callSiteTypes = null;
+	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
@@ -102,7 +103,7 @@ public class ModuleTester {
 
 		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
 				.collect(IdList.collector());
-		this.clconv = new ClosureConverter(module, types, builtinIds).convert();
+		this.clconv = new ClosureConverter(module, types, callSiteTypes, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
