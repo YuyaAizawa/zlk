@@ -81,6 +81,16 @@ permits VarN, AppN, FunN {
 		return flatten;
 	}
 
+	default Type toType() {
+		return switch(this) {
+		case VarN(Variable var) -> var.toType();
+		case AppN(Id id, List<RcType> args) ->
+			new Type.CtorApp(id, args.stream().map(arg -> arg.toType()).toList());
+		case FunN(RcType arg, RcType ret) ->
+			Type.arrow(List.of(arg.toType(), ret.toType()));
+		};
+	}
+
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
