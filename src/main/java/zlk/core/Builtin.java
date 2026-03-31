@@ -78,7 +78,7 @@ implements Instructions
 	}
 
 	public Builtin(String canonical, Type type, Instructions insn) {
-		this(Id.fromCanonicalName(canonical), type, insn);
+		this(Id.intern(canonical), type, insn);
 	}
 
 	@Override

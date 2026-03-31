@@ -39,7 +39,7 @@ public final class TypeTester {
 		case AnType.Unit _ -> Type.UNIT;
 		case AnType.Var(String name, _) -> new Type.Var(name);
 		case AnType.Type(String ctor, List<AnType> args, _) -> {
-			Id ctor_ = Id.fromCanonicalName(ctor);
+			Id ctor_ = Id.intern(ctor);
 			List<Type> args_ = args.stream().map(arg -> simpleEval(arg)).toList();
 			yield new Type.CtorApp(ctor_, args_);
 		}
@@ -63,7 +63,7 @@ public final class TypeTester {
 		};
 	}
 	private Id condidate(Id id) {
-		Id id_ = Id.fromCanonicalName(this.moduleId.canonicalName()+Id.SEPARATOR+id.canonicalName());  // TODO: 何とかする
+		Id id_ = Id.intern(this.moduleId.canonicalName()+Id.SEPARATOR+id.canonicalName());  // TODO: 何とかする
 		return this.tysInModule.containsKey(id_) ? id_ : id;
 	}
 
