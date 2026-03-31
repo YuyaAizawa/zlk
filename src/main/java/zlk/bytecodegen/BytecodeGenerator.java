@@ -56,7 +56,7 @@ public final class BytecodeGenerator {
 	private final IdMap<CcCtor> ctors;
 	private ClassWriter cw;
 
-	private static final Id LOCAL_DUMMY_ID = Id.fromCanonicalName("..DUMMY..");
+	private static final Id LOCAL_DUMMY_ID = Id.intern("..DUMMY..");
 	private static final Handle LAMBDA_METAFACTORY = new Handle(
 			Opcodes.H_INVOKESTATIC,
 			"java/lang/invoke/LambdaMetafactory",
@@ -699,7 +699,7 @@ public final class BytecodeGenerator {
 		for (int i = arity - 1; i >= 0; i--) {
 			List<Type> args = implTy.subList(0, i);
 			List<Type> ret = implTy.subList(i, implTy.size());
-			Id lambdaId = Id.fromParentAndSimpleName(originalId, "$" + i);
+			Id lambdaId = Id.intern(originalId, "$" + i);
 			genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
 			nextId = lambdaId;
 		}
