@@ -20,8 +20,8 @@ public final class Env {
 
 	public void pushScope(String scopeSimpleName) {
 		Id scopeName = scoped.isEmpty()
-				? Id.fromCanonicalName(scopeSimpleName)
-				: Id.fromParentAndSimpleName(scoped.peek().name(), scopeSimpleName);
+				? Id.intern(scopeSimpleName)
+				: Id.intern(scoped.peek().name(), scopeSimpleName);
 		scoped.push(new Scope(scopeName));
 	}
 
@@ -60,7 +60,7 @@ public final class Env {
 		}
 
 		Scope topScope = scoped.peek();
-		Id id = Id.fromParentAndSimpleName(topScope.name(), name);
+		Id id = Id.intern(topScope.name(), name);
 		Id orig = topScope.ids().put(name, id);
 
 		if(orig != null) {

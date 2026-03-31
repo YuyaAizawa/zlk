@@ -1,15 +1,18 @@
 package zlk.common.id;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 /**
- * 識別子情報．環境で利用して重複や未定義を防ぐ．名前空間にもなる．
- *
+ * 識別子を表す．名前空間にもなり，最終的なバイトコード上の衝突を防ぐ．
+ * 内部で利用する文法上妥当でない文字も含む．
+ * `==`で同値比較可能．
  * @author YuyaAizawa
  *
  */
@@ -18,35 +21,53 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 	public static final String SEPARATOR = ".";
 	private static final Pattern SEPARATOR_REGEX = Pattern.compile("\\.");
 
-	private final Id parent; // nullable
+	// ==で比較するための機構
+	private static final Map<Key, Id> pool = new HashMap<>();
+	private record Key(Id parent, String simple) {};  // 構造は今はIdと一緒だがキー用を分ける
+
+	private final Id parent; // トップレベルはnull
 	private final String simple;
+
+	private Id(Id parent, String simple) {
+		this.parent = parent;
+		this.simple = simple;
+	}
 
 	// TODO: Idもinternできるように
 
 	/**
-	 * 識別子を新しく生成する
-	 * @param canonical
-	 * @return
+	 * 親と名前がSEPARATORで区切られた識別子を用意する
+	 * @param parent 親
+	 * @param simple 名前
+	 * @return 識別子
 	 */
-	public static Id fromCanonicalName(String canonical) {
+	public static Id intern(Id parent, String simple) {
+		simple = simple.intern();
+		Key key = new Key(parent, simple);
+		Id existing = pool.get(key);
+		if(existing != null) {
+			return existing;
+		}
+		Id created = new Id(parent, simple);
+		pool.put(key, created);
+		return created;
+	}
+
+	/**
+	 * 文字列から識別子を用意する
+	 * @param canonical 文字列
+	 * @return 識別子
+	 */
+	public static Id intern(String canonical) {
 		if(canonical.isBlank()) {
 			throw new IllegalArgumentException(canonical);
 		}
 		String[] elements = SEPARATOR_REGEX.split(canonical);
 		Id result = null;
 		for(int i = 0; i < elements.length; i++) {
-			result = new Id(result, elements[i].intern());
+			result = intern(result, elements[i].intern());
 		}
 		return result;
-	}
-
-	public static Id fromParentAndSimpleName(Id parent, String simple) {
-		return new Id(parent, simple.intern());
-	}
-
-	private Id(Id parent, String simple) {
-		this.parent = parent;
-		this.simple = simple;
 	}
 
 	public Id parent() {
@@ -59,15 +80,14 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	public String canonicalName() {
 		StringBuilder sb = new StringBuilder();
-		canonicalNameHelp(sb);
-		return sb.toString();
-	}
-	private void canonicalNameHelp(StringBuilder sb) {
-		if(parent != null) {
-			parent.canonicalNameHelp(sb);
+
+		List<String> parts = list();
+		sb.append(parts.getFirst());
+		for(String part : parts.subList(1, parts.size())) {
 			sb.append(SEPARATOR);
+			sb.append(part);
 		}
-		sb.append(simple);
+		return sb.toString();
 	}
 
 	@Override
@@ -90,31 +110,12 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	@Override
 	public boolean equals(Object obj) {
-		if(obj == this) {
-			return true;
-		}
-		if(obj == null || obj.getClass() != Id.class) {
-			return false;
-		}
-		return equals((Id) obj);
-	}
-
-	private boolean equals(Id other) {
-		if(other == null) {
-			return false;
-		}
-		if(this.simple != other.simple) {
-			return false;
-		}
-		if(this.parent == null) {
-			return other.parent == null;
-		}
-		return this.parent.equals(other.parent);
+		return obj == this;
 	}
 
 	@Override
 	public String toString() {
-		return canonicalName();
+		return buildString();
 	}
 
 	@Override
@@ -122,26 +123,20 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 		List<String> ts = this.list();
 		List<String> os = o.list();
 
-		int i = 0;
-		while(ts.size() > i && os.size() > i) {
+		for(int i = 0; ts.size() > i && os.size() > i; i++) {
 			int cmp = ts.get(i).compareTo(os.get(i));
 			if(cmp != 0) {
 				return cmp;
 			}
-			i++;
 		}
 		return ts.size() - os.size();
 	}
 
 	private List<String> list() {
-		List<String> result = new ArrayList<>();
-		listHelp(result);
-		return result;
-	}
-	private void listHelp(List<String> acc) {
-		if(parent != null) {
-			parent.listHelp(acc);
+		List<String> acc = new ArrayList<>();
+		for(Id cursor = this; cursor != null; cursor = cursor.parent) {
+			acc.add(cursor.simple);
 		}
-		acc.add(simple);
+		return acc.reversed();
 	}
 }
