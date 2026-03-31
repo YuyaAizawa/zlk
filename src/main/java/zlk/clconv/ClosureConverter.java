@@ -157,7 +157,7 @@ public final class ClosureConverter {
 		IdMap<Id> idMap =
 				frees.stream().collect(IdMap.collector(
 						Function.identity(),
-						id -> Id.fromParentAndSimpleName(clsId, id.simpleName())));
+						id -> Id.intern(clsId, id.simpleName())));
 		// 自己再帰のために元の関数名も置換対象
 		idMap.put(original, clsId);
 
@@ -432,7 +432,7 @@ public final class ClosureConverter {
 		}
 		String exceptModule = orgStr.substring(idx+1);
 
-		return Id.fromCanonicalName(
+		return Id.intern(
 				src.name()
 				+ Id.SEPARATOR + closureCount.getAndIncrement()
 				+ Id.SEPARATOR + exceptModule);

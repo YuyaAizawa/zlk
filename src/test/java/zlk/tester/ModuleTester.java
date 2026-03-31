@@ -122,7 +122,7 @@ public class ModuleTester {
 	}
 
 	public TypeTester getType(String name) {
-		Type ty = types.get(Id.fromCanonicalName(TARGET_MODULE_NAME+"."+name));
+		Type ty = types.get(Id.intern(TARGET_MODULE_NAME+"."+name));
 		return toTypeTester(ty);
 	}
 
@@ -141,7 +141,7 @@ public class ModuleTester {
 	private TypeTester toTypeTester(Type ty) {
 		return new TypeTester(
 				ty,
-				Id.fromCanonicalName(TARGET_MODULE_NAME),
+				Id.intern(TARGET_MODULE_NAME),
 				module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.CtorApp(i, List.of()))));
 	}
 
