@@ -79,9 +79,9 @@ permits CtorApp, Arrow, Var {
 		}
 	}
 
-	public static final CtorApp UNIT = new CtorApp(Id.fromCanonicalName("Unit"));
-	public static final CtorApp BOOL = new CtorApp(Id.fromCanonicalName("Bool"));
-	public static final CtorApp I32  = new CtorApp(Id.fromCanonicalName("I32"));
+	public static final CtorApp UNIT = new CtorApp(Id.intern("Unit"));
+	public static final CtorApp BOOL = new CtorApp(Id.intern("Bool"));
+	public static final CtorApp I32  = new CtorApp(Id.intern("I32"));
 
 	public static final List<CtorApp> BUILTIN = List.of(UNIT, BOOL, I32);
 
