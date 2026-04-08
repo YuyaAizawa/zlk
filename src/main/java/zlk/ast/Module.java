@@ -1,13 +1,12 @@
 package zlk.ast;
 
-import java.util.List;
-
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record Module(
 		String name,
-		List<Decl> decls
+		Seq<Decl> decls
 ) implements PrettyPrintable {
 
 	@Override

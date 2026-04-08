@@ -38,7 +38,6 @@ public class Main {
 	public static Class<?> clazz;
 
 	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchFieldException {
-
 		String name = "HelloMyLang.zlk";
 		String src =
 				"""

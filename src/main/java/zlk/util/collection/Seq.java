@@ -1,7 +1,9 @@
 package zlk.util.collection;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -18,7 +20,7 @@ import zlk.util.IndexedConsumer;
 ///
 /// @param <E>
 
-public interface Seq<E> extends Iterable<E> {
+public sealed interface Seq<E> extends Iterable<E> {
 
 	@SuppressWarnings("unchecked")
 	public static <E> Seq<E> of() {
@@ -53,7 +55,23 @@ public interface Seq<E> extends Iterable<E> {
 		Object[] result = new Object[totalSize];
 		int count = 0;
 		for (int i = 0; i < args.length; i++) {
-			System.arraycopy(args[i], 0, result, count, args[i].size());
+			switch(args[i]) {
+			case EmptySeq<E> _:
+				break;
+			case SingletonSeq<E> s:
+				result[count] = s.element;
+				break;
+			case ArraySeq<E> a:
+				System.arraycopy(a.data, 0, result, count, a.size());
+				break;
+			case SliceSeq<E> s:
+				System.arraycopy(s.ref, s.from, result, count, s.size());
+				break;
+			case ReversedSeq<E> r: {
+				int count_ = count;
+				r.forEachIndexed((j, e) -> result[count_+j] = e);
+			}
+			}
 			count += args[i].size();
 		}
 		return new ArraySeq<>(result);
@@ -100,6 +118,10 @@ public interface Seq<E> extends Iterable<E> {
 		return slice(0, num);
 	}
 
+	default Seq<E> dropLast() {
+		return take(size() - 1);
+	}
+
 	/// 先頭から指定した要素数を除いたSeqを返す．
 	/// 足りなければ空のリストを返す．
 	/// @param num
@@ -123,6 +145,17 @@ public interface Seq<E> extends Iterable<E> {
 	@Override
 	void forEach(Consumer<? super E> action);
 	void forEachIndexed(IndexedConsumer<? super E> action);
+
+	/**
+	 * 移行のために用意した
+	 * @return
+	 */
+	@Deprecated
+	default List<E> toList() {
+		List<E> result = new ArrayList<>(size());
+		forEach(result::add);
+		return result;
+	}
 }
 
 final class EmptySeq<E> implements Seq<E> {

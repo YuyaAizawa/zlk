@@ -1,7 +1,5 @@
 package zlk.ast;
 
-import java.util.List;
-
 import zlk.ast.Decl.ValDecl;
 import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
@@ -13,6 +11,7 @@ import zlk.ast.Exp.Var;
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -30,9 +29,9 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 			}
 	}
 	record Var(String name, Location loc) implements Exp {}
-	record Lamb(List<Pattern> args, Exp body, Location loc) implements Exp {}
-	record App(List<Exp> exps, 	Location loc) implements Exp {
-		public App(List<Exp> exps, 	Location loc) {
+	record Lamb(Seq<Pattern> args, Exp body, Location loc) implements Exp {}
+	record App(Seq<Exp> exps, 	Location loc) implements Exp {
+		public App(Seq<Exp> exps, 	Location loc) {
 			if(exps.size() <= 1) {
 				throw new IllegalArgumentException();
 			}
@@ -41,8 +40,8 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		}
 	}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
-	record Let(List<ValDecl> decls, Exp body, Location loc) implements Exp {}
-	record Case(Exp exp, List<CaseBranch> branches, Location loc) implements Exp {}
+	record Let(Seq<ValDecl> decls, Exp body, Location loc) implements Exp {}
+	record Case(Exp exp, Seq<CaseBranch> branches, Location loc) implements Exp {}
 
 	static boolean isIf(Exp exp) {
 		return exp instanceof If;
@@ -56,11 +55,11 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		return switch (this) {
 		case Cnst(ConstValue value, Location _) -> new Cnst(value, loc);
 		case Var(String name, Location _) -> new Var(name, loc);
-		case Lamb(List<Pattern> args, Exp body, Location _) -> new Lamb(args, body, loc);
-		case App(List<Exp> exps, Location _) -> new App(exps, loc);
+		case Lamb(Seq<Pattern> args, Exp body, Location _) -> new Lamb(args, body, loc);
+		case App(Seq<Exp> exps, Location _) -> new App(exps, loc);
 		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> new If(cond, thenExp, elseExp, loc);
-		case Let(List<ValDecl> decls, Exp body, Location _) -> new Let(decls, body, loc);
-		case Case(Exp exp, List<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
+		case Let(Seq<ValDecl> decls, Exp body, Location _) -> new Let(decls, body, loc);
+		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
 		};
 	}
 
@@ -78,15 +77,15 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		case Var(String name, _) -> {
 			pp.append(name);
 		}
-		case Lamb(List<Pattern> args, Exp body, _) -> {
+		case Lamb(Seq<Pattern> args, Exp body, _) -> {
 			pp.append("\\");
 			args.forEach(arg ->
 					pp.append(arg).append(" "));
 			pp.append("-> ");
 			pp.append(body);
 		}
-		case App(List<Exp> exps, _) -> {
-			Exp hd = exps.get(0);
+		case App(Seq<Exp> exps, _) -> {
+			Exp hd = exps.first();
 			switch(hd) {
 			case Cnst _, Var _, App _ -> pp.append(hd);
 			case Lamb _, If _, Let _, Case _ -> { pp
@@ -97,7 +96,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 			}
 			for(int i = 1; i < exps.size(); i++) {
 				pp.append(" ");
-				Exp exp = exps.get(i);
+				Exp exp = exps.at(i);
 				switch(exp) {
 				case Cnst _, Var _ -> pp.append(exp);
 				case App _ -> pp.append("(").append(exp).append(")");
@@ -120,7 +119,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 				pp.inc().append(exp2).dec();
 			}
 		}
-		case Let(List<ValDecl> decls, Exp body, _) -> {
+		case Let(Seq<ValDecl> decls, Exp body, _) -> {
 			pp.append("let").endl();
 
 			pp.inc();
@@ -139,7 +138,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 				});
 			}
 		}
-		case Case(Exp exp, List<CaseBranch> branches, _) -> {
+		case Case(Exp exp, Seq<CaseBranch> branches, _) -> {
 			pp.append("case ").append(exp).append(" of");
 			pp.indent(() -> {
 				branches.forEach(branch -> pp.endl().append(branch));

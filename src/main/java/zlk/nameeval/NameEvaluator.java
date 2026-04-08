@@ -42,6 +42,7 @@ import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
+import zlk.util.collection.Seq;
 
 public final class NameEvaluator {
 
@@ -84,7 +85,7 @@ public final class NameEvaluator {
 		// resister types
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl(String name, List<AnType.Var>args, _, _) -> {
+			case TypeDecl(String name, Seq<AnType.Var>args, _, _) -> {
 				Id id;
 				try {
 					id = env.register(name);
@@ -92,8 +93,8 @@ public final class NameEvaluator {
 					// TODO コンパイルメッセージに追加
 					throw new RuntimeException(e);
 				}
-				List<Type> tyArgs = args.stream().map(this::eval).toList();  // TODO: コンストラクタが入っていないことを確認
-				Type type = new Type.CtorApp(id, tyArgs);
+				Seq<Type> tyArgs = args.map(this::eval);
+				Type type = new Type.CtorApp(id, tyArgs.toList());
 				types.put(id, type);
 			}
 			default -> {}
@@ -103,7 +104,7 @@ public final class NameEvaluator {
 		// resister toplevels
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl(String name, _, List<Constructor> ctors, _) -> {
+			case TypeDecl(String name, _, Seq<Constructor> ctors, _) -> {
 				// 2 step registrations for mutual recursion types
 				Type retTy = types.get(env.get(name));
 				ctors.forEach(ctor -> {
@@ -116,7 +117,7 @@ public final class NameEvaluator {
 					}
 					// TODO: 宣言された型とコンストラクタの型の整合性検査
 					Type type =Type.arrow(
-							ctor.args().stream().map(ty -> eval(ty)).toList(),
+							ctor.args().map(ty -> eval(ty)).toList(),
 							retTy
 					);
 					this.ctors.put(ctorId, type);
@@ -153,11 +154,11 @@ public final class NameEvaluator {
 	public IcTypeDecl eval(TypeDecl union) {
 		Id id = env.get(union.name());
 
-		List<Type> vars = union.vars().stream().map(var -> eval(var)).toList();
+		List<Type> vars = union.vars().map(var -> eval(var)).toList();
 
-		List<IcCtor> ctors = union.ctors().stream().map(ctor -> {
+		List<IcCtor> ctors = union.ctors().map(ctor -> {
 			Id ctorId = env.get(ctor.name());
-			List<Type> args = ctor.args().stream().map(ty -> eval(ty)).toList();
+			List<Type> args = ctor.args().map(ty -> eval(ty)).toList();
 			return new IcCtor(ctorId, args, ctor.loc());
 		}).toList();
 
@@ -171,7 +172,7 @@ public final class NameEvaluator {
 
 			Id id = env.get(declName);
 			Optional<Type> anno = decl.anno().map(a -> eval(a));
-			List<IcPattern> args = decl.args().stream().map(a -> eval(a)).toList();
+			List<IcPattern> args = decl.args().map(a -> eval(a)).toList();
 			IcExp body = eval(decl.body(), id);
 
 			env.popScope();
@@ -204,21 +205,21 @@ public final class NameEvaluator {
 
 			return new IcVarLocal(id, loc);
 		}
-		case Lamb(List<Pattern> patterns, Exp body, Location loc): {
-			List<IcPattern> args = patterns.stream().map(a -> eval(a)).toList();
+		case Lamb(Seq<Pattern> patterns, Exp body, Location loc): {
+			List<IcPattern> args = patterns.map(a -> eval(a)).toList();
 			IcExp body_ = eval(body, scope);
 			return new IcLamb(args, body_, loc);
 		}
-		case App(List<Exp> exps, Location loc): {
-			IcExp fun = eval(exps.get(0), scope);
-			List<IcExp> args = exps.subList(1, exps.size()).stream()
+		case App(Seq<Exp> exps, Location loc): {
+			IcExp fun = eval(exps.first(), scope);
+			List<IcExp> args = exps.drop(1)
 					.map(arg -> eval(arg, scope))
 					.toList();
 			return new IcApp(fun, args, loc);
 		}
 		case If(Exp cond, Exp exp1, Exp exp2, Location loc):
 			return new IcIf(eval(cond, scope), eval(exp1, scope), eval(exp2, scope), loc);
-		case Let(List<ValDecl> decls, Exp body, Location loc): {
+		case Let(Seq<ValDecl> decls, Exp body, Location loc): {
 			if(decls.isEmpty()) {
 				return eval(body, scope);
 			} else {
@@ -232,17 +233,17 @@ public final class NameEvaluator {
 					}
 				}
 				return new IcLet(
-						decls.stream().map(decl -> eval(decl)).toList(),
+						decls.map(decl -> eval(decl)).toList(),
 						eval(body, scope),
 						loc
 				);
 			}
 		}
-		case Case(Exp exp_, List<CaseBranch> branches, Location loc): {
+		case Case(Exp exp_, Seq<CaseBranch> branches, Location loc): {
 			IcExp target = eval(exp_, scope);
 			List<IcCaseBranch> branches_ = new ArrayList<>();
 			for (int i = 0; i < branches.size(); i++) {
-				branches_.add(eval(branches.get(i), i, scope));
+				branches_.add(eval(branches.at(i), i, scope));
 			}
 			return new IcCase(target, branches_, loc);
 		}
@@ -269,12 +270,12 @@ public final class NameEvaluator {
 			}
 			return new IcPattern.Var(id, loc);
 		}
-		case Pattern.Ctor(String name, List<Pattern> args, Location loc): {
+		case Pattern.Ctor(String name, Seq<Pattern> args, Location loc): {
 			Id ctor = env.get(name);
 			List<Type> argTys = ctors.get(ctor).flatten();
 			List<IcPattern.Arg> args_ = new ArrayList<>();
 			for (int i = 0; i < args.size(); i++) {
-				args_.add(new IcPattern.Arg(eval(args.get(i)), argTys.get(i)));
+				args_.add(new IcPattern.Arg(eval(args.at(i)), argTys.get(i)));
 			}
 			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctors.get(ctor), Location.noLocation());  // TODO location
 			return new IcPattern.Dector(icVarCtor, args_, loc);
@@ -286,9 +287,9 @@ public final class NameEvaluator {
 		return switch (aTy) {
 		case AnType.Unit _ -> Type.UNIT;
 		case AnType.Var(String name, _) -> new Type.Var(name);
-		case AnType.Type(String ctor, List<AnType> args, _) -> {
+		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
 			Id ctor_ = env.get(ctor);
-			List<Type> args_ = args.stream().map(arg -> eval(arg)).toList();
+			List<Type> args_ = args.map(arg -> eval(arg)).toList();
 			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
