@@ -1,4 +1,4 @@
-package zlk.util;
+package zlk.util.collection;
 
 import java.util.ArrayList;
 import java.util.Collections;

@@ -38,7 +38,6 @@ import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcPattern;
-import zlk.util.Stack;
 
 /**
  * クロージャ解決後のトップレベルにフラットになったASTをJVMのバイトコードに変換する
@@ -73,7 +72,7 @@ public final class BytecodeGenerator {
 	// for compileDecl
 	private IdList locals;
 	private MethodVisitor mv;
-	private Stack<Runnable> pendings;
+	private zlk.util.collection.Stack<Runnable> pendings;
 
 	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins, String origin) {
 		this.module = module;
@@ -84,7 +83,7 @@ public final class BytecodeGenerator {
 		this.toplevelDecls = new IdMap<>();
 		this.javaClasses = new IdMap<>();
 		this.ctors = new IdMap<>();
-		this.pendings = new Stack<>();
+		this.pendings = new zlk.util.collection.Stack<>();
 
 		javaClasses.put(Type.UNIT.ctor(), JavaType.VOID);
 		javaClasses.put(Type.BOOL.ctor(), new JavaType.Simple("java/lang/Boolean"));
