@@ -7,8 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 import zlk.parser.Token.Kind;
-import zlk.util.ChunkedBuffer;
-import zlk.util.IntChunkedBuffer;
+import zlk.util.collection.IntStack;
+import zlk.util.collection.Stack;
 
 /**
  * ソースをトークンのインデントで分離されたブロック構造に変換する
@@ -28,8 +28,8 @@ public final class Lexer {
 	int currentLevel;  // 現在のインデントレベル
 	int lineStartIdx;  // 現在の行の先頭位置
 	IndentStyle indentStyle;
-	IntChunkedBuffer lineStartIndexes;
-	ChunkedBuffer<Token> result;
+	IntStack lineStartIndexes;
+	Stack<Token> result;
 
 	public Lexer(String fileName, String src) {
 		this.fileName = fileName;
@@ -44,8 +44,8 @@ public final class Lexer {
 		idx = 0;
 		currentLevel = 0;
 		indentStyle = IndentStyle.UNKNOWN;
-		lineStartIndexes = new IntChunkedBuffer();
-		result = new ChunkedBuffer<>(Token[]::new);
+		lineStartIndexes = new IntStack();
+		result = new Stack<>();
 		Source info = new Source(fileName, src);
 		int srcLength = src.length();
 
@@ -81,15 +81,15 @@ public final class Lexer {
 			int levelDiff = currentLevel - level;
 			if(levelDiff < 0) {
 				for(int i = levelDiff; i < 0; i++) {
-					result.add(new Token(info, Token.Kind.ENDENT, lineStartIdx, idx));
+					result.push(new Token(info, Token.Kind.ENDENT, lineStartIdx, idx));
 				}
 			}
 			if(levelDiff > 0) {
 				for(int i = levelDiff; i > 0; i--) {
-					result.add(new Token(info, Token.Kind.DEDENT, lineStartIdx, idx));
+					result.push(new Token(info, Token.Kind.DEDENT, lineStartIdx, idx));
 				}
 			}
-			result.add(new Token(info, Token.Kind.SAMENT, lineStartIdx, idx));
+			result.push(new Token(info, Token.Kind.SAMENT, lineStartIdx, idx));
 			currentLevel = level;
 
 			// 行内トークンを追加
@@ -112,23 +112,23 @@ public final class Lexer {
 				int start = idx;
 				if(isUpper(c)) {  // UCID
 					while(++idx < srcLength && isIdentifierPart(src.charAt(idx)));
-					result.add(new Token(info, Kind.UCID, start, idx));
+					result.push(new Token(info, Kind.UCID, start, idx));
 				} else if(isLower(c)) {  // LCID or keyword
 					while(++idx < srcLength && isIdentifierPart(src.charAt(idx)));
 					Kind k = Token.Kind.lookupKeyword(src.substring(start, idx));
-					result.add(new Token(info, k == null ? Kind.LCID : k, start, idx));
+					result.push(new Token(info, k == null ? Kind.LCID : k, start, idx));
 				} else if(isPunctuator(c)) {  // punctuator
 					Kind k = Token.Kind.lookupPunctuator(src, start);
 					if(k != null) {
 						idx += k.str().length();
-						result.add(new Token(info, k, start, idx));
+						result.push(new Token(info, k, start, idx));
 					} else {
 						while(++idx < srcLength && isPunctuator(src.charAt(idx)));
-						result.add(new Token(info, Kind.ILL, start, idx));
+						result.push(new Token(info, Kind.ILL, start, idx));
 					}
 				} else if(isDigit(c)) {  // DIGIT
 					while(++idx < srcLength && isDigit(src.charAt(idx)));
-					result.add(new Token(info, Kind.DIGITS, start, idx));
+					result.push(new Token(info, Kind.DIGITS, start, idx));
 				} else {
 					todo("unsupported token start char'"+c+"'@"+idx);
 				}
@@ -140,12 +140,12 @@ public final class Lexer {
 		}
 		// 閉じていないブロックを閉じる
 		for (int i = 0; i < currentLevel; i++) {
-			result.add(new Token(info, Token.Kind.DEDENT, idx, idx));
+			result.push(new Token(info, Token.Kind.DEDENT, idx, idx));
 		}
 		// 共有情報に改行位置を登録
 		info.lineStartIndexes = lineStartIndexes.toArray();
 
-		return new Tokenized(result.toArray());
+		return new Tokenized(result.toArray(Token[]::new));
 	}
 
 	private static boolean isPrintableAscii(char c) {
