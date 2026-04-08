@@ -211,15 +211,12 @@ public class Stack<E> implements Iterable<E> {
 
 		Object[] array = new Object[totalSize];
 		int count = 0;
-		Chunk cursor = headChunk;
 
-		while(cursor != null) {
+		for(Chunk cursor = headChunk; cursor != null; cursor = cursor.next) {
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
 			for(int i = 0; i < length; i++) {
 				array[count++] = cursor.data[i];
 			}
-			cursor = cursor.next;
-			length = cursor == tailChunk ? tailSize : cursor.data.length;
 		}
 
 		return new ArraySeq<>(array);

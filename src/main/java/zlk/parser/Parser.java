@@ -10,8 +10,6 @@ import static zlk.parser.Peg.star;
 import static zlk.util.ErrorUtils.todo;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 import zlk.ast.AnType;
@@ -25,6 +23,7 @@ import zlk.ast.Pattern;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.parser.Token.Kind;
+import zlk.util.collection.Seq;
 
 
 /**
@@ -129,52 +128,49 @@ public final class Parser {
 	 * @param head 以降の要素のパーサ
 	 * @return
 	 */
-	static <T> Peg<List<T>> blockPlus(Peg<T> head, Peg<T> tail) {
+	static <T> Peg<Seq<T>> blockPlus(Peg<T> head, Peg<T> tail) {
 		Peg<T> samentHead = sequence(SAMENT, head, (_, r) -> r);
 		Peg<T> samentTail = sequence(SAMENT, tail, (_, r) -> r);
 		return sequence(ENDENT, samentHead, star(samentTail), DEDENT, (_, hd, tl, _) -> prepend(hd, tl));
 	}
-	static <T> Peg<List<T>> blockPlus(Peg<T> head) {
+	static <T> Peg<Seq<T>> blockPlus(Peg<T> head) {
 		return blockPlus(head, head);
 	}
 
-	static <T> Peg<List<T>> join(Peg<T> p, Peg<?> delimiter) {
+	static <T> Peg<Seq<T>> join(Peg<T> p, Peg<?> delimiter) {
 		return sequence(
 				p, star(sequence(delimiter, p, (_, v) -> v)),
 				(hd, tl) -> prepend(hd, tl));
 	}
 
-	static <T> List<T> prepend(T head, List<? extends T> tail) {
-		List<T> out = new ArrayList<>(tail.size() + 1);
-		out.add(head);
-		out.addAll(tail);
-		return out;
+	static <T> Seq<T> prepend(T head, Seq<T> tail) {
+		return Seq.concat(Seq.of(head), tail);
 	}
 
 	// Locationの範囲を求める
 	static Location locRange(LocationHolder from, LocationHolder to) {
 		return Location.range(from.loc(), to.loc());
 	}
-	static Location locRange(LocationHolder from, List<? extends LocationHolder> to) {
+	static Location locRange(LocationHolder from, Seq<? extends LocationHolder> to) {
 		if(to.isEmpty()) {
 			return from.loc();
 		}
-		return Location.range(from.loc(), to.getLast().loc());
+		return Location.range(from.loc(), to.last().loc());
 	}
-	static Location locRange(List<? extends LocationHolder> from, LocationHolder to) {
+	static Location locRange(Seq<? extends LocationHolder> from, LocationHolder to) {
 		if(from.isEmpty()) {
 			return to.loc();
 		}
-		return Location.range(from.getFirst().loc(), to.loc());
+		return Location.range(from.first().loc(), to.loc());
 	}
-	static Location locRange(List<? extends LocationHolder> from, List<? extends LocationHolder> to) {
+	static Location locRange(Seq<? extends LocationHolder> from, Seq<? extends LocationHolder> to) {
 		if(from.isEmpty()) {
 			if(to.isEmpty()) {
 				return Location.noLocation();
 			}
-			return Location.range(to.getFirst().loc(), to.getLast().loc());
+			return Location.range(to.first().loc(), to.last().loc());
 		}
-		return locRange(from.getFirst(), to);
+		return locRange(from.first(), to);
 	}
 
 	static final Peg<Token> ENDENT = kind(Kind.ENDENT);
@@ -237,7 +233,7 @@ public final class Parser {
 
 	static final Peg<AnType> ctorArg = choice(  // コンストラクタの引数部分に来れる要素
 			tyVar,
-			ctorHead.map(t -> new AnType.Type(t.str(), List.of(), t.loc())),
+			ctorHead.map(t -> new AnType.Type(t.str(), Seq.of(), t.loc())),
 			parenType);
 
 	static final Peg<AnType.Type> ctorAnno = sequence(
@@ -254,8 +250,8 @@ public final class Parser {
 				if(tl.size() == 0) {
 					return hd;
 				}
-				AnType result = tl.removeLast();
-				for(AnType ty : tl.reversed()) {
+				AnType result = tl.last();
+				for(AnType ty : tl.dropLast().reversed()) {
 					result = new AnType.Arrow(ty, result, locRange(ty, result));
 				}
 				return new AnType.Arrow(hd, result, locRange(hd, result));
@@ -329,7 +325,7 @@ public final class Parser {
 					(s, exp, e) -> exp.updateLoc(locRange(s, e))));
 
 	static final Peg<Exp> appExp =
-			plus(aExp).map(l -> l.size() == 1 ? l.getFirst() : new Exp.App(l, locRange(l, l)));
+			plus(aExp).map(l -> l.size() == 1 ? l.first() : new Exp.App(l, locRange(l, l)));
 
 	static final Peg<Exp.Lamb> lambdaExp = sequence(
 			LAMBDA, plus(pattern), ARROW, mayBlock(exp_),
@@ -383,7 +379,7 @@ public final class Parser {
 			UCID, star(ctorArg),
 			(name, args) -> new Constructor(name.str(), args, locRange(name, args)));
 
-	static final Peg<List<Constructor>> variants = choice(
+	static final Peg<Seq<Constructor>> variants = choice(
 			join(ctorImpl, BAR),  // one-line style
 			blockPlus(sequence(BAR, ctorImpl, (_, v) -> v))); // multi-line style
 
