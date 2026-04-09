@@ -9,10 +9,12 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import zlk.util.IndexedConsumer;
+import zlk.util.ConsumerIndexed;
 
 
 /// 可変リストデータ構造
+///
+/// Stackという名前だがFILOになるのはpopするときだけで，forEachやtoSeqはFIFO
 ///
 /// 用途
 /// - 集約操作
@@ -25,8 +27,9 @@ import zlk.util.IndexedConsumer;
 /// headChunk         tailChunk
 ///     |                 |
 ///     v                 v
-///  |-----|-----|-----|-----|
+///  |-----|-----|-----|-----| <- push/pop箇所
 ///    <-- prev     next -->
+///   ==forEach/toSeq方向==>
 /// ```
 ///
 /// ArrayListのreallocが少しもったいないと思ったのとSeqを使うために作った
@@ -174,7 +177,7 @@ public class Stack<E> implements Iterable<E> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public void forEachIndexed(IndexedConsumer<? super E> action) {
+	public void forEachIndexed(ConsumerIndexed<? super E> action) {
 		int count = 0;
 		Chunk cursor = headChunk;
 

@@ -93,7 +93,7 @@ public class ModuleTester {
 		Builtin.functions().forEach(fun -> types.put(fun.id(), fun.type()));
 		module.types().forEach(union ->
 				union.ctors().forEach(ctor ->
-					types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id())))));
+					types.put(ctor.id(), Type.arrow(ctor.args().toList(), new Type.CtorApp(union.id())))));
 		Result<List<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
 		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
 		callSiteTypes = result.resolvedNodeTypes();
@@ -142,7 +142,7 @@ public class ModuleTester {
 		return new TypeTester(
 				ty,
 				Id.intern(TARGET_MODULE_NAME),
-				module.types().stream().map(d -> d.id()).collect(IdMap.collector(i -> i, i -> new Type.CtorApp(i, List.of()))));
+				module.types().map(d -> d.id()).fold(IdMap.folder(i -> i, i -> new Type.CtorApp(i, List.of()))));
 	}
 
 	public void addClass(String className, byte[] bytecode) {

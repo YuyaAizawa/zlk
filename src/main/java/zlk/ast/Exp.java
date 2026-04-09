@@ -85,7 +85,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 			pp.append(body);
 		}
 		case App(Seq<Exp> exps, _) -> {
-			Exp hd = exps.first();
+			Exp hd = exps.head();
 			switch(hd) {
 			case Cnst _, Var _, App _ -> pp.append(hd);
 			case Lamb _, If _, Let _, Case _ -> { pp
