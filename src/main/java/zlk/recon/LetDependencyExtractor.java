@@ -22,6 +22,7 @@ import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcValDecl;
+import zlk.util.collection.Seq;
 
 public class LetDependencyExtractor {
 	private LetDependencyExtractor() {}
@@ -33,7 +34,7 @@ public class LetDependencyExtractor {
 	 */
 	public static IdMap<IdList> extract(IcModule module) {
 		IdMap<IdList> includes = new IdMap<>();
-		accIncluded(module.decls(), includes);
+		accIncluded(module.decls().toList(), includes);
 		// 依存されている側から引く（letで定義されるものだけでよい）
 		IdMap<IdList> dependency = new IdMap<>();
 		includes.keys().forEach(k -> dependency.put(k, new IdList()));
@@ -69,10 +70,10 @@ public class LetDependencyExtractor {
 		case IcVarCtor(Id _, Type _, Location _) -> {
 			yield new IdList();
 		}
-		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
+		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) -> {
 			yield accIncluded(body, includes);
 		}
-		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
+		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
 			IdList result = accIncluded(fun, includes);
 			args.forEach(arg -> accIncluded(arg, includes).forEach(result::addIfNotContains));
 			yield result;
@@ -83,12 +84,12 @@ public class LetDependencyExtractor {
 			accIncluded(elseExp, includes).forEach(result::addIfNotContains);
 			yield result;
 		}
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
-			IdList result = accIncluded(decls, includes);
+		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) -> {
+			IdList result = accIncluded(decls.toList(), includes);
 			accIncluded(body, includes).forEach(result::addIfNotContains);
 			yield result;
 		}
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
 			IdList result = accIncluded(target, includes);
 			branches.forEach(branch -> accIncluded(branch.body(), includes).forEach(result::addIfNotContains));
 			yield result;

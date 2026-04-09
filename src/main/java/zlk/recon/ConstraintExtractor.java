@@ -35,6 +35,7 @@ import zlk.recon.constraint.Constraint.CPhase;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
+import zlk.util.collection.Seq;
 
 public final class ConstraintExtractor {
 
@@ -54,7 +55,7 @@ public final class ConstraintExtractor {
 				freshFlex
 		);
 		Constraint constraint = extractor.extractFromDef(
-				module.decls(),
+				module.decls().toList(),
 				new CExists(  // TODO: main関数のletにする
 						List.of(),
 						List.of()));
@@ -93,8 +94,8 @@ public final class ConstraintExtractor {
 		case IcVarCtor(Id id, Type type, Location _) ->
 			new CForeign(id, type, expected);
 
-		case IcLamb(List<IcPattern> args, IcExp body, Location _) -> {
-			Args args_ = extractFromArgs(args);
+		case IcLamb(Seq<IcPattern> args, IcExp body, Location _) -> {
+			Args args_ = extractFromArgs(args.toList());
 
 			List<Constraint> argsCons = List.of(
 				new CLet(
@@ -107,7 +108,7 @@ public final class ConstraintExtractor {
 			yield new CExists(args_.vars, argsCons);
 		}
 
-		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
+		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
 			// f a b c : R
 			// f : F
 			// a : A
@@ -162,10 +163,10 @@ public final class ConstraintExtractor {
 							new CEqual(branchTy, expected)));
 		}
 
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) ->
-			extractFromDef(decls, extract(body, expected));
+		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) ->
+			extractFromDef(decls.toList(), extract(body, expected));
 
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
 			List<Constraint> cons = new ArrayList<>();
 
 			Variable patVar = freshFlex.getVariable();
@@ -210,7 +211,7 @@ public final class ConstraintExtractor {
 		// id -> rhsConstraint
 		IdMap<Constraint> defCons = new IdMap<>();
 		for (var decl : decls) {
-			Args a = extractFromArgs(decl.args());
+			Args a = extractFromArgs(decl.args().toList());
 
 			List<Constraint> headerCons = new ArrayList<>();
 			headerCons.addAll(a.binder.cons);

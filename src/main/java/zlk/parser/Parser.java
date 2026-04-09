@@ -161,16 +161,16 @@ public final class Parser {
 		if(from.isEmpty()) {
 			return to.loc();
 		}
-		return Location.range(from.first().loc(), to.loc());
+		return Location.range(from.head().loc(), to.loc());
 	}
 	static Location locRange(Seq<? extends LocationHolder> from, Seq<? extends LocationHolder> to) {
 		if(from.isEmpty()) {
 			if(to.isEmpty()) {
 				return Location.noLocation();
 			}
-			return Location.range(to.first().loc(), to.last().loc());
+			return Location.range(to.head().loc(), to.last().loc());
 		}
-		return locRange(from.first(), to);
+		return locRange(from.head(), to);
 	}
 
 	static final Peg<Token> ENDENT = kind(Kind.ENDENT);
@@ -325,7 +325,7 @@ public final class Parser {
 					(s, exp, e) -> exp.updateLoc(locRange(s, e))));
 
 	static final Peg<Exp> appExp =
-			plus(aExp).map(l -> l.size() == 1 ? l.first() : new Exp.App(l, locRange(l, l)));
+			plus(aExp).map(l -> l.size() == 1 ? l.head() : new Exp.App(l, locRange(l, l)));
 
 	static final Peg<Exp.Lamb> lambdaExp = sequence(
 			LAMBDA, plus(pattern), ARROW, mayBlock(exp_),

@@ -5,11 +5,14 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import zlk.util.IndexedConsumer;
+import zlk.util.BiFunctionIndexed;
+import zlk.util.ConsumerIndexed;
+import zlk.util.FunctionIndexed;
 
 /// 不変リストデータ構造
 ///
@@ -17,6 +20,9 @@ import zlk.util.IndexedConsumer;
 /// - 不変データ型の内部
 ///
 /// stream()と書くのが面倒なので直接Seqになるfilterやmapがある
+///
+/// 実装の本体はsliceとfoldIndexed．
+/// foldやforEachなどはdefault実装を生成しているが，充分に最適化されないかもしれない．
 ///
 /// @param <E>
 
@@ -87,7 +93,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 
 	E at(int index);
 
-	default E first() {
+	default E head() {
 		return at(0);
 	}
 
@@ -119,6 +125,9 @@ public sealed interface Seq<E> extends Iterable<E> {
 	}
 
 	default Seq<E> dropLast() {
+		if(isEmpty()) {
+			throw new NoSuchElementException();
+		}
 		return take(size() - 1);
 	}
 
@@ -135,16 +144,80 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return slice(num, size());
 	}
 
+	default Seq<E> tail() {
+		if(isEmpty()) {
+			throw new NoSuchElementException();
+		}
+		return drop(1);
+	}
+
 	/**
 	 * 要素の順番を逆転させたSeqを返す．
 	 * @return
 	 */
 	Seq<E> reversed();
-	Seq<E> filter(Predicate<? super E> predicate);
-	<R> Seq<R> map(Function<? super E, ? extends R> mapper);
+
+	/**
+	 * 畳み込みを行う
+	 * @param <A> 畳み込み結果の型
+	 * @param <R> 最終結果の型
+	 * @param accumulator 畳み込みのステップ関数
+	 * @param initialValue 畳み込みの初期値
+	 * @param finisher 畳み込んだ結果から最終結果への変換
+	 * @return 最終結果
+	 */
+	<A, R> R foldIndexed(BiFunctionIndexed<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher);
+	default <A, R> R foldIndexed(FolderIndexed<E, A, R> folder) {
+		return foldIndexed(folder.accumulator(), folder.initialValue(), folder.finisher());
+	}
+	public interface FolderIndexed<E, A, R> {
+		BiFunctionIndexed<? super E, A, A> accumulator();
+		A initialValue();
+		Function<? super A, ? extends R> finisher();
+	}
+
+	default <A, R> R fold(BiFunction<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
+		return foldIndexed((_, e, acc) -> accumulator.apply(e, acc), initialValue, finisher);
+	}
+	default <A, R> R fold(Folder<E, A, R> folder) {
+		return fold(folder.accumulator(), folder.initialValue(), folder.finisher());
+	}
+	public interface Folder<E, A, R> {
+		BiFunction<? super E, A, A> accumulator();
+		A initialValue();
+		Function<? super A, ? extends R> finisher();
+	}
+
+	default <R> Seq<R> mapIndexed(FunctionIndexed<? super E, ? extends R> mapper) {
+		return foldIndexed(
+				(i, e, arr) -> { arr[i] = mapper.apply(i, e); return arr; },
+				new Object[size()],
+				ArraySeq::new);
+	}
+
+	default <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
+		return mapIndexed((_, e) -> mapper.apply(e));
+	}
+
+	// TODO: 虚無のaccumulatorを入れた以下のdefault実装は充分に最適化されないかもしれない
+	default Seq<E> filter(Predicate<? super E> predicate) {
+		return fold(
+				(e, stack) -> { if(predicate.test(e) ) { stack.push(e); } return stack; },
+				new Stack<E>(size()),
+				Stack::toSeq);
+	}
+
+	default void forEachIndexed(ConsumerIndexed<? super E> action) {
+		foldIndexed(
+				(i, e, _) -> { action.accept(i, e); return null; },
+				null,
+				Function.identity());
+	}
+
 	@Override
-	void forEach(Consumer<? super E> action);
-	void forEachIndexed(IndexedConsumer<? super E> action);
+	default void forEach(Consumer<? super E> action) {
+		forEachIndexed((_, e) -> action.accept(e));
+	}
 
 	/**
 	 * 移行のために用意した
@@ -178,6 +251,10 @@ final class EmptySeq<E> implements Seq<E> {
 	@Override
 	public Seq<E> reversed() { return this; };
 	@Override
+	public <A, R> R foldIndexed(BiFunctionIndexed<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
+		return finisher.apply(initialValue);
+	}
+	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 			@Override
@@ -186,14 +263,6 @@ final class EmptySeq<E> implements Seq<E> {
 			public E next() { throw new NoSuchElementException(); }
 		};
 	}
-	@Override
-	public Seq<E> filter(Predicate<? super E> predicate) { return Seq.of(); }
-	@Override
-	public <R> Seq<R> map(Function<? super E, ? extends R> mapper) { return Seq.of(); }
-	@Override
-	public void forEach(Consumer<? super E> action) {}
-	@Override
-	public void forEachIndexed(IndexedConsumer<? super E> action) {}
 }
 
 final class SingletonSeq<E> implements Seq<E> {
@@ -243,6 +312,16 @@ final class SingletonSeq<E> implements Seq<E> {
 	}
 
 	@Override
+	public <A, R> R foldIndexed(
+			BiFunctionIndexed<? super E, A, A> accumulator,
+			A initialValue,
+			Function<? super A, ? extends R> finisher
+	) {
+		A acc = accumulator.accumulate(0, element, initialValue);
+		return finisher.apply(acc);
+	}
+
+	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 			boolean consumed = false;
@@ -263,31 +342,6 @@ final class SingletonSeq<E> implements Seq<E> {
 
 		};
 	}
-
-	@Override
-	public Seq<E> filter(Predicate<? super E> predicate) {
-		if(predicate.test(element)) {
-			return this;
-		} else {
-			return Seq.of();
-		}
-	}
-
-	@Override
-	public <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
-		return Seq.of(mapper.apply(element));
-	}
-
-	@Override
-	public void forEach(Consumer<? super E> action) {
-		action.accept(element);
-	}
-
-	@Override
-	public void forEachIndexed(IndexedConsumer<? super E> action) {
-		action.accept(0, element);
-	}
-
 }
 
 final class ArraySeq<E> implements Seq<E> {
@@ -347,6 +401,20 @@ final class ArraySeq<E> implements Seq<E> {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public <A, R> R foldIndexed(
+			BiFunctionIndexed<? super E, A, A> folder,
+			A initialValue,
+			Function<? super A, ? extends R> finisher
+	) {
+		A acc = initialValue;
+		for (int i = 0; i < size(); i++) {
+			acc = folder.accumulate(i, (E) data[i], acc);
+		}
+		return finisher.apply(acc);
+	}
+
+	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 			int index = 0;
@@ -365,45 +433,6 @@ final class ArraySeq<E> implements Seq<E> {
 				return (E) data[index++];
 			}
 		};
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public Seq<E> filter(Predicate<? super E> predicate) {
-		Stack<E> list = new Stack<>(size());
-		for (int i = 0; i < size(); i++) {
-			E element = (E) data[i];
-			if(predicate.test(element)) {
-				list.push(element);
-			}
-		}
-		return list.toSeq();
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
-		Object[] newData = new Object[size()];
-		for (int i = 0; i < size(); i++) {
-			newData[i] = mapper.apply((E) data[i]);
-		}
-		return new ArraySeq<>(newData);
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEach(Consumer<? super E> action) {
-		for (int i = 0; i < size(); i++) {
-			action.accept((E) data[i]);
-		}
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEachIndexed(IndexedConsumer<? super E> action) {
-		for (int i = 0; i < size(); i++) {
-			action.accept(i, (E) data[i]);
-		}
 	}
 }
 
@@ -468,6 +497,20 @@ final class SliceSeq<E> implements Seq<E> {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public <A, R> R foldIndexed(
+			BiFunctionIndexed<? super E, A, A> folder,
+			A initialValue,
+			Function<? super A, ? extends R> finisher
+	) {
+		A acc = initialValue;
+		for (int ni = 0, ri = from; ri < to; ni++, ri++) {
+			acc = folder.accumulate(ni, (E) ref[ri], acc);
+		}
+		return finisher.apply(acc);
+	}
+
+	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 			int index = from;
@@ -486,45 +529,6 @@ final class SliceSeq<E> implements Seq<E> {
 				return (E) ref[index++];
 			}
 		};
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public Seq<E> filter(Predicate<? super E> predicate) {
-		Stack<E> list = new Stack<>(size());
-		for (int i = from; i < to; i++) {
-			E element = (E) ref[i];
-			if(predicate.test(element)) {
-				list.push(element);
-			}
-		}
-		return list.toSeq();
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
-		Object[] newData = new Object[size()];
-		for (int ni = 0, ri = from; ri < to; ni++, ri++) {
-			newData[ni] = mapper.apply((E) ref[ri]);
-		}
-		return new ArraySeq<>(newData);
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEach(Consumer<? super E> action) {
-		for (int i = from; i < to; i++) {
-			action.accept((E) ref[i]);
-		}
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEachIndexed(IndexedConsumer<? super E> action) {
-		for (int ni = 0, ri = from; ri < to; ni++, ri++) {
-			action.accept(ni, (E) ref[ri]);
-		}
 	}
 }
 
@@ -586,6 +590,20 @@ final class ReversedSeq<E> implements Seq<E> {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public <A, R> R foldIndexed(
+			BiFunctionIndexed<? super E, A, A> folder,
+			A initialValue,
+			Function<? super A, ? extends R> finisher
+	) {
+		A acc = initialValue;
+		for (int ni = 0, ri = abs(0); ri > abs(size()); ni++, ri--) {
+			acc = folder.accumulate(ni, (E) ref.ref[ri], acc);
+		}
+		return finisher.apply(acc);
+	}
+
+	@Override
 	public Iterator<E> iterator() {
 		return new Iterator<>() {
 			int index = abs(0);
@@ -604,45 +622,6 @@ final class ReversedSeq<E> implements Seq<E> {
 				return (E) ref.ref[index--];
 			}
 		};
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public Seq<E> filter(Predicate<? super E> predicate) {
-		Stack<E> list = new Stack<>(size());
-		for (int i = abs(0); i > abs(size()); i--) {
-			E element = (E) ref.ref[i];
-			if(predicate.test(element)) {
-				list.push(element);
-			}
-		}
-		return list.toSeq();
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
-		Object[] newData = new Object[size()];
-		for (int ni = 0, ri = abs(0); ri > abs(size()); ni++, ri--) {
-			newData[ni] = mapper.apply((E) ref.ref[ri]);
-		}
-		return new ArraySeq<>(newData);
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEach(Consumer<? super E> action) {
-		for (int i = abs(0); i > abs(size()); i--) {
-			action.accept((E) ref.ref[i]);
-		}
-	}
-
-	@Override
-	@SuppressWarnings("unchecked")
-	public void forEachIndexed(IndexedConsumer<? super E> action) {
-		for (int ni = 0, ri = abs(0); ri > abs(size()); ni++, ri--) {
-			action.accept(ni, (E) ref.ref[ri]);
-		}
 	}
 }
 

@@ -1,6 +1,6 @@
 package zlk.util;
 
 @FunctionalInterface
-public interface IndexedConsumer<T> {
+public interface ConsumerIndexed<T> {
 	void accept(int idx, T value);
 }

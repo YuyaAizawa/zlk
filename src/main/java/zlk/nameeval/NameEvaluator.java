@@ -43,6 +43,7 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
 import zlk.util.collection.Seq;
+import zlk.util.collection.Stack;
 
 public final class NameEvaluator {
 
@@ -134,13 +135,13 @@ public final class NameEvaluator {
 			}}
 		});
 
-		List<IcTypeDecl> icTypes = new ArrayList<>();
-		List<IcValDecl> icDecls = new ArrayList<>();
+		Stack<IcTypeDecl> icTypes = new Stack<>();
+		Stack<IcValDecl> icDecls = new Stack<>();
 
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl ty -> icTypes.add(eval(ty));
-			case ValDecl fun -> icDecls.add(eval(fun));
+			case TypeDecl ty -> icTypes.push(eval(ty));
+			case ValDecl fun -> icDecls.push(eval(fun));
 			}
 		});
 
@@ -148,19 +149,19 @@ public final class NameEvaluator {
 		if(env.scoped.size() != 0) {
 			throw new AssertionError();
 		}
-		return new IcModule(module.name(), icTypes, icDecls);
+		return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {
 		Id id = env.get(union.name());
 
-		List<Type> vars = union.vars().map(var -> eval(var)).toList();
+		Seq<Type> vars = union.vars().map(var -> eval(var));
 
-		List<IcCtor> ctors = union.ctors().map(ctor -> {
+		Seq<IcCtor> ctors = union.ctors().map(ctor -> {
 			Id ctorId = env.get(ctor.name());
-			List<Type> args = ctor.args().map(ty -> eval(ty)).toList();
+			Seq<Type> args = ctor.args().map(ty -> eval(ty));
 			return new IcCtor(ctorId, args, ctor.loc());
-		}).toList();
+		});
 
 		return new IcTypeDecl(id, vars, ctors, union.loc());
 	}
@@ -172,7 +173,7 @@ public final class NameEvaluator {
 
 			Id id = env.get(declName);
 			Optional<Type> anno = decl.anno().map(a -> eval(a));
-			List<IcPattern> args = decl.args().map(a -> eval(a)).toList();
+			Seq<IcPattern> args = decl.args().map(a -> eval(a));
 			IcExp body = eval(decl.body(), id);
 
 			env.popScope();
@@ -184,44 +185,51 @@ public final class NameEvaluator {
 	}
 
 	private IcExp eval(Exp exp, Id scope) {
-		switch(exp) {
-		case Cnst(ConstValue value, Location loc):
-			return new IcCnst(value, loc);
-		case Var(String name, Location loc): {
+		return switch(exp) {
+		case Cnst(ConstValue value, Location loc) ->
+			new IcCnst(value, loc);
+
+		case Var(String name, Location loc) -> {
 			Id id = env.get(name);
 
 			Builtin builtin = builtins.getOrNull(id);
 			if(builtin != null) {
-				return new IcVarForeign(id, builtin.type(), loc);
+				yield new IcVarForeign(id, builtin.type(), loc);
 			}
 
 			Type ctor = ctors.getOrNull(id);
 			if(ctor != null) {
-				return new IcVarCtor(id, ctor, loc);
+				yield new IcVarCtor(id, ctor, loc);
 			}
 			if(sccDeclsInModule.contains(id)) {
 				sccRef.add(scope, id);
 			}
 
-			return new IcVarLocal(id, loc);
+			yield new IcVarLocal(id, loc);
 		}
-		case Lamb(Seq<Pattern> patterns, Exp body, Location loc): {
-			List<IcPattern> args = patterns.map(a -> eval(a)).toList();
-			IcExp body_ = eval(body, scope);
-			return new IcLamb(args, body_, loc);
-		}
-		case App(Seq<Exp> exps, Location loc): {
-			IcExp fun = eval(exps.first(), scope);
-			List<IcExp> args = exps.drop(1)
-					.map(arg -> eval(arg, scope))
-					.toList();
-			return new IcApp(fun, args, loc);
-		}
-		case If(Exp cond, Exp exp1, Exp exp2, Location loc):
-			return new IcIf(eval(cond, scope), eval(exp1, scope), eval(exp2, scope), loc);
-		case Let(Seq<ValDecl> decls, Exp body, Location loc): {
+
+		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) ->
+			new IcLamb(
+					patterns.map(a -> eval(a)),
+					eval(body, scope),
+					loc);
+
+		case App(Seq<Exp> exps, Location loc) ->
+			new IcApp(
+					eval(exps.head(), scope),
+					exps.tail().map(arg -> eval(arg, scope)),
+					loc);
+
+		case If(Exp cond, Exp exp1, Exp exp2, Location loc) ->
+			new IcIf(
+					eval(cond, scope),
+					eval(exp1, scope),
+					eval(exp2, scope),
+					loc);
+
+		case Let(Seq<ValDecl> decls, Exp body, Location loc) -> {
 			if(decls.isEmpty()) {
-				return eval(body, scope);
+				yield eval(body, scope);
 			} else {
 				for(ValDecl decl: decls) {
 					try {
@@ -232,22 +240,19 @@ public final class NameEvaluator {
 						throw new RuntimeException(e);
 					}
 				}
-				return new IcLet(
-						decls.map(decl -> eval(decl)).toList(),
+				yield new IcLet(
+						decls.map(decl -> eval(decl)),
 						eval(body, scope),
-						loc
-				);
+						loc);
 			}
 		}
-		case Case(Exp exp_, Seq<CaseBranch> branches, Location loc): {
-			IcExp target = eval(exp_, scope);
-			List<IcCaseBranch> branches_ = new ArrayList<>();
-			for (int i = 0; i < branches.size(); i++) {
-				branches_.add(eval(branches.at(i), i, scope));
-			}
-			return new IcCase(target, branches_, loc);
-		}
-		}
+
+		case Case(Exp exp_, Seq<CaseBranch> branches, Location loc) ->
+			new IcCase(
+					eval(exp_, scope),
+					branches.mapIndexed((i, branch) -> eval(branch, i, scope)),
+					loc);
+		};
 	}
 
 	private IcCaseBranch eval(CaseBranch branch, int branchIdx, Id scope) {

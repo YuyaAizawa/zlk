@@ -128,7 +128,7 @@ public class Main {
 		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id(), union.vars())))));
+			types.put(ctor.id(), Type.arrow(ctor.args().toList(), new Type.CtorApp(union.id(), union.vars().toList())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");

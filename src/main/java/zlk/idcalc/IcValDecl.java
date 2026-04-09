@@ -1,19 +1,19 @@
 package zlk.idcalc;
 
-import java.util.List;
 import java.util.Optional;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record IcValDecl(
 		Id id,
 		Optional<Type> anno,
-		List<IcPattern> args,
+		Seq<IcPattern> args,
 		IcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {

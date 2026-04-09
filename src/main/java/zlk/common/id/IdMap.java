@@ -9,12 +9,14 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -157,6 +159,29 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 				return EnumSet.of(
 						Collector.Characteristics.UNORDERED,
 						Collector.Characteristics.IDENTITY_FINISH);
+			}
+		};
+	}
+
+	public static <E, V> Seq.Folder<E, ?, IdMap<V>> folder(
+			Function<? super E, ? extends Id> idExtractor,
+			Function<? super E, ? extends V> valueExtractor
+	) {
+		return new Seq.Folder<E, IdMap<V>, IdMap<V>>() {
+
+			@Override
+			public BiFunction<? super E, IdMap<V>, IdMap<V>> accumulator() {
+				return (e, idMap) -> { idMap.put(idExtractor.apply(e), valueExtractor.apply(e)); return idMap; };
+			}
+
+			@Override
+			public IdMap<V> initialValue() {
+				return new IdMap<>();
+			}
+
+			@Override
+			public Function<? super IdMap<V>, ? extends IdMap<V>> finisher() {
+				return Function.identity();
 			}
 		};
 	}
