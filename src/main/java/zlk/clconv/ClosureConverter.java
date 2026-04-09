@@ -49,6 +49,7 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Var;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
+import zlk.util.collection.Seq;
 
 /**
  * クロージャ変換と関数のトップレベルへのflattenを行う
@@ -90,13 +91,13 @@ public final class ClosureConverter {
 	}
 
 	public CcModule convert() {
-		src.decls()
+		src.decls().toList()
 				.stream()
-				.map(decl -> compileFunc(decl.id(), decl.args(), decl.body()))
+				.map(decl -> compileFunc(decl.id(), decl.args().toList(), decl.body()))
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.implId()); }));
 
-		List<CcTypeDecl> types = src.types().stream().map(ty -> convert(ty)).toList();
+		List<CcTypeDecl> types = src.types().map(ty -> convert(ty)).toList();
 		return new CcModule(src.name(), types, toplevels);
 	}
 
@@ -271,10 +272,10 @@ public final class ClosureConverter {
 			}
 			yield new CcMkCls(id, List.of(), loc);
 		}
-		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
+		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) -> {
 			yield neverHappen("no anonymous abs in this version.", body.loc());
 		}
-		case IcApp(IcExp fun, List<IcExp> args, Location loc) -> {
+		case IcApp(IcExp fun, Seq<IcExp> args, Location loc) -> {
 			// 直接呼び出せて引数が揃っていればCcDirectApp
 			Id callableId =
 					switch(fun) {
@@ -284,7 +285,7 @@ public final class ClosureConverter {
 					default -> null;
 					};
 
-			List<CcExp> ccArgs = args.stream().map(arg -> compile(arg)).toList();
+			List<CcExp> ccArgs = args.map(arg -> compile(arg)).toList();
 
 			if(callableId != null) {
 				int arity = arities.containsKey(callableId)
@@ -311,7 +312,7 @@ public final class ClosureConverter {
 					compile(elseExp),
 					loc);
 		}
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
+		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) -> {
 			// 関数と値に分ける
 			List<IcValDecl> funDecls = new ArrayList<>();
 			List<IcValDecl> valDecls = new ArrayList<>();
@@ -332,7 +333,7 @@ public final class ClosureConverter {
 			// 各関数を変換（クロージャが必要ならCcMkClsが返る）
 			IdMap<Optional<CcMkCls>> closures = funDecls.stream().collect(IdMap.collector(
 					decl -> decl.id(),
-					decl -> compileFunc(decl.id(), decl.args(), decl.body())
+					decl -> compileFunc(decl.id(), decl.args().toList(), decl.body())
 			));
 
 			// 各値を変換
@@ -356,11 +357,10 @@ public final class ClosureConverter {
 			}
 			yield result;
 		}
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location loc) -> {
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location loc) -> {
 			CcExp ccTarget = compile(target);
 			List<CcCaseBranch> compiledBranches =
-					branches.stream()
-							.map(branch -> new CcCaseBranch(
+					branches.map(branch -> new CcCaseBranch(
 									branch.pattern(),
 									compile(branch.body()),
 									branch.loc()))
@@ -439,10 +439,10 @@ public final class ClosureConverter {
 	}
 
 	private CcTypeDecl convert(IcTypeDecl icType) {
-		return new CcTypeDecl(icType.id(), icType.ctors().stream().map(ctor -> convert(ctor)).toList(), icType.loc());
+		return new CcTypeDecl(icType.id(), icType.ctors().map(ctor -> convert(ctor)).toList(), icType.loc());
 	}
 
 	private CcCtor convert(IcCtor icCtor) {
-		return new CcCtor(icCtor.id(), icCtor.args(), icCtor.loc());
+		return new CcCtor(icCtor.id(), icCtor.args().toList(), icCtor.loc());
 	}
 }
