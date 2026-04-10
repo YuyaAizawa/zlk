@@ -1,6 +1,5 @@
 package zlk.recon;
 
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 
@@ -13,11 +12,12 @@ import zlk.idcalc.IcPattern.Arg;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.RcType;
+import zlk.util.collection.Stack;
 
 final class PatternBinder {
-	final List<Variable> vars = new ArrayList<>();
+	final Stack<Variable> vars = new Stack<>();
 	final IdMap<RcType> headers = new IdMap<>();
-	final List<Constraint> cons = new ArrayList<>();
+	final Stack<Constraint> cons = new Stack<>();
 	final IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
 	PatternBinder(IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
@@ -34,12 +34,12 @@ final class PatternBinder {
 
 		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
-			vars.addAll(ctorInfo.flexes());
+			ctorInfo.flexes().forEach(vars::push);
 
 			if (args.size() != ctorInfo.argTys().size()) {
 				throw new RuntimeException("arity missmatch");  // TODO: コンパイルエラーに
 			}
-			cons.add(new CEqual(ctorInfo.resultTy(), expected));
+			cons.push(new CEqual(ctorInfo.resultTy(), expected));
 
 			for (int i = 0; i < args.size(); i++) {
 				bind(args.get(i).pattern(), ctorInfo.argTys().get(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
