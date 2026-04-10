@@ -2,9 +2,12 @@ package zlk.common.id;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
+import zlk.util.collection.Seq.Folder;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -54,6 +57,25 @@ public class IdList extends ArrayList<Id> implements PrettyPrintable {
 	@Override
 	public String toString() {
 		return buildString();
+	}
+
+	public static <E> Folder<E, ?, IdList> folder(Function<? super E, Id> idExtractor) {
+		return new Folder<E, IdList, IdList>() {
+			@Override
+			public BiFunction<? super E, IdList, IdList> accumulator() {
+				return (e, ids) -> { ids.add(idExtractor.apply(e)); return ids; };
+			}
+
+			@Override
+			public IdList initialValue() {
+				return new IdList();
+			}
+
+			@Override
+			public Function<? super IdList, ? extends IdList> finisher() {
+				return Function.identity();
+			}
+		};
 	}
 
 	public static Collector<Id, ?, IdList> collector() {

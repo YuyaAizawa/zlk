@@ -29,6 +29,8 @@ import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Result;
+import zlk.util.collection.Seq;
+import zlk.util.collection.Stack;
 
 public class TypeReconstructor {
 
@@ -102,11 +104,11 @@ public class TypeReconstructor {
 			Unify.unify(actual, expected);
 		}
 		case CLet(
-				List<Variable> rigids,
-				List<Variable> flexes,
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
 				IdMap<RcType> header,
-				List<CPhase> headerCons,
-				List<Constraint> bodyCons)
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCons)
 		-> {
 			final int nextRank = letRank + 1;
 
@@ -114,7 +116,9 @@ public class TypeReconstructor {
 			introduce(flexes, nextRank);
 
 			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
-			introduce(locals.values(), nextRank);
+			Stack<Variable> values = new Stack<>();  // TODO: インピーダンス不整合を直す
+			locals.values().forEach(values::push);
+			introduce(values.toSeq(), nextRank);
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
 
 			// 強連結成分ごとに解決
@@ -136,8 +140,8 @@ public class TypeReconstructor {
 			locals.forEach(this::occurCheck);
 		}
 		case CExists(
-			List<Variable> vars,
-			List<Constraint> cons)
+				Seq<Variable> vars,
+				Seq<Constraint> cons)
 		-> {
 			final int nextRank = letRank + 1;
 			introduce(vars, nextRank);
@@ -147,7 +151,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private void solve(List<Constraint> cons, int letRank, IdMap<Variable> env) {
+	private void solve(Seq<Constraint> cons, int letRank, IdMap<Variable> env) {
 		for(Constraint con : cons) {
 			solve(con, letRank, env);
 		}
@@ -260,7 +264,7 @@ public class TypeReconstructor {
 		};
 	}
 
-	private static void introduce(List<Variable> vars, int letRank) {
+	private static void introduce(Seq<Variable> vars, int letRank) {
 		for(Variable var : vars) {
 			var.get().rank = letRank;
 		}
