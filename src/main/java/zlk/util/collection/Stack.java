@@ -52,7 +52,6 @@ public class Stack<E> implements Iterable<E> {
 	public Stack(int capacityHint) {
 		int chunkSize = Math.clamp(capacityHint, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE);
 		Chunk newChunk = new Chunk(new Object[chunkSize]);
-		newChunk.prev = tailChunk;
 		tailChunk = newChunk;
 		tailSize = 0;
 		headChunk = tailChunk;
@@ -151,9 +150,12 @@ public class Stack<E> implements Iterable<E> {
 	}
 
 	public boolean contains(E element) {
+		if(isEmpty()) {
+			return false;
+		}
 		Chunk cursor = headChunk;
 		if(element == null) {
-			while(cursor != null) {
+			while(true) {
 				int length = cursor == tailChunk ? tailSize : cursor.data.length;
 				for(int i = 0; i < length; i++) {
 					if(cursor.data[i] == null) {
@@ -161,9 +163,12 @@ public class Stack<E> implements Iterable<E> {
 					}
 				}
 				cursor = cursor.next;
+				if(cursor == null) {
+					break;
+				}
 			}
 		} else {
-			while(cursor != null) {
+			while(true) {
 				int length = cursor == tailChunk ? tailSize : cursor.data.length;
 				for(int i = 0; i < length; i++) {
 					if(element.equals(cursor.data[i])) {
@@ -171,6 +176,9 @@ public class Stack<E> implements Iterable<E> {
 					}
 				}
 				cursor = cursor.next;
+				if(cursor == null) {
+					break;
+				}
 			}
 		}
 		return false;
@@ -178,15 +186,21 @@ public class Stack<E> implements Iterable<E> {
 
 	@SuppressWarnings("unchecked")
 	public void forEachIndexed(ConsumerIndexed<? super E> action) {
+		if(isEmpty()) {
+			return;
+		}
 		int count = 0;
 		Chunk cursor = headChunk;
 
-		while(cursor != null) {
+		while(true) {
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
 			for(int i = 0; i < length; i++) {
 				action.accept(count++, (E) cursor.data[i]);
 			}
 			cursor = cursor.next;
+			if(cursor == null) {
+				break;
+			}
 			length = cursor == tailChunk ? tailSize : cursor.data.length;
 		}
 	}
@@ -232,6 +246,7 @@ public class Stack<E> implements Iterable<E> {
 			int index = 0;
 			Chunk cursor = headChunk;
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
+			{ if(length == 0) { cursor = null;} }
 
 			int expectedModCount = modCount;
 
@@ -255,7 +270,9 @@ public class Stack<E> implements Iterable<E> {
 				if(index == length) {
 					index = 0;
 					cursor = cursor.next;
-					length = cursor == tailChunk ? tailSize : cursor.data.length;
+					if(cursor != null) {
+						length = cursor == tailChunk ? tailSize : cursor.data.length;
+					}
 				}
 
 				return result;
@@ -267,12 +284,15 @@ public class Stack<E> implements Iterable<E> {
 				if(expectedModCount != modCount) {
 					throw new ConcurrentModificationException();
 				}
-				while(cursor != null) {
+				while(true) {
 					for(;index < length; index++) {
 						action.accept((E) cursor.data[index]);
 					}
 					index = 0;
 					cursor = cursor.next;
+					if(cursor == null) {
+						break;
+					}
 					length = cursor == tailChunk ? tailSize : cursor.data.length;
 				}
 			}
