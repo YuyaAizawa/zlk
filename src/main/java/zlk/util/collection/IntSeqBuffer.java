@@ -9,9 +9,12 @@ import java.util.function.IntConsumer;
 import java.util.stream.IntStream;
 import java.util.stream.StreamSupport;
 
-/// {@link Stack} のint版
+import zlk.util.ConsumerIndexed;
+
+/// {@link SeqBuffer} のint版
 /// ちょっとメモリ節約
-public final class IntStack implements Iterable<Integer>{
+public final class IntSeqBuffer implements Iterable<Integer>{
+
 	private static final int DEFAULT_CHUNK_SIZE = 10;
 	private static final int MAX_CHUNK_SIZE = 4000;
 
@@ -23,9 +26,16 @@ public final class IntStack implements Iterable<Integer>{
 
 	private int modCount = 0;
 
-	public IntStack() {
-		grow();
+	public IntSeqBuffer(int capacityHint) {
+		int chunkSize = Math.clamp(capacityHint, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE);
+		Chunk newChunk = new Chunk(new int[chunkSize]);
+		tailChunk = newChunk;
+		tailSize = 0;
 		headChunk = tailChunk;
+	}
+
+	public IntSeqBuffer() {
+		this(DEFAULT_CHUNK_SIZE);
 	}
 
 	private void grow() {
@@ -112,6 +122,9 @@ public final class IntStack implements Iterable<Integer>{
 	}
 
 	public boolean contains(int element) {
+		if(isEmpty()) {
+			return false;
+		}
 		Chunk cursor = headChunk;
 		while(cursor != null) {
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
@@ -121,8 +134,32 @@ public final class IntStack implements Iterable<Integer>{
 				}
 			}
 			cursor = cursor.next;
+			if(cursor == null) {
+				break;
+			}
 		}
 		return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	public void forEachIndexed(ConsumerIndexed<Integer> action) {
+		if(isEmpty()) {
+			return;
+		}
+		int count = 0;
+		Chunk cursor = headChunk;
+
+		while(true) {
+			int length = cursor == tailChunk ? tailSize : cursor.data.length;
+			for(int i = 0; i < length; i++) {
+				action.accept(count++, cursor.data[i]);
+			}
+			cursor = cursor.next;
+			if(cursor == null) {
+				break;
+			}
+			length = cursor == tailChunk ? tailSize : cursor.data.length;
+		}
 	}
 
 	public int[] toArray() {
@@ -141,6 +178,24 @@ public final class IntStack implements Iterable<Integer>{
 		return result;
 	}
 
+	public IntSeq toSeq() {
+		if(isEmpty()) {
+			return IntSeq.of();
+		}
+
+		int[] array = new int[totalSize];
+		int count = 0;
+
+		for(Chunk cursor = headChunk; cursor != null; cursor = cursor.next) {
+			int length = cursor == tailChunk ? tailSize : cursor.data.length;
+			for(int i = 0; i < length; i++) {
+				array[count++] = cursor.data[i];
+			}
+		}
+
+		return new IntArraySeq(array);
+	}
+
 	@Override
 	public PrimitiveIterator.OfInt iterator() {
 		return new PrimitiveIterator.OfInt() {
@@ -148,6 +203,7 @@ public final class IntStack implements Iterable<Integer>{
 			int index = 0;
 			Chunk cursor = headChunk;
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
+			{ if(length == 0) { cursor = null;} }
 
 			int expectedModCount = modCount;
 
@@ -170,7 +226,9 @@ public final class IntStack implements Iterable<Integer>{
 				if(index == length) {
 					index = 0;
 					cursor = cursor.next;
-					length = cursor == tailChunk ? tailSize : cursor.data.length;
+					if(cursor != null) {
+						length = cursor == tailChunk ? tailSize : cursor.data.length;
+					}
 				}
 
 				return result;
@@ -181,12 +239,15 @@ public final class IntStack implements Iterable<Integer>{
 				if(expectedModCount != modCount) {
 					throw new ConcurrentModificationException();
 				}
-				while(cursor != null) {
+				while(true) {
 					for(;index < length; index++) {
 						action.accept(cursor.data[index]);
 					}
 					index = 0;
 					cursor = cursor.next;
+					if(cursor == null) {
+						break;
+					}
 					length = cursor == tailChunk ? tailSize : cursor.data.length;
 				}
 			}
@@ -216,6 +277,7 @@ public final class IntStack implements Iterable<Integer>{
 
 			Chunk cursor = tailChunk;
 			int index = cursor == tailChunk ? tailSize - 1 : cursor.data.length - 1;
+			{ if(index < 0) { cursor = null;} }
 
 			int expectedModCount = modCount;
 

@@ -2,85 +2,68 @@ package zlk.util.collection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
+import java.util.PrimitiveIterator;
 import java.util.function.Function;
-import java.util.function.Predicate;
+import java.util.function.IntBinaryOperator;
+import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
+import java.util.function.IntPredicate;
+import java.util.function.IntUnaryOperator;
 
-import zlk.util.BiFunctionIndexed;
-import zlk.util.ConsumerIndexed;
-import zlk.util.FunctionIndexed;
+import zlk.util.IntConsumerIndexed;
+import zlk.util.IntFunctionIndexed;
 
-/// 不変リストデータ構造
-///
-/// 想定用途
-/// - 不変データ型の内部
-///
-/// stream()と書くのが面倒なので直接Seqになるfilterやmapがある
-///
-/// 実装の本体はsliceとfoldIndexed．
-/// foldやforEachなどはdefault実装を生成しているが，充分に最適化されないかもしれない．
-///
-/// @param <E>
+/// {@link Seq}のint特殊化版
 
-public sealed interface Seq<E> extends Iterable<E> {
+public sealed interface IntSeq extends Iterable<Integer> {
 
-	@SuppressWarnings("unchecked")
-	public static <E> Seq<E> of() {
-		return (Seq<E>) EmptySeq.INSTANCE;
+	public static IntSeq of() {
+		return IntEmptySeq.SINGLETON;
 	}
 
-	public static <E> Seq<E> of(E element) {
-		return new SingletonSeq<>(element);
-	}
-
-	@SafeVarargs
-	public static <E> Seq<E> of(E...array) {
+	public static IntSeq of(int...array) {
 		switch(array.length) {
 		case 0:
-			@SuppressWarnings("unchecked")
-			var result = (Seq<E>) EmptySeq.INSTANCE;
-			return result;
+			return IntEmptySeq.SINGLETON;
 		case 1:
-			return new SingletonSeq<>(array[0]);
+			return new IntSingletonSeq(array[0]);
 		default:
-			return new ArraySeq<>(Arrays.copyOf(array, array.length));
+			return new IntArraySeq(Arrays.copyOf(array, array.length));
 		}
 	}
 
 	@SafeVarargs
-	public static <E> Seq<E> concat(Seq<E>...args) {
+	public static IntSeq concat(IntSeq...args) {
 		int totalSize = 0;
 		for (int i = 0; i < args.length; i++) {
 			totalSize += args[i].size();
 		}
 
-		Object[] result = new Object[totalSize];
+		int[] result = new int[totalSize];
 		int count = 0;
 		for (int i = 0; i < args.length; i++) {
 			switch(args[i]) {
-			case EmptySeq<E> _:
+			case IntEmptySeq _:
 				break;
-			case SingletonSeq<E> s:
+			case IntSingletonSeq s:
 				result[count] = s.element;
 				break;
-			case ArraySeq<E> a:
+			case IntArraySeq a:
 				System.arraycopy(a.data, 0, result, count, a.size());
 				break;
-			case SliceSeq<E> s:
+			case IntSliceSeq s:
 				System.arraycopy(s.ref, s.from, result, count, s.size());
 				break;
-			case ReversedSeq<E> r: {
+			case IntReversedSeq r: {
 				int count_ = count;
 				r.forEachIndexed((j, e) -> result[count_+j] = e);
 			}
 			}
 			count += args[i].size();
 		}
-		return new ArraySeq<>(result);
+		return new IntArraySeq(result);
 	}
 
 	int size();
@@ -89,15 +72,15 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return size() == 0;
 	}
 
-	boolean contains(E element);
+	boolean contains(int element);
 
-	E at(int index);
+	int at(int index);
 
-	default E head() {
+	default int head() {
 		return at(0);
 	}
 
-	default E last() {
+	default int last() {
 		return at(size() - 1);
 	}
 
@@ -108,14 +91,14 @@ public sealed interface Seq<E> extends Iterable<E> {
 	 * @return
 	 * @throws IllegalRangeException
 	 */
-	Seq<E> slice(int from, int to);
+	IntSeq slice(int from, int to);
 
 
 	/// 先頭から指定した要素数のSeqを返す．
 	/// 足りなければあるだけを返す．
 	/// @param num 先頭の要素数
 	/// @return
-	default Seq<E> take(int num) {
+	default IntSeq take(int num) {
 		if(num < 0) {
 			throw new IllegalArgumentException();
 		}
@@ -124,7 +107,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return slice(0, num);
 	}
 
-	default Seq<E> dropLast() {
+	default IntSeq dropLast() {
 		if(isEmpty()) {
 			throw new NoSuchElementException();
 		}
@@ -135,7 +118,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 	/// 足りなければ空のリストを返す．
 	/// @param num
 	/// @return
-	default Seq<E> drop(int num) {
+	default IntSeq drop(int num) {
 		if(num < 0) {
 			throw new IllegalArgumentException();
 		}
@@ -144,7 +127,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return slice(num, size());
 	}
 
-	default Seq<E> tail() {
+	default IntSeq tail() {
 		if(isEmpty()) {
 			throw new NoSuchElementException();
 		}
@@ -155,7 +138,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 	 * 要素の順番を逆転させたSeqを返す．
 	 * @return
 	 */
-	Seq<E> reversed();
+	IntSeq reversed();
 
 	/**
 	 * 畳み込みを行う
@@ -166,56 +149,73 @@ public sealed interface Seq<E> extends Iterable<E> {
 	 * @param finisher 畳み込んだ結果から最終結果への変換
 	 * @return 最終結果
 	 */
-	<A, R> R foldIndexed(BiFunctionIndexed<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher);
-	default <A, R> R foldIndexed(FolderIndexed<E, A, R> folder) {
+	<A, R> R foldIndexed(AccumulatorIndexed<A> accumulator, A initialValue, Function<? super A, ? extends R> finisher);
+	default <A, R> R foldIndexed(FolderIndexed<A, R> folder) {
 		return foldIndexed(folder.accumulator(), folder.initialValue(), folder.finisher());
 	}
-	public interface FolderIndexed<E, A, R> {
-		BiFunctionIndexed<? super E, A, A> accumulator();
+	@FunctionalInterface
+	public interface AccumulatorIndexed<A> {
+		A accumulate(int index, int value, A acc);
+	}
+	public interface FolderIndexed<A, R> {
+		AccumulatorIndexed<A> accumulator();
 		A initialValue();
 		Function<? super A, ? extends R> finisher();
 	}
 
-	default <A, R> R fold(BiFunction<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
+	default <A, R> R fold(Accumulator<A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
 		return foldIndexed((_, e, acc) -> accumulator.apply(e, acc), initialValue, finisher);
 	}
-	default <A, R> R fold(Folder<E, A, R> folder) {
+	default <A, R> R fold(Folder<A, R> folder) {
 		return fold(folder.accumulator(), folder.initialValue(), folder.finisher());
 	}
-	public interface Folder<E, A, R> {
-		BiFunction<? super E, A, A> accumulator();
+	@FunctionalInterface
+	public interface Accumulator<A> {
+		A apply(int value, A acc);
+	}
+	public interface Folder<A, R> {
+		Accumulator<A> accumulator();
 		A initialValue();
 		Function<? super A, ? extends R> finisher();
 	}
 
-	default <R> Seq<R> mapIndexed(FunctionIndexed<? super E, ? extends R> mapper) {
+	default <R> Seq<R> mapToObjIndexed(IntFunctionIndexed<? extends R> mapper) {
 		return foldIndexed(
 				(i, e, arr) -> { arr[i] = mapper.apply(i, e); return arr; },
 				new Object[size()],
 				ArraySeq::new);
 	}
 
-	default <R> Seq<R> map(Function<? super E, ? extends R> mapper) {
-		return mapIndexed((_, e) -> mapper.apply(e));
+	default <R> Seq<R> mapToObj(IntFunction<? extends R> mapper) {
+		return mapToObjIndexed((_, e) -> mapper.apply(e));
 	}
 
-	// TODO: 虚無のaccumulatorを入れた以下のdefault実装は充分に最適化されないかもしれない
-	default Seq<E> filter(Predicate<? super E> predicate) {
+	default IntSeq mapIndexed(IntBinaryOperator mapper) {
+		return foldIndexed(
+				(int i, int e, int[] arr) -> { arr[i] = mapper.applyAsInt(i, e); return arr; },
+				new int[size()],
+				IntArraySeq::new);
+	}
+
+	default IntSeq map(IntUnaryOperator mapper) {
+		return mapIndexed((_, e) -> mapper.applyAsInt(e));
+	}
+
+	default IntSeq filter(IntPredicate predicate) {
 		return fold(
-				(e, stack) -> { if(predicate.test(e) ) { stack.push(e); } return stack; },
-				new SeqBuffer<E>(size()),
-				SeqBuffer::toSeq);
+				(e, stack) -> { if(predicate.test(e) ) { stack.add(e); } return stack; },
+				new IntSeqBuffer(size()),
+				IntSeqBuffer::toSeq);
 	}
 
-	default void forEachIndexed(ConsumerIndexed<? super E> action) {
+	default void forEachIndexed(IntConsumerIndexed action) {
 		foldIndexed(
 				(i, e, _) -> { action.accept(i, e); return null; },
 				null,
 				Function.identity());
 	}
 
-	@Override
-	default void forEach(Consumer<? super E> action) {
+	default void forEach(IntConsumer action) {
 		forEachIndexed((_, e) -> action.accept(e));
 	}
 
@@ -224,52 +224,51 @@ public sealed interface Seq<E> extends Iterable<E> {
 	 * @return
 	 */
 	@Deprecated
-	default List<E> toList() {
-		List<E> result = new ArrayList<>(size());
-		forEach(result::add);
+	default List<Integer> toList() {
+		List<Integer> result = new ArrayList<>(size());
+		forEach((IntConsumer) result::add);
 		return result;
 	}
 }
 
-final class EmptySeq<E> implements Seq<E> {
-	static final EmptySeq<?> INSTANCE = new EmptySeq<>();
-	private EmptySeq() {}
+enum IntEmptySeq implements IntSeq {
+	SINGLETON;
 
 	@Override
 	public int size() { return 0; }
 	@Override
-	public boolean contains(E element) { return false; }
+	public boolean contains(int element) { return false; }
 	@Override
-	public E at(int index) { throw new ArrayIndexOutOfBoundsException(index); }
+	public int at(int index) { throw new ArrayIndexOutOfBoundsException(index); }
 	@Override
-	public Seq<E> slice(int from, int to) {
+	public IntSeq slice(int from, int to) {
 		if(from == 0 && to == 0) {
 			return this;
 		}
 		throw new IllegalRangeException(from, to, size());
 	}
 	@Override
-	public Seq<E> reversed() { return this; };
+	public IntSeq reversed() { return this; };
 	@Override
-	public <A, R> R foldIndexed(BiFunctionIndexed<? super E, A, A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
+	public <A, R> R foldIndexed(AccumulatorIndexed<A> accumulator, A initialValue, Function<? super A, ? extends R> finisher) {
 		return finisher.apply(initialValue);
 	}
 	@Override
-	public Iterator<E> iterator() {
-		return new Iterator<>() {
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
 			@Override
 			public boolean hasNext() { return false; }
 			@Override
-			public E next() { throw new NoSuchElementException(); }
+			public int nextInt() { throw new NoSuchElementException(); }
 		};
 	}
 }
 
-final class SingletonSeq<E> implements Seq<E> {
+final class IntSingletonSeq implements IntSeq {
 
-	final E element;
+	final int element;
 
-	public SingletonSeq(E element) {
+	public IntSingletonSeq(int element) {
 		this.element = element;
 	}
 
@@ -279,16 +278,12 @@ final class SingletonSeq<E> implements Seq<E> {
 	}
 
 	@Override
-	public boolean contains(E element) {
-		if(element == null) {
-			return this.element == null;
-		} else {
-			return element.equals(this.element);
-		}
+	public boolean contains(int element) {
+		return element == this.element;
 	}
 
 	@Override
-	public E at(int index) {
+	public int at(int index) {
 		if(index != 0) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
@@ -296,24 +291,24 @@ final class SingletonSeq<E> implements Seq<E> {
 	}
 
 	@Override
-	public Seq<E> slice(int from, int to) {
+	public IntSeq slice(int from, int to) {
 		if(from < 0 || size() < to || to < from) {
 			throw new IllegalRangeException(from, to, size());
 		}
 		if(from == to) {
-			return Seq.of();
+			return IntSeq.of();
 		}
 		return this;  // from == 0 && to == 1
 	}
 
 	@Override
-	public Seq<E> reversed() {
+	public IntSeq reversed() {
 		return this;
 	}
 
 	@Override
 	public <A, R> R foldIndexed(
-			BiFunctionIndexed<? super E, A, A> accumulator,
+			AccumulatorIndexed<A> accumulator,
 			A initialValue,
 			Function<? super A, ? extends R> finisher
 	) {
@@ -322,8 +317,8 @@ final class SingletonSeq<E> implements Seq<E> {
 	}
 
 	@Override
-	public Iterator<E> iterator() {
-		return new Iterator<>() {
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
 			boolean consumed = false;
 
 			@Override
@@ -332,7 +327,7 @@ final class SingletonSeq<E> implements Seq<E> {
 			}
 
 			@Override
-			public E next() {
+			public int nextInt() {
 				if(consumed) {
 					throw new NoSuchElementException();
 				}
@@ -344,14 +339,14 @@ final class SingletonSeq<E> implements Seq<E> {
 	}
 }
 
-final class ArraySeq<E> implements Seq<E> {
+final class IntArraySeq implements IntSeq {
 
-	final Object[] data;
+	final int[] data;
 
 	/**
 	 * @param data 外部から変更されないことを保証せよ
 	 */
-	ArraySeq(Object[] data) {
+	IntArraySeq(int[] data) {
 		this.data = data;
 	}
 
@@ -361,88 +356,84 @@ final class ArraySeq<E> implements Seq<E> {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	public E at(int index) {
-		return (E) data[index];
+	public int at(int index) {
+		return data[index];
 	}
 
 	@Override
-	public boolean contains(E element) {
-		if(element == null) {
-			for (int i = 0; i < data.length; i++) {
-				if(data[i] == null) {
-					return true;
-				}
-			}
-		} else {
-			for (int i = 0; i < data.length; i++) {
-				if(element.equals(data[i])) {
-					return true;
-				}
+	public boolean contains(int element) {
+		for (int i = 0; i < data.length; i++) {
+			if(element == data[i]) {
+				return true;
 			}
 		}
 		return false;
 	}
 
 	@Override
-	public Seq<E> slice(int from, int to) {
+	public IntSeq slice(int from, int to) {
 		if(from < 0 || size() < to || to < from) {
 			throw new IllegalRangeException(from, to, size());
 		}
 		if(from == to) {
-			return Seq.of();
+			return IntSeq.of();
 		}
-		return new SliceSeq<>(data, from, to);
+		return new IntSliceSeq(data, from, to);
 	}
 
 	@Override
-	public Seq<E> reversed() {
-		return new SliceSeq<E>(data, 0, size()).reversed();
+	public IntSeq reversed() {
+		return new IntSliceSeq(data, 0, size()).reversed();
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public <A, R> R foldIndexed(
-			BiFunctionIndexed<? super E, A, A> folder,
+			AccumulatorIndexed<A> folder,
 			A initialValue,
 			Function<? super A, ? extends R> finisher
 	) {
 		A acc = initialValue;
 		for (int i = 0; i < size(); i++) {
-			acc = folder.accumulate(i, (E) data[i], acc);
+			acc = folder.accumulate(i, data[i], acc);
 		}
 		return finisher.apply(acc);
 	}
 
 	@Override
-	public Iterator<E> iterator() {
-		return new Iterator<>() {
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
 			int index = 0;
 
 			@Override
 			public boolean hasNext() {
-				return index < size();
+				return index < data.length;
 			}
 
 			@Override
-			@SuppressWarnings("unchecked")
-			public E next() {
+			public int nextInt() {
 				if(!hasNext()) {
 					throw new NoSuchElementException();
 				}
-				return (E) data[index++];
+				return data[index++];
+			}
+
+			@Override
+			public void forEachRemaining(IntConsumer action) {
+				for (int i = index; i < data.length; i++) {
+					action.accept(data[i]);
+				}
 			}
 		};
 	}
 }
 
-final class SliceSeq<E> implements Seq<E> {
+final class IntSliceSeq implements IntSeq {
 
-	final Object[] ref;
+	final int[] ref;
 	final int from;
 	final int to;
 
-	public SliceSeq(Object[] ref, int from, int to) {
+	public IntSliceSeq(int[] ref, int from, int to) {
 		this.ref = ref;
 		this.from = from;
 		this.to = to;
@@ -454,65 +445,55 @@ final class SliceSeq<E> implements Seq<E> {
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	public E at(int index) {
+	public int at(int index) {
 		if(index < 0 || size() <= index) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
-		return (E) ref[from + index];
+		return ref[from + index];
 	}
 
 	@Override
-	public boolean contains(E element) {
-		if(element == null) {
-			for (int i = from; i < to; i++) {
-				if(ref[i] == null) {
-					return true;
-				}
-			}
-		} else {
-			for (int i = from; i < to; i++) {
-				if(element.equals(ref[i])) {
-					return true;
-				}
+	public boolean contains(int element) {
+		for (int i = from; i < to; i++) {
+			if(element == ref[i]) {
+				return true;
 			}
 		}
 		return false;
 	}
 
 	@Override
-	public Seq<E> slice(int from, int to) {
+	public IntSeq slice(int from, int to) {
 		if(from < 0 || size() < to || to < from) {
 			throw new IllegalRangeException(from, to, size());
 		}
 		if(from == to) {
-			return Seq.of();
+			return IntSeq.of();
 		}
-		return new SliceSeq<>(ref, this.from + from, this.from + to);
+		return new IntSliceSeq(ref, this.from + from, this.from + to);
 	}
 
 	@Override
-	public Seq<E> reversed() {
-		return new ReversedSeq<>(this);
+	public IntSeq reversed() {
+		return new IntReversedSeq(this);
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public <A, R> R foldIndexed(
-			BiFunctionIndexed<? super E, A, A> folder,
+			AccumulatorIndexed<A> folder,
 			A initialValue,
 			Function<? super A, ? extends R> finisher
 	) {
 		A acc = initialValue;
 		for (int ni = 0, ri = from; ri < to; ni++, ri++) {
-			acc = folder.accumulate(ni, (E) ref[ri], acc);
+			acc = folder.accumulate(ni, ref[ri], acc);
 		}
 		return finisher.apply(acc);
 	}
 
 	@Override
-	public Iterator<E> iterator() {
-		return new Iterator<>() {
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
 			int index = from;
 
 			@Override
@@ -521,22 +502,28 @@ final class SliceSeq<E> implements Seq<E> {
 			}
 
 			@Override
-			@SuppressWarnings("unchecked")
-			public E next() {
+			public int nextInt() {
 				if(!hasNext()) {
 					throw new NoSuchElementException();
 				}
-				return (E) ref[index++];
+				return ref[index++];
+			}
+
+			@Override
+			public void forEachRemaining(IntConsumer action) {
+				for (int i = index; i < to; i++) {
+					action.accept(ref[i]);
+				}
 			}
 		};
 	}
 }
 
-final class ReversedSeq<E> implements Seq<E> {
+final class IntReversedSeq implements IntSeq {
 
-	final SliceSeq<E> ref;
+	final IntSliceSeq ref;
 
-	public ReversedSeq(SliceSeq<E> ref) {
+	public IntReversedSeq(IntSliceSeq ref) {
 		this.ref = ref;
 	}
 
@@ -564,48 +551,47 @@ final class ReversedSeq<E> implements Seq<E> {
 	}
 
 	@Override
-	public boolean contains(E element) {
+	public boolean contains(int element) {
 		return ref.contains(element);
 	}
 
 	@Override
-	public E at(int index) {
+	public int at(int index) {
 		return ref.at(rel(index));
 	}
 
 	@Override
-	public Seq<E> slice(int from, int to) {
+	public IntSeq slice(int from, int to) {
 		if (from < 0 || size() < to || to < from) {
 			throw new IllegalRangeException(from, to, size());
 		}
 		if (from == to) {
-			return Seq.of();
+			return IntSeq.of();
 		}
 		return ref.slice(size() - to, size() - from).reversed();
 	}
 
 	@Override
-	public Seq<E> reversed() {
+	public IntSeq reversed() {
 		return ref;
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	public <A, R> R foldIndexed(
-			BiFunctionIndexed<? super E, A, A> folder,
+			AccumulatorIndexed<A> folder,
 			A initialValue,
 			Function<? super A, ? extends R> finisher
 	) {
 		A acc = initialValue;
 		for (int ni = 0, ri = abs(0); ri > abs(size()); ni++, ri--) {
-			acc = folder.accumulate(ni, (E) ref.ref[ri], acc);
+			acc = folder.accumulate(ni, ref.ref[ri], acc);
 		}
 		return finisher.apply(acc);
 	}
 
 	@Override
-	public Iterator<E> iterator() {
-		return new Iterator<>() {
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
 			int index = abs(0);
 
 			@Override
@@ -614,21 +600,20 @@ final class ReversedSeq<E> implements Seq<E> {
 			}
 
 			@Override
-			@SuppressWarnings("unchecked")
-			public E next() {
+			public int nextInt() {
 				if(!hasNext()) {
 					throw new NoSuchElementException();
 				}
-				return (E) ref.ref[index--];
+				return ref.ref[index--];
+			}
+
+			@Override
+			public void forEachRemaining(IntConsumer action) {
+				int limit = abs(size());
+				for (int i = index; i > limit; i--) {
+					action.accept(ref.ref[i]);
+				}
 			}
 		};
-	}
-}
-
-class IllegalRangeException extends IllegalArgumentException {
-	private static final long serialVersionUID = 1L;
-
-	public IllegalRangeException(int from, int to, int size) {
-		super("from: " + from + ", to: " + to + ", size: " + size);
 	}
 }

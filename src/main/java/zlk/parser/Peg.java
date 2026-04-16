@@ -5,7 +5,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import zlk.util.collection.Stack;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Seq;
 
 /**
@@ -159,7 +159,7 @@ public abstract class Peg<T> {
 		return new Peg<>() {
 			@Override
 			public Seq<T> parse(Tokenized src) {
-				Stack<T> result = new Stack<>();
+				SeqBuffer<T> result = new SeqBuffer<>();
 				while(true) {
 					int start = src.mark();
 					T r = p.parse(src);
@@ -177,7 +177,7 @@ public abstract class Peg<T> {
 		return new Peg<>() {
 			@Override
 			public Seq<T> parse(Tokenized src) {
-				Stack<T> result = new Stack<>();
+				SeqBuffer<T> result = new SeqBuffer<>();
 				T r = p.parse(src);
 				if(r == null) {
 					return null;

@@ -72,7 +72,7 @@ public final class BytecodeGenerator {
 	// for compileDecl
 	private IdList locals;
 	private MethodVisitor mv;
-	private zlk.util.collection.Stack<Runnable> pendings;
+	private zlk.util.collection.SeqBuffer<Runnable> pendings;
 
 	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins, String origin) {
 		this.module = module;
@@ -83,7 +83,7 @@ public final class BytecodeGenerator {
 		this.toplevelDecls = new IdMap<>();
 		this.javaClasses = new IdMap<>();
 		this.ctors = new IdMap<>();
-		this.pendings = new zlk.util.collection.Stack<>();
+		this.pendings = new zlk.util.collection.SeqBuffer<>();
 
 		javaClasses.put(Type.UNIT.ctor(), JavaType.VOID);
 		javaClasses.put(Type.BOOL.ctor(), new JavaType.Simple("java/lang/Boolean"));

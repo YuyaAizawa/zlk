@@ -34,7 +34,7 @@ import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.collection.Seq;
-import zlk.util.collection.Stack;
+import zlk.util.collection.SeqBuffer;
 
 public final class ConstraintExtractor {
 
@@ -115,16 +115,16 @@ public final class ConstraintExtractor {
 			// c : C
 			// F = A -> B -> C -> R
 
-			Stack<Variable> vars = new Stack<>();
-			Stack<Constraint> cons = new Stack<>();
+			SeqBuffer<Variable> vars = new SeqBuffer<>();
+			SeqBuffer<Constraint> cons = new SeqBuffer<>();
 
 			Variable funVar = freshFlex.getVariable();
 			vars.push(funVar);
 			RcType funTy = new VarN(funVar);
 			cons.push(extract(fun, funTy));
 
-			Stack<Constraint> argCons = new Stack<>();
-			Stack<RcType> argTys = new Stack<>();
+			SeqBuffer<Constraint> argCons = new SeqBuffer<>();
+			SeqBuffer<RcType> argTys = new SeqBuffer<>();
 			for(IcExp arg : args) {
 				Variable argVar = freshFlex.getVariable();
 				vars.push(argVar);
@@ -166,7 +166,7 @@ public final class ConstraintExtractor {
 			extractFromDef(decls, extract(body, expected));
 
 		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
-			Stack<Constraint> cons = new Stack<>();
+			SeqBuffer<Constraint> cons = new SeqBuffer<>();
 
 			Variable patVar = freshFlex.getVariable();
 			RcType patTy = new VarN(patVar);
@@ -212,7 +212,7 @@ public final class ConstraintExtractor {
 		for (var decl : decls) {
 			Args a = extractFromArgs(decl.args());
 
-			Stack<Constraint> headerCons = new Stack<>();
+			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
 			a.binder.cons.forEach(headerCons::push);
 			headerCons.push(extract(decl.body(), a.resultTy));
 
@@ -230,9 +230,9 @@ public final class ConstraintExtractor {
 		Seq<IdList> sccTopo = sccTopo(buildGraph(decls));
 
 		// 3) フェーズ列を作る SCCごとに rhs を並べtargets=SCCのid群
-		Stack<CPhase> phases = new Stack<>();
+		SeqBuffer<CPhase> phases = new SeqBuffer<>();
 		for (var scc : sccTopo) {
-			Stack<Constraint> items = new Stack<>();
+			SeqBuffer<Constraint> items = new SeqBuffer<>();
 			IdList targets = new IdList();
 			for (Id id : scc) {
 				items.push(defCons.get(id));
@@ -254,7 +254,7 @@ public final class ConstraintExtractor {
 		PatternBinder pb = new PatternBinder(nodeTypes);
 
 		// 引数型に変数を割当て
-		Stack<RcType> argTys = new Stack<>(args.size());
+		SeqBuffer<RcType> argTys = new SeqBuffer<>(args.size());
 		for(IcPattern arg : args) {
 			Variable v = freshFlex.getVariable();
 			RcType.VarN ty = new RcType.VarN(v);
@@ -286,7 +286,7 @@ public final class ConstraintExtractor {
 		pb.bind(branch.pattern(), patExpected, freshFlex);
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
-		Stack<Constraint> cons = new Stack<>(pb.cons.size()+1);
+		SeqBuffer<Constraint> cons = new SeqBuffer<>(pb.cons.size()+1);
 		pb.cons.forEach(cons::push);
 		cons.push(bodyCon);
 		return new CLet(
@@ -324,7 +324,7 @@ public final class ConstraintExtractor {
 		graph.forEach((v, es) -> es.forEach(e -> rgraph.get(e).addIfNotContains(v)));
 
 		seen.clear();
-		Stack<IdList> result = new Stack<>();
+		SeqBuffer<IdList> result = new SeqBuffer<>();
 		for(Id v : postorder.reversed()) {
 			if(!seen.contains(v)) {
 				IdList scc = new IdList();
