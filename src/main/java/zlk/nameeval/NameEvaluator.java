@@ -43,7 +43,7 @@ import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcTypeDecl;
 import zlk.idcalc.IcValDecl;
 import zlk.util.collection.Seq;
-import zlk.util.collection.Stack;
+import zlk.util.collection.SeqBuffer;
 
 public final class NameEvaluator {
 
@@ -135,8 +135,8 @@ public final class NameEvaluator {
 			}}
 		});
 
-		Stack<IcTypeDecl> icTypes = new Stack<>();
-		Stack<IcValDecl> icDecls = new Stack<>();
+		SeqBuffer<IcTypeDecl> icTypes = new SeqBuffer<>();
+		SeqBuffer<IcValDecl> icDecls = new SeqBuffer<>();
 
 		module.decls().forEach(def -> {
 			switch(def) {

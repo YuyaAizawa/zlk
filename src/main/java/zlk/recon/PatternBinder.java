@@ -12,12 +12,12 @@ import zlk.idcalc.IcPattern.Arg;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.RcType;
-import zlk.util.collection.Stack;
+import zlk.util.collection.SeqBuffer;
 
 final class PatternBinder {
-	final Stack<Variable> vars = new Stack<>();
+	final SeqBuffer<Variable> vars = new SeqBuffer<>();
 	final IdMap<RcType> headers = new IdMap<>();
-	final Stack<Constraint> cons = new Stack<>();
+	final SeqBuffer<Constraint> cons = new SeqBuffer<>();
 	final IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
 	PatternBinder(IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
