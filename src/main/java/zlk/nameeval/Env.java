@@ -5,17 +5,17 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import zlk.common.id.Id;
-import zlk.util.collection.Stack;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public final class Env {
 	Map<String, Id> global;
-	Stack<Scope> scoped;
+	SeqBuffer<Scope> scoped;
 
 	public Env() {
 		global = new HashMap<>();
-		scoped = new Stack<>();
+		scoped = new SeqBuffer<>();
 	}
 
 	public void pushScope(String scopeSimpleName) {

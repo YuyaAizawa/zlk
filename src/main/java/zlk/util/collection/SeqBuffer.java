@@ -36,7 +36,7 @@ import zlk.util.ConsumerIndexed;
 ///
 /// @param <E>
 
-public class Stack<E> implements Iterable<E> {
+public class SeqBuffer<E> implements Iterable<E> {
 
 	static final int DEFAULT_CHUNK_SIZE = 10;
 	static final int MAX_CHUNK_SIZE = 4000;
@@ -49,7 +49,7 @@ public class Stack<E> implements Iterable<E> {
 
 	private int modCount = 0;
 
-	public Stack(int capacityHint) {
+	public SeqBuffer(int capacityHint) {
 		int chunkSize = Math.clamp(capacityHint, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE);
 		Chunk newChunk = new Chunk(new Object[chunkSize]);
 		tailChunk = newChunk;
@@ -57,7 +57,7 @@ public class Stack<E> implements Iterable<E> {
 		headChunk = tailChunk;
 	}
 
-	public Stack() {
+	public SeqBuffer() {
 		grow();
 		headChunk = tailChunk;
 	}
@@ -322,6 +322,7 @@ public class Stack<E> implements Iterable<E> {
 
 			Chunk cursor = tailChunk;
 			int index = cursor == tailChunk ? tailSize - 1 : cursor.data.length - 1;
+			{ if(index < 0) { cursor = null;} }
 
 			int expectedModCount = modCount;
 
