@@ -27,7 +27,7 @@ import zlk.util.ConsumerIndexed;
 /// headChunk         tailChunk
 ///     |                 |
 ///     v                 v
-///  |-----|-----|-----|-----| <- push/pop箇所
+///  |-----|-----|-----|-----| <- add/removeLast箇所
 ///    <-- prev     next -->
 ///   ==forEach/toSeq方向==>
 /// ```
@@ -36,14 +36,14 @@ import zlk.util.ConsumerIndexed;
 ///
 /// @param <E>
 
-public class SeqBuffer<E> implements Iterable<E> {
+public final class SeqBuffer<E> implements Iterable<E> {
 
 	static final int DEFAULT_CHUNK_SIZE = 10;
 	static final int MAX_CHUNK_SIZE = 4000;
 
 	private Chunk tailChunk;
 	private Chunk headChunk;
-	private Chunk holdChunk;  // popしてchunkが空になったとき，再利用のためにしばらく取っておく
+	private Chunk holdChunk;  // removeLastしてchunkが空になったとき，再利用のためにしばらく取っておく
 	private int tailSize;  // tailChunkの有効な要素の数
 	private int totalSize;
 
@@ -53,13 +53,31 @@ public class SeqBuffer<E> implements Iterable<E> {
 		int chunkSize = Math.clamp(capacityHint, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE);
 		Chunk newChunk = new Chunk(new Object[chunkSize]);
 		tailChunk = newChunk;
+		headChunk = newChunk;
+		holdChunk = newChunk;
 		tailSize = 0;
-		headChunk = tailChunk;
+		totalSize = 0;
 	}
 
 	public SeqBuffer() {
+		holdChunk = null;
+		totalSize = 0;
 		grow();
 		headChunk = tailChunk;
+	}
+
+	public SeqBuffer(SeqBuffer<E> original) {
+		int rest = original.size();
+		int chunkSize = Math.clamp(rest, DEFAULT_CHUNK_SIZE, MAX_CHUNK_SIZE);
+
+		Chunk newChunk = new Chunk(new Object[chunkSize]);
+		headChunk = newChunk;
+		tailChunk = newChunk;
+		holdChunk = null;
+		tailSize = 0;
+		totalSize = 0;
+
+		addAll(original);
 	}
 
 	private void grow() {
@@ -92,16 +110,17 @@ public class SeqBuffer<E> implements Iterable<E> {
 		return totalSize == 0;
 	}
 
-	public void push(E element) {
+	public void add(E element) {
 		if(tailSize == tailChunk.data.length) {
 			grow();
 		}
 		tailChunk.data[tailSize++] = element;
 		totalSize++;
+		modCount++;
 	}
 
 	@SuppressWarnings("unchecked")
-	public E pop() {
+	public E removeLast() {
 		if(isEmpty()) {
 			throw new EmptyStackException();
 		}
@@ -122,7 +141,7 @@ public class SeqBuffer<E> implements Iterable<E> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public E peek() {
+	public E getLast() {
 		if(isEmpty()) {
 			throw new EmptyStackException();
 		}
@@ -133,7 +152,7 @@ public class SeqBuffer<E> implements Iterable<E> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public E get(int index) {
+	public E at(int index) {
 		if(index < 0 || totalSize <= index) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
@@ -149,19 +168,50 @@ public class SeqBuffer<E> implements Iterable<E> {
 		}
 	}
 
-	public boolean contains(E element) {
-		if(isEmpty()) {
-			return false;
+	public void addAll(SeqBuffer<E> elements) {
+		if(elements.isEmpty()) {
+			return;
 		}
+		if(elements == this) {
+			elements = new SeqBuffer<>(elements);
+		}
+
+		for(Chunk cursor = elements.headChunk; cursor != null; cursor = cursor.next) {
+			int srcLength = cursor == elements.tailChunk ? elements.tailSize : cursor.data.length;
+			int srcIndex = 0;
+
+			while(srcIndex < srcLength) {
+				if(tailSize == tailChunk.data.length) {
+					grow();
+				}
+
+				int copyLength = Math.min(srcLength - srcIndex, tailChunk.data.length - tailSize);
+				System.arraycopy(cursor.data, srcIndex, tailChunk.data, tailSize, copyLength);
+				srcIndex += copyLength;
+				tailSize += copyLength;
+				totalSize += copyLength;
+			}
+		}
+		modCount++;
+	}
+
+	/// 指定した要素が最初に出現するインデックスを返す．含まれていなければ-1．
+	/// @param element
+	public int indexOf(E element) {
+		if(isEmpty()) {
+			return -1;
+		}
+		int count = 0;
 		Chunk cursor = headChunk;
 		if(element == null) {
 			while(true) {
 				int length = cursor == tailChunk ? tailSize : cursor.data.length;
 				for(int i = 0; i < length; i++) {
 					if(cursor.data[i] == null) {
-						return true;
+						return count + i;
 					}
 				}
+				count += cursor.data.length;
 				cursor = cursor.next;
 				if(cursor == null) {
 					break;
@@ -172,16 +222,23 @@ public class SeqBuffer<E> implements Iterable<E> {
 				int length = cursor == tailChunk ? tailSize : cursor.data.length;
 				for(int i = 0; i < length; i++) {
 					if(element.equals(cursor.data[i])) {
-						return true;
+						return count + i;
 					}
 				}
+				count += cursor.data.length;
 				cursor = cursor.next;
 				if(cursor == null) {
 					break;
 				}
 			}
 		}
-		return false;
+		return -1;
+	}
+
+	/// 指定した要素が含まれているか返す
+	/// @param element
+	public boolean contains(E element) {
+		return indexOf(element) >= 0;
 	}
 
 	@SuppressWarnings("unchecked")

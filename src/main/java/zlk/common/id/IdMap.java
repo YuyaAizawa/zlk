@@ -1,9 +1,7 @@
 package zlk.common.id;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -17,6 +15,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collector;
 
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -103,8 +102,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return new IdList(impl.keySet());
 	}
 
-	public List<V> values() {
-		return new ArrayList<>(impl.values());
+	public Seq<V> values() {
+		SeqBuffer<V> buffer = new SeqBuffer<>(impl.size());
+		impl.values().forEach(buffer::add);
+		return buffer.toSeq();
 	}
 
 	@Override
