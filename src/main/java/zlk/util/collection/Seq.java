@@ -202,7 +202,7 @@ public sealed interface Seq<E> extends Iterable<E> {
 	// TODO: 虚無のaccumulatorを入れた以下のdefault実装は充分に最適化されないかもしれない
 	default Seq<E> filter(Predicate<? super E> predicate) {
 		return fold(
-				(e, stack) -> { if(predicate.test(e) ) { stack.push(e); } return stack; },
+				(e, stack) -> { if(predicate.test(e) ) { stack.add(e); } return stack; },
 				new SeqBuffer<E>(size()),
 				SeqBuffer::toSeq);
 	}

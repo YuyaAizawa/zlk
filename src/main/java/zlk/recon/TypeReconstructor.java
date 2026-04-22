@@ -30,7 +30,6 @@ import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Result;
 import zlk.util.collection.Seq;
-import zlk.util.collection.SeqBuffer;
 
 public class TypeReconstructor {
 
@@ -116,9 +115,7 @@ public class TypeReconstructor {
 			introduce(flexes, nextRank);
 
 			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
-			SeqBuffer<Variable> values = new SeqBuffer<>();  // TODO: インピーダンス不整合を直す
-			locals.values().forEach(values::push);
-			introduce(values.toSeq(), nextRank);
+			introduce(locals.values(), nextRank);
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
 
 			// 強連結成分ごとに解決

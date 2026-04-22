@@ -167,7 +167,7 @@ public abstract class Peg<T> {
 						src.jump(start);
 						return result.toSeq();
 					}
-					result.push(r);
+					result.add(r);
 				}
 			}
 		};
@@ -182,7 +182,7 @@ public abstract class Peg<T> {
 				if(r == null) {
 					return null;
 				}
-				result.push(r);
+				result.add(r);
 				while(true) {
 					int start = src.mark();
 					r = p.parse(src);
@@ -190,7 +190,7 @@ public abstract class Peg<T> {
 						src.jump(start);
 						return result.toSeq();
 					}
-					result.push(r);
+					result.add(r);
 				}
 			}
 		};
