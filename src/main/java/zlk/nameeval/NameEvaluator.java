@@ -140,8 +140,8 @@ public final class NameEvaluator {
 
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl ty -> icTypes.push(eval(ty));
-			case ValDecl fun -> icDecls.push(eval(fun));
+			case TypeDecl ty -> icTypes.add(eval(ty));
+			case ValDecl fun -> icDecls.add(eval(fun));
 			}
 		});
 

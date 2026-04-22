@@ -119,31 +119,31 @@ public final class ConstraintExtractor {
 			SeqBuffer<Constraint> cons = new SeqBuffer<>();
 
 			Variable funVar = freshFlex.getVariable();
-			vars.push(funVar);
+			vars.add(funVar);
 			RcType funTy = new VarN(funVar);
-			cons.push(extract(fun, funTy));
+			cons.add(extract(fun, funTy));
 
 			SeqBuffer<Constraint> argCons = new SeqBuffer<>();
 			SeqBuffer<RcType> argTys = new SeqBuffer<>();
 			for(IcExp arg : args) {
 				Variable argVar = freshFlex.getVariable();
-				vars.push(argVar);
+				vars.add(argVar);
 				RcType argTy = new VarN(argVar);
-				argCons.push(extract(arg, argTy));
-				argTys.push(argTy);
+				argCons.add(extract(arg, argTy));
+				argTys.add(argTy);
 			}
 
 			Variable resultVar = freshFlex.getVariable();
-			vars.push(resultVar);
+			vars.add(resultVar);
 			RcType resultType = new VarN(resultVar);
 			RcType arityType = resultType;
 			for(RcType ty : argTys.toSeq().reversed()) {
 				arityType = new FunN(ty, arityType);
 			}
 
-			cons.push(new CEqual(funTy, arityType));
-			argCons.forEach(cons::push);  // アリティの後にしないと引数の数のチェックができない
-			cons.push(new CEqual(resultType, expected));
+			cons.add(new CEqual(funTy, arityType));
+			argCons.forEach(cons::add);  // アリティの後にしないと引数の数のチェックができない
+			cons.add(new CEqual(resultType, expected));
 
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}
@@ -170,15 +170,15 @@ public final class ConstraintExtractor {
 
 			Variable patVar = freshFlex.getVariable();
 			RcType patTy = new VarN(patVar);
-			cons.push(extract(target, patTy));
+			cons.add(extract(target, patTy));
 
 			// TODO 型注釈から制約を抽出（ここに制約って書けたっけ？）
 			Variable branchVar = freshFlex.getVariable();
 			RcType branchTy = new VarN(branchVar);
 			for(IcCaseBranch branch : branches) {
-				cons.push(extractFromCaseBranch(branch, patTy, branchTy));  // TODO Reason系
+				cons.add(extractFromCaseBranch(branch, patTy, branchTy));  // TODO Reason系
 			}
-			cons.push(new CEqual(branchTy, expected));
+			cons.add(new CEqual(branchTy, expected));
 
 			yield new CExists(Seq.of(patVar, branchVar), cons.toSeq());
 		}
@@ -213,8 +213,8 @@ public final class ConstraintExtractor {
 			Args a = extractFromArgs(decl.args());
 
 			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
-			a.binder.cons.forEach(headerCons::push);
-			headerCons.push(extract(decl.body(), a.resultTy));
+			a.binder.cons.forEach(headerCons::add);
+			headerCons.add(extract(decl.body(), a.resultTy));
 
 			Constraint rhs = new CLet(
 					Seq.of(), // TODO: 型注釈のrigid
@@ -235,10 +235,10 @@ public final class ConstraintExtractor {
 			SeqBuffer<Constraint> items = new SeqBuffer<>();
 			IdList targets = new IdList();
 			for (Id id : scc) {
-				items.push(defCons.get(id));
+				items.add(defCons.get(id));
 				targets.add(id);
 			}
-			phases.push(new CPhase(items.toSeq(), targets));
+			phases.add(new CPhase(items.toSeq(), targets));
 		}
 
 		// 4) 外側の CLet にまとめる（実際の let フレーム）
@@ -258,15 +258,15 @@ public final class ConstraintExtractor {
 		for(IcPattern arg : args) {
 			Variable v = freshFlex.getVariable();
 			RcType.VarN ty = new RcType.VarN(v);
-			pb.vars.push(v);  // パターン内と関数のアリティ由来を分けるならpb.varsにpushせず外側で保持
+			pb.vars.add(v);  // パターン内と関数のアリティ由来を分けるならpb.varsにpushせず外側で保持
 			pb.bind(arg, ty, freshFlex);
-			argTys.push(ty);
+			argTys.add(ty);
 		}
 
 		// 戻り値型に変数を割当て
 		Variable v = freshFlex.getVariable();
 		RcType.VarN retTy = new RcType.VarN(v);
-		pb.vars.push(v);
+		pb.vars.add(v);
 
 		RcType funTy = retTy;
 		for(RcType argTy : argTys.toSeq().reversed()) {
@@ -287,8 +287,8 @@ public final class ConstraintExtractor {
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		SeqBuffer<Constraint> cons = new SeqBuffer<>(pb.cons.size()+1);
-		pb.cons.forEach(cons::push);
-		cons.push(bodyCon);
+		pb.cons.forEach(cons::add);
+		cons.add(bodyCon);
 		return new CLet(
 				Seq.of(),
 				pb.vars.toSeq(),
@@ -329,7 +329,7 @@ public final class ConstraintExtractor {
 			if(!seen.contains(v)) {
 				IdList scc = new IdList();
 				dfs(v, seen, rgraph, scc);
-				result.push(scc);
+				result.add(scc);
 			}
 		}
 		return result.toSeq();

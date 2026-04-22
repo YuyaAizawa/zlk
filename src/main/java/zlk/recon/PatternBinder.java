@@ -34,12 +34,12 @@ final class PatternBinder {
 
 		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
-			ctorInfo.flexes().forEach(vars::push);
+			ctorInfo.flexes().forEach(vars::add);
 
 			if (args.size() != ctorInfo.argTys().size()) {
 				throw new RuntimeException("arity missmatch");  // TODO: コンパイルエラーに
 			}
-			cons.push(new CEqual(ctorInfo.resultTy(), expected));
+			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 
 			for (int i = 0; i < args.size(); i++) {
 				bind(args.get(i).pattern(), ctorInfo.argTys().get(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？

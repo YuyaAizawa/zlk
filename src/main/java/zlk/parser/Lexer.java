@@ -81,15 +81,15 @@ public final class Lexer {
 			int levelDiff = currentLevel - level;
 			if(levelDiff < 0) {
 				for(int i = levelDiff; i < 0; i++) {
-					result.push(new Token(info, Token.Kind.ENDENT, lineStartIdx, idx));
+					result.add(new Token(info, Token.Kind.ENDENT, lineStartIdx, idx));
 				}
 			}
 			if(levelDiff > 0) {
 				for(int i = levelDiff; i > 0; i--) {
-					result.push(new Token(info, Token.Kind.DEDENT, lineStartIdx, idx));
+					result.add(new Token(info, Token.Kind.DEDENT, lineStartIdx, idx));
 				}
 			}
-			result.push(new Token(info, Token.Kind.SAMENT, lineStartIdx, idx));
+			result.add(new Token(info, Token.Kind.SAMENT, lineStartIdx, idx));
 			currentLevel = level;
 
 			// 行内トークンを追加
@@ -112,23 +112,23 @@ public final class Lexer {
 				int start = idx;
 				if(isUpper(c)) {  // UCID
 					while(++idx < srcLength && isIdentifierPart(src.charAt(idx)));
-					result.push(new Token(info, Kind.UCID, start, idx));
+					result.add(new Token(info, Kind.UCID, start, idx));
 				} else if(isLower(c)) {  // LCID or keyword
 					while(++idx < srcLength && isIdentifierPart(src.charAt(idx)));
 					Kind k = Token.Kind.lookupKeyword(src.substring(start, idx));
-					result.push(new Token(info, k == null ? Kind.LCID : k, start, idx));
+					result.add(new Token(info, k == null ? Kind.LCID : k, start, idx));
 				} else if(isPunctuator(c)) {  // punctuator
 					Kind k = Token.Kind.lookupPunctuator(src, start);
 					if(k != null) {
 						idx += k.str().length();
-						result.push(new Token(info, k, start, idx));
+						result.add(new Token(info, k, start, idx));
 					} else {
 						while(++idx < srcLength && isPunctuator(src.charAt(idx)));
-						result.push(new Token(info, Kind.ILL, start, idx));
+						result.add(new Token(info, Kind.ILL, start, idx));
 					}
 				} else if(isDigit(c)) {  // DIGIT
 					while(++idx < srcLength && isDigit(src.charAt(idx)));
-					result.push(new Token(info, Kind.DIGITS, start, idx));
+					result.add(new Token(info, Kind.DIGITS, start, idx));
 				} else {
 					todo("unsupported token start char'"+c+"'@"+idx);
 				}
@@ -140,7 +140,7 @@ public final class Lexer {
 		}
 		// 閉じていないブロックを閉じる
 		for (int i = 0; i < currentLevel; i++) {
-			result.push(new Token(info, Token.Kind.DEDENT, idx, idx));
+			result.add(new Token(info, Token.Kind.DEDENT, idx, idx));
 		}
 		// 共有情報に改行位置を登録
 		info.lineStartIndexes = lineStartIndexes.toArray();
