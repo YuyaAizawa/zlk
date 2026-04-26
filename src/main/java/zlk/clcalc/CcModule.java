@@ -1,14 +1,13 @@
 package zlk.clcalc;
 
-import java.util.List;
-
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcModule(
 		String name,
-		List<CcTypeDecl> types,
-		List<CcFunDecl> funcs)
+		Seq<CcTypeDecl> types,
+		Seq<CcFunDecl> funcs)
 implements PrettyPrintable {
 
 	@Override

@@ -19,7 +19,7 @@ import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
-import zlk.common.id.IdList;
+import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.ExpOrPattern;
@@ -32,6 +32,7 @@ import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
+import zlk.util.collection.Seq;
 
 public class Main {
 
@@ -107,7 +108,7 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");
-		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
+		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
 		NameEvaluator ne = new NameEvaluator(ast);
 		IcModule idcalc = ne.eval();
 		System.out.println(idcalc.buildString());
@@ -128,7 +129,7 @@ public class Main {
 		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args().toList(), new Type.CtorApp(union.id(), union.vars().toList())))));
+			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id(), union.vars())))));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");

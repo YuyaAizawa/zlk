@@ -1,16 +1,15 @@
 package zlk.clcalc;
 
-import java.util.List;
-
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcTypeDecl(
 		Id id,
-		List<CcCtor> ctors,
+		Seq<CcCtor> ctors,
 		Location loc
 	) implements PrettyPrintable, LocationHolder {
 
@@ -18,9 +17,8 @@ public record CcTypeDecl(
 		public void mkString(PrettyPrinter pp) {
 			pp.append("type ").append(id).endl();
 			pp.indent(() -> {
-				pp.append("= ").append(ctors.get(0));
-				ctors.subList(1, ctors.size())
-						.forEach(ctor -> pp.endl().append("| ").append(ctor));
+				pp.append("= ").append(ctors.head());
+				ctors.tail().forEach(ctor -> pp.endl().append("| ").append(ctor));
 			});
 		}
 

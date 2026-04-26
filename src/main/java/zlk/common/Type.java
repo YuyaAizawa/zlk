@@ -1,13 +1,13 @@
 package zlk.common;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -29,9 +29,9 @@ permits CtorApp, Arrow, Var {
 	 * @param ctor 型構築子
 	 * @param args 型パラメータ
 	 */
-	record CtorApp(Id ctor, List<Type> args) implements Type {
+	record CtorApp(Id ctor, Seq<Type> args) implements Type {
 		public CtorApp(Id id) {
-			this(id, List.of());
+			this(id, Seq.of());
 		}
 
 		@Override
@@ -51,15 +51,15 @@ permits CtorApp, Arrow, Var {
 		 * 複数引数として見たときの引数型を返す．
 		 * @return 複数引数として見た引数の型
 		 */
-		public List<Type> args() {
-			List<Type> args = new ArrayList<>();
+		public Seq<Type> args() {
+			SeqBuffer<Type> result = new SeqBuffer<>();
 
 			Type ret = this;
 			while(ret instanceof Arrow fun) {
-				args.add(fun.arg());
+				result.add(fun.arg());
 				ret = fun.ret();
 			}
-			return args;
+			return result.toSeq();
 		}
 
 		@Override
@@ -83,7 +83,7 @@ permits CtorApp, Arrow, Var {
 	public static final CtorApp BOOL = new CtorApp(Id.intern("Bool"));
 	public static final CtorApp I32  = new CtorApp(Id.intern("I32"));
 
-	public static final List<CtorApp> BUILTIN = List.of(UNIT, BOOL, I32);
+	public static final Seq<CtorApp> BUILTIN = Seq.of(UNIT, BOOL, I32);
 
 	public static Type.Arrow arrow(Type... rest) {
 		if(rest.length < 2) {
@@ -97,20 +97,23 @@ permits CtorApp, Arrow, Var {
 		return new Arrow(rest[0], tail);
 	}
 
-	public static Type arrow(List<Type> args, Type ret) {
-		Type result = ret;
+	public static Type.Arrow arrow(Seq<Type> args, Type ret) {
+		Seq<Type> argsReversed = args.reversed();
+		Type.Arrow result = new Arrow(argsReversed.head(), ret);
 
-		List<Type> args_ = new ArrayList<>(args);
-		Collections.reverse(args_);
-		for(Type arg : args_) {
+		for(Type arg : argsReversed.tail()) {
 			result = new Arrow(arg, result);
 		}
 
 		return result;
 	}
 
-	public static Type.Arrow arrow(List<Type> types) {
-		return arrow(types.toArray(Type[]::new));
+	public static Type.Arrow arrow(Seq<Type> types) {
+		int size = types.size();
+		if(size < 2) {
+			throw new IllegalArgumentException("types.size(): "+size);
+		}
+		return arrow(types.dropLast(), types.last());
 	}
 
 	default CtorApp asAtom() {
@@ -175,8 +178,8 @@ permits CtorApp, Arrow, Var {
 				actual.getTypeName()));
 	}
 
-	default List<Type> flatten() {
-		List<Type> flatten = new ArrayList<>();
+	default Seq<Type> flatten() {
+		SeqBuffer<Type> flatten = new SeqBuffer<>();
 
 		Type ret = this;
 		while(ret instanceof Arrow fun) {
@@ -184,25 +187,31 @@ permits CtorApp, Arrow, Var {
 			ret = fun.ret();
 		}
 		flatten.add(ret);
-		return flatten;
+		return flatten.toSeq();
 	}
 
-	public static Type fromList(List<Type> list) {
-		Type result = list.getLast();
-		for(int i = list.size()-2; i >= 0; i--) {
-			result = new Arrow(list.get(i), result);
+	public static Type fromSeq(Seq<Type> tys) {
+		if(tys.isEmpty()) {
+			throw new IllegalArgumentException();
+		}
+
+		Seq<Type> revTys = tys.reversed();
+
+		Type result = revTys.head();
+		for(Type ty : revTys.tail()) {
+			result = new Arrow(ty, result);
 		}
 		return result;
 	}
 
-	default List<String> getVarNames() {
-		List<String> result = new ArrayList<>();
+	default Seq<String> getVarNames() {
+		SeqBuffer<String> result = new SeqBuffer<>();
 		getVarNamesHelp(result);
-		return result;
+		return result.toSeq();
 	}
-	default void getVarNamesHelp(List<String> acc) {
+	default void getVarNamesHelp(SeqBuffer<String> acc) {
 		switch(this) {
-		case CtorApp(_, List<Type> typeArguments) -> {
+		case CtorApp(_, Seq<Type> typeArguments) -> {
 			for(Type arg : typeArguments) {
 				arg.getVarNamesHelp(acc);
 			}
@@ -270,16 +279,14 @@ permits CtorApp, Arrow, Var {
 		case Var(String name) -> {
 			binds.putOrConfirm(name, target);
 		}
-		case CtorApp(Id ctor, List<Type> args) -> {
-			if(target instanceof CtorApp(Id targetCtor, List<Type> targetArgs)) {
+		case CtorApp(Id ctor, Seq<Type> args) -> {
+			if(target instanceof CtorApp(Id targetCtor, Seq<Type> targetArgs)) {
 				if(ctor.equals(targetCtor)) {
 					if(args.size() != targetArgs.size()) {
 						throw new IllegalArgumentException(
 								String.format("Invalid type bind. this: %s, target: %s", this, target));
 					}
-					for (int i = 0; i < args.size(); i++) {
-						args.get(i).bind(targetArgs.get(i), binds);
-					}
+					args.forEachIndexed((i, arg) -> arg.bind(targetArgs.at(i), binds));
 					return;
 				}
 			}
@@ -303,8 +310,8 @@ permits CtorApp, Arrow, Var {
 			Type bound = binds.getOrNull(name);
 			yield (bound != null) ? bound : this;
 		}
-		case CtorApp(Id ctor, var args) -> {
-			yield new CtorApp(ctor, args.stream().map(t -> t.subst(binds)).toList());
+		case CtorApp(Id ctor, Seq<Type> args) -> {
+			yield new CtorApp(ctor, args.map(t -> t.subst(binds)));
 		}
 		case Arrow(Type arg, Type ret) -> {
 			yield new Arrow(arg.subst(binds), ret.subst(binds));
@@ -315,11 +322,11 @@ permits CtorApp, Arrow, Var {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case CtorApp(Id id, List<Type> typeArguments) -> {
+		case CtorApp(Id id, Seq<Type> typeArguments) -> {
 			pp.append(id);
 			typeArguments.forEach(a -> {
 				if(a instanceof Arrow ||
-						(a instanceof CtorApp(_, List<Type> args) && !args.isEmpty())) {
+						(a instanceof CtorApp(_, Seq<Type> args) && !args.isEmpty())) {
 					pp.append(" (").append(a).append(")");
 				} else {
 					pp.append(" ").append(a);

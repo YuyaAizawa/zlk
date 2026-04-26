@@ -1,9 +1,6 @@
 package zlk.idcalc;
 
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 
 import zlk.common.ConstValue;
@@ -11,7 +8,6 @@ import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.idcalc.IcExp.IcApp;
 import zlk.idcalc.IcExp.IcCase;
 import zlk.idcalc.IcExp.IcCnst;
@@ -75,34 +71,6 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			IcExp target,
 			Seq<IcCaseBranch> branches,
 			Location loc) implements IcExp {}
-
-	default IdList fv(Collection<Id> known) {
-		IdList acc = new IdList();
-		Set<Id> knownSet = new HashSet<>(known);
-
-		walk(exp -> {
-			switch(exp) {
-			case IcVarLocal(Id id, Location _) -> {
-				if (!knownSet.contains(id)) {
-					acc.add(id);
-				}
-			}
-
-			case IcLamb(Seq<IcPattern> args, IcExp _, Location _) ->
-				args.forEach(pat -> pat.accumulateVars(knownSet));
-
-			case IcLet(Seq<IcValDecl> decls, IcExp _, Location _) ->
-				decls.forEach(decl -> decl.args().forEach(pat -> pat.accumulateVars(knownSet)));
-
-			case IcCase(IcExp _, Seq<IcCaseBranch> branches, Location _) ->
-				branches.forEach(branch -> branch.pattern().accumulateVars(knownSet));
-
-			default -> {}
-			}
-		});
-
-		return acc;
-	}
 
 	public default Optional<Id> getId() {
 		switch (this) {

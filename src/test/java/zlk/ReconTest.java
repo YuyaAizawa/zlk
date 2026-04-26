@@ -177,8 +177,8 @@ public class ReconTest {
 		IcCnst zero = (IcCnst) nilBranch.body();
 		IcCaseBranch consBranch = body.branches().at(1);
 		IcPattern.Dector consPat = (IcPattern.Dector) consBranch.pattern();
-		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().get(0).pattern();
-		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().get(1).pattern();
+		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().at(0).pattern();
+		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().at(1).pattern();
 		IcApp addCall = (IcApp) consBranch.body();
 		IcVarLocal hdRef = (IcVarLocal) addCall.args().at(0);
 		IcCnst one = (IcCnst) addCall.args().at(1);
