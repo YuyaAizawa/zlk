@@ -1,13 +1,12 @@
 package zlk.clcalc;
 
-import java.util.List;
-
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -30,17 +29,17 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 
 	record CcDirectApp(  // invokeになる部分
 			Id funId,
-			List<CcExp> args,
+			Seq<CcExp> args,
 			Location loc) implements CcExp {}
 
 	record CcClosureApp(  // Function.applyになる部分
 			CcExp funExp,
-			List<CcExp> args,
+			Seq<CcExp> args,
 			Location loc) implements CcExp {}
 
 	record CcMkCls(
 			Id implId,  // メソッド定義
-			List<CcExp> caps,  // キャプチャする式
+			Seq<CcExp> caps,  // キャプチャする式
 			Location loc) implements CcExp {}
 
 	record CcIf(
@@ -58,7 +57,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 	record CcCase(
 			CcExp target,
 			Type targetTy,
-			List<CcCaseBranch> branches,
+			Seq<CcCaseBranch> branches,
 			Location loc) implements CcExp {}
 
 	default CcExp substId(IdMap<Id> map) {
@@ -69,22 +68,22 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 		case CcVar(Id id, Location loc) -> {
 			yield new CcVar(map.getOrDefault(id, id), loc);
 		}
-		case CcDirectApp(Id funid, List<CcExp> args, Location loc) -> {
+		case CcDirectApp(Id funid, Seq<CcExp> args, Location loc) -> {
 			yield new CcDirectApp(
 					map.getOrDefault(funid, funid),
-					args.stream().map(arg -> arg.substId(map)).toList(),
+					args.map(arg -> arg.substId(map)),
 					loc);
 		}
-		case CcClosureApp(CcExp funExp, List<CcExp> args, Location loc) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location loc) -> {
 			yield new CcClosureApp(
 					funExp.substId(map),
-					args.stream().map(arg -> arg.substId(map)).toList(),
+					args.map(arg -> arg.substId(map)),
 					loc);
 		}
-		case CcMkCls(Id clsFunc, List<CcExp> caps, Location loc) -> {
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Location loc) -> {
 			yield new CcMkCls(
 					map.getOrDefault(clsFunc, clsFunc),
-					caps.stream().map(cap -> cap.substId(map)).toList(),
+					caps.map(cap -> cap.substId(map)),
 					loc);
 		}
 		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) -> {
@@ -101,11 +100,11 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 					body.substId(map),
 					loc);
 		}
-		case CcCase(CcExp target, Type targetTy, List<CcCaseBranch> branches, Location loc) -> {
+		case CcCase(CcExp target, Type targetTy, Seq<CcCaseBranch> branches, Location loc) -> {
 			yield new CcCase(
 					target.substId(map),
 					targetTy,
-					branches.stream().map(branch -> branch.substId(map)).toList(),
+					branches.map(branch -> branch.substId(map)),
 					loc);
 		}
 		};
@@ -120,7 +119,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 		case CcVar(Id id, Location _) -> {
 			pp.append("var: ").append(id);
 		}
-		case CcDirectApp(Id funId, List<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, Seq<CcExp> args, Location _) -> {
 			pp.append("directApp:").endl();
 			pp.indent(() -> {
 				pp.append("funId: ").append(funId).endl();
@@ -132,7 +131,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcClosureApp(CcExp funExp, List<CcExp> args, Location _) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location _) -> {
 			pp.append("closureApp:").endl();
 			pp.indent(() -> {
 				pp.append("funExp:").endl();
@@ -147,7 +146,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcMkCls(Id clsFunc, List<CcExp> caps, Location _) -> {
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Location _) -> {
 			pp.append("mkCls:").endl();
 			pp.indent(() -> {
 				pp.append("clsFunc: ").append(clsFunc).endl();
@@ -189,7 +188,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcCase(CcExp target, Type _, List<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Type _, Seq<CcCaseBranch> branches, Location _) -> {
 			pp.append("case:").endl();
 			pp.indent(() -> {
 				pp.append("target:").endl();

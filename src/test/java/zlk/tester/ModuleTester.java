@@ -20,7 +20,6 @@ import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.ExpOrPattern;
@@ -33,6 +32,7 @@ import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.util.Result;
+import zlk.util.collection.Seq;
 
 public class ModuleTester {
 
@@ -93,16 +93,15 @@ public class ModuleTester {
 		Builtin.functions().forEach(fun -> types.put(fun.id(), fun.type()));
 		module.types().forEach(union ->
 				union.ctors().forEach(ctor ->
-					types.put(ctor.id(), Type.arrow(ctor.args().toList(), new Type.CtorApp(union.id())))));
-		Result<List<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
+					types.put(ctor.id(), Type.fromSeq(Seq.concat(ctor.args(), Seq.of(new Type.CtorApp(union.id())))))));
+		Result<Seq<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
 		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
 		callSiteTypes = result.resolvedNodeTypes();
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
 
-		IdList builtinIds = Builtin.functions().stream().map(b -> b.id())
-				.collect(IdList.collector());
+		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
 		this.clconv = new ClosureConverter(module, types, callSiteTypes, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
@@ -142,7 +141,7 @@ public class ModuleTester {
 		return new TypeTester(
 				ty,
 				Id.intern(TARGET_MODULE_NAME),
-				module.types().map(d -> d.id()).fold(IdMap.folder(i -> i, i -> new Type.CtorApp(i, List.of()))));
+				module.types().map(d -> d.id()).fold(IdMap.folder(i -> i, i -> new Type.CtorApp(i, Seq.of()))));
 	}
 
 	public void addClass(String className, byte[] bytecode) {

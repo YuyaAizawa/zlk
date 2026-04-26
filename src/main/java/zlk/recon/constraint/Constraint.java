@@ -2,7 +2,6 @@ package zlk.recon.constraint;
 
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.recon.Variable;
 import zlk.recon.constraint.Constraint.CEqual;
@@ -92,7 +91,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 */
 	record CPhase(
 			Seq<Constraint> cons,
-			IdList genTargets
+			Seq<Id> genTargets
 	) implements PrettyPrintable {  // 単独でConstraintではない
 
 		@Override
@@ -100,7 +99,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			pp.append("Phase:").endl();
 			pp.indent(() -> {
 				pp.append("cons: ").append(PrettyPrintable.tailComma(cons.toList())).endl();
-				pp.append("genTargets: ").append(genTargets);
+				pp.append("genTargets: ").append(PrettyPrintable.oneLine(genTargets.toList()));
 			});
 		}
 	}
