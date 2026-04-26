@@ -1,8 +1,6 @@
 package zlk.recon.constraint;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -13,6 +11,8 @@ import zlk.recon.Variable;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -20,11 +20,11 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface RcType extends PrettyPrintable
 permits VarN, AppN, FunN {
 	record VarN(Variable var) implements RcType {}
-	record AppN(Id id, List<RcType> args) implements RcType {}
+	record AppN(Id id, Seq<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
 
-	public static final RcType BOOL = new AppN(Type.BOOL.ctor(), List.of());
-	public static final RcType I32  = new AppN(Type.I32.ctor() , List.of());
+	public static final RcType BOOL = new AppN(Type.BOOL.ctor(), Seq.of());
+	public static final RcType I32  = new AppN(Type.I32.ctor() , Seq.of());
 
 	/**
 	 * 注釈用の型から生成された制約用の型情報
@@ -33,7 +33,7 @@ permits VarN, AppN, FunN {
 	 * @param argTys 関数型だった場合の引数型をflattenしたもの
 	 * @param retTy 関数型だった場合の戻り値の型かその他の場合の型そのもの
 	 */
-	public record FromType(List<Variable> flexes, List<RcType> argTys, RcType resultTy) {}
+	public record FromType(Seq<Variable> flexes, Seq<RcType> argTys, RcType resultTy) {}
 
 	/**
 	 * 注釈などに使う型から制約用の型を生成する
@@ -49,8 +49,8 @@ permits VarN, AppN, FunN {
 				return switch(t) {
 				case Type.Var(String name) ->
 					new VarN(vars.computeIfAbsent(name, _ -> freshFlex.getVariable()));
-				case Type.CtorApp(Id id, List<Type> args) ->
-					new AppN(id, args.stream().map(this).toList());
+				case Type.CtorApp(Id id, Seq<Type> args) ->
+					new AppN(id, args.map(this));
 				case Type.Arrow(Type arg, Type ret) ->
 					new FunN(apply(arg), apply(ret));
 				};
@@ -58,36 +58,25 @@ permits VarN, AppN, FunN {
 		};
 
 		RcType resultTy = conv.apply(ty);
-		List<RcType> argTys = new java.util.ArrayList<>();
+		SeqBuffer<RcType> argTys = new SeqBuffer<>();
 		while (resultTy instanceof RcType.FunN(RcType arg, RcType ret)) {
 			argTys.add(arg);
 			resultTy = ret;
 		}
 
-		List<Variable> flexes = new ArrayList<>(vars.values());  // 参照リーク防止
+		SeqBuffer<Variable> flexes = new SeqBuffer<>();
+		vars.values().forEach(flexes::add);  // 参照リーク防止
 
-		return new FromType(flexes, argTys, resultTy);
-	}
-
-	default List<RcType> flatten() {
-		List<RcType> flatten = new ArrayList<>();
-
-		RcType ret = this;
-		while(ret instanceof FunN fun) {
-			flatten.add(fun.arg());
-			ret = fun.ret();
-		}
-		flatten.add(ret);
-		return flatten;
+		return new FromType(flexes.toSeq(), argTys.toSeq(), resultTy);
 	}
 
 	default Type toType() {
 		return switch(this) {
 		case VarN(Variable var) -> var.toType();
-		case AppN(Id id, List<RcType> args) ->
-			new Type.CtorApp(id, args.stream().map(arg -> arg.toType()).toList());
+		case AppN(Id id, Seq<RcType> args) ->
+			new Type.CtorApp(id, args.map(arg -> arg.toType()));
 		case FunN(RcType arg, RcType ret) ->
-			Type.arrow(List.of(arg.toType(), ret.toType()));
+			Type.arrow(Seq.of(arg.toType(), ret.toType()));
 		};
 	}
 
@@ -97,14 +86,14 @@ permits VarN, AppN, FunN {
 		case VarN(Variable var) -> {
 			pp.append(var);
 		}
-		case AppN(Id id, List<RcType> args) -> {
+		case AppN(Id id, Seq<RcType> args) -> {
 			pp.append(id);
 			for(RcType arg : args) {
 				pp.append(" ");
 				switch(arg) {
 				case VarN _ ->
 					pp.append(arg);
-				case AppN(Id _, List<RcType> args_) when args_.isEmpty() ->
+				case AppN(Id _, Seq<RcType> args_) when args_.isEmpty() ->
 					pp.append(arg);
 				default ->
 					pp.append("(").append(arg).append(")");

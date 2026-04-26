@@ -169,19 +169,19 @@ public class ReconTest {
 
 		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
 
-		var head = module.getIdcalcModule().decls().getFirst();
-		IcPattern.Var listPat = (IcPattern.Var) head.args().getFirst();
+		var head = module.getIdcalcModule().decls().head();
+		IcPattern.Var listPat = (IcPattern.Var) head.args().head();
 		IcCase body = (IcCase) head.body();
 		IcVarLocal target = (IcVarLocal) body.target();
-		IcCaseBranch nilBranch = body.branches().get(0);
+		IcCaseBranch nilBranch = body.branches().at(0);
 		IcCnst zero = (IcCnst) nilBranch.body();
-		IcCaseBranch consBranch = body.branches().get(1);
+		IcCaseBranch consBranch = body.branches().at(1);
 		IcPattern.Dector consPat = (IcPattern.Dector) consBranch.pattern();
-		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().get(0).pattern();
-		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().get(1).pattern();
+		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().at(0).pattern();
+		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().at(1).pattern();
 		IcApp addCall = (IcApp) consBranch.body();
-		IcVarLocal hdRef = (IcVarLocal) addCall.args().get(0);
-		IcCnst one = (IcCnst) addCall.args().get(1);
+		IcVarLocal hdRef = (IcVarLocal) addCall.args().at(0);
+		IcCnst one = (IcCnst) addCall.args().at(1);
 
 		module.getCallSiteType(addCall).is("I32");
 		module.getCallSiteType(hdRef).is("I32");

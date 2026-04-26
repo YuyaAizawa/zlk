@@ -1,10 +1,7 @@
 package zlk.recon.constraint;
 
-import java.util.List;
-
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.recon.Variable;
 import zlk.recon.constraint.Constraint.CEqual;
@@ -13,6 +10,7 @@ import zlk.recon.constraint.Constraint.CForeign;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Constraint.CPattern;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -69,19 +67,19 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 *
 	 */
 	record CLet(
-			List<Variable> rigids,
-			List<Variable> flexes,
+			Seq<Variable> rigids,
+			Seq<Variable> flexes,
 			IdMap<RcType> header,
-			List<CPhase> headerCons,
-			List<Constraint> bodyCon) implements Constraint {
+			Seq<CPhase> headerCons,
+			Seq<Constraint> bodyCon) implements Constraint {
 
 		public CLet(
-				List<Variable> rigids,
-				List<Variable> flexes,
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
 				IdMap<RcType> header,
-				List<CPhase> headerCons,
+				Seq<CPhase> headerCons,
 				Constraint bodyCon) {
-			this(rigids, flexes, header, headerCons, List.of(bodyCon));
+			this(rigids, flexes, header, headerCons, Seq.of(bodyCon));
 		}
 	}
 
@@ -92,15 +90,16 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 * @param genTargets この集まりを解決したタイミングで一般化すべき対象
 	 */
 	record CPhase(
-		List<Constraint> cons,
-		IdList genTargets) implements PrettyPrintable {  // 単独でConstraintではない
+			Seq<Constraint> cons,
+			Seq<Id> genTargets
+	) implements PrettyPrintable {  // 単独でConstraintではない
 
 		@Override
 		public void mkString(PrettyPrinter pp) {
 			pp.append("Phase:").endl();
 			pp.indent(() -> {
-				pp.append("cons: ").append(PrettyPrintable.tailComma(cons)).endl();
-				pp.append("genTargets: ").append(genTargets);
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons.toList())).endl();
+				pp.append("genTargets: ").append(PrettyPrintable.oneLine(genTargets.toList()));
 			});
 		}
 	}
@@ -114,8 +113,8 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 * @param cons 制約
 	 */
 	record CExists(
-			List<Variable> vars,
-			List<Constraint> cons) implements Constraint {}
+			Seq<Variable> vars,
+			Seq<Constraint> cons) implements Constraint {}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {
@@ -133,26 +132,26 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			pp.append("Pattern: ").append(id).append(": ").append(ctorTy).append(" = ").append(expected);
 		}
 		case CLet(
-				List<Variable> rigids,
-				List<Variable> flexes,
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
 				IdMap<RcType> header,
-				List<CPhase> headerCons,
-				List<Constraint> bodyCons
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCons
 		) -> {
 			pp.append("Let:").endl();
 			pp.indent(() -> {
 				pp.append("rigids: ").append("[").append(PrettyPrintable.join(rigids, ", ")).append("]").endl();
 				pp.append("flexes: ").append("[").append(PrettyPrintable.join(flexes, ", ")).append("]").endl();
 				pp.append("header: ").append(header).endl();
-				pp.append("headerCons: ").append(PrettyPrintable.tailComma(headerCons)).endl();
-				pp.append("bodyCons:").append(PrettyPrintable.tailComma(bodyCons));
+				pp.append("headerCons: ").append(PrettyPrintable.tailComma(headerCons.toList())).endl();
+				pp.append("bodyCons:").append(PrettyPrintable.tailComma(bodyCons.toList()));
 			});
 		}
-		case CExists(List<Variable> vars, List<Constraint> cons) -> {
+		case CExists(Seq<Variable> vars, Seq<Constraint> cons) -> {
 			pp.append("Exists:").endl();
 			pp.indent(() -> {
 				pp.append("vars: ").append("[").append(PrettyPrintable.join(vars, ", ")).append("]").endl();
-				pp.append("cons: ").append(PrettyPrintable.tailComma(cons));
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons.toList()));
 			});
 		}
 		}

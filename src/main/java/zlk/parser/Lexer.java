@@ -7,8 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 import zlk.parser.Token.Kind;
-import zlk.util.ChunkedBuffer;
-import zlk.util.IntChunkedBuffer;
+import zlk.util.collection.IntSeqBuffer;
+import zlk.util.collection.SeqBuffer;
 
 /**
  * ソースをトークンのインデントで分離されたブロック構造に変換する
@@ -28,8 +28,8 @@ public final class Lexer {
 	int currentLevel;  // 現在のインデントレベル
 	int lineStartIdx;  // 現在の行の先頭位置
 	IndentStyle indentStyle;
-	IntChunkedBuffer lineStartIndexes;
-	ChunkedBuffer<Token> result;
+	IntSeqBuffer lineStartIndexes;
+	SeqBuffer<Token> result;
 
 	public Lexer(String fileName, String src) {
 		this.fileName = fileName;
@@ -44,8 +44,8 @@ public final class Lexer {
 		idx = 0;
 		currentLevel = 0;
 		indentStyle = IndentStyle.UNKNOWN;
-		lineStartIndexes = new IntChunkedBuffer();
-		result = new ChunkedBuffer<>(Token[]::new);
+		lineStartIndexes = new IntSeqBuffer();
+		result = new SeqBuffer<>();
 		Source info = new Source(fileName, src);
 		int srcLength = src.length();
 
@@ -145,7 +145,7 @@ public final class Lexer {
 		// 共有情報に改行位置を登録
 		info.lineStartIndexes = lineStartIndexes.toArray();
 
-		return new Tokenized(result.toArray());
+		return new Tokenized(result.toArray(Token[]::new));
 	}
 
 	private static boolean isPrintableAscii(char c) {

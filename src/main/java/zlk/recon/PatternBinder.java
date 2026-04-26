@@ -1,8 +1,6 @@
 package zlk.recon;
 
-import java.util.ArrayList;
 import java.util.IdentityHashMap;
-import java.util.List;
 
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -13,11 +11,13 @@ import zlk.idcalc.IcPattern.Arg;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.RcType;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 final class PatternBinder {
-	final List<Variable> vars = new ArrayList<>();
+	final SeqBuffer<Variable> vars = new SeqBuffer<>();
 	final IdMap<RcType> headers = new IdMap<>();
-	final List<Constraint> cons = new ArrayList<>();
+	final SeqBuffer<Constraint> cons = new SeqBuffer<>();
 	final IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
 	PatternBinder(IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
@@ -32,7 +32,7 @@ final class PatternBinder {
 			headers.put(id, expected);
 		}
 
-		case IcPattern.Dector(IcVarCtor ctor, List<Arg> args, _) -> {
+		case IcPattern.Dector(IcVarCtor ctor, Seq<Arg> args, _) -> {
 			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
 			vars.addAll(ctorInfo.flexes());
 
@@ -42,7 +42,7 @@ final class PatternBinder {
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 
 			for (int i = 0; i < args.size(); i++) {
-				bind(args.get(i).pattern(), ctorInfo.argTys().get(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
+				bind(args.at(i).pattern(), ctorInfo.argTys().at(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
 			}
 		}
 		}

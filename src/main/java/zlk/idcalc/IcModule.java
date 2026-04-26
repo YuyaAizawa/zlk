@@ -1,7 +1,6 @@
 package zlk.idcalc;
 
-import java.util.List;
-
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -14,8 +13,8 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record IcModule(
 		String name,
-		List<IcTypeDecl> types,
-		List<IcValDecl> decls
+		Seq<IcTypeDecl> types,
+		Seq<IcValDecl> decls
 ) implements PrettyPrintable {
 
 	@Override

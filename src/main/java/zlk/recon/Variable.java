@@ -1,8 +1,6 @@
 package zlk.recon;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -14,6 +12,8 @@ import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -54,10 +54,10 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 		return switch(get().content) {
 		case FlexVar(int id, Optional<String> _) -> new Type.Var(namer.apply(id));
 		case RigidVar(String name) -> new Type.Var(name);
-		case Structure(FlatType.CtorApp1(Id id, List<Variable> args)) ->
-			new Type.CtorApp(id, args.stream().map(arg -> arg.toType(namer)).toList());
+		case Structure(FlatType.CtorApp1(Id id, Seq<Variable> args)) ->
+			new Type.CtorApp(id, args.map(arg -> arg.toType(namer)));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			Type.arrow(List.of(arg.toType(namer), ret.toType(namer)));
+			Type.arrow(Seq.of(arg.toType(namer), ret.toType(namer)));
 		case Content.Error _ ->
 			throw new RuntimeException("error type cannot convert");
 		};
@@ -67,9 +67,9 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 	 * 無限型の出現をエラーにまとめる
 	 */
 	public boolean occurs() {
-		return occursHelp(new ArrayList<>(), false);
+		return occursHelp(new SeqBuffer<>(), false);
 	}
-	private boolean occursHelp(List<Variable> seen, boolean foundCycle) {
+	private boolean occursHelp(SeqBuffer<Variable> seen, boolean foundCycle) {
 		if(seen.contains(this)) {  // 再出現を確認するのは内部の等価性ではない
 			return true;
 		}
@@ -78,10 +78,10 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 		return switch(get().content) {
 		case FlexVar _ -> foundCycle;
 		case RigidVar _ -> foundCycle;
-		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
-			args.stream().anyMatch(arg -> arg.occursHelp(seen, foundCycle));
+		case Structure(FlatType.CtorApp1(_, Seq<Variable> args)) ->
+			args.anyMatch(arg -> arg.occursHelp(seen, foundCycle));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			arg.occursHelp(seen, ret.occursHelp(new ArrayList<>(seen), foundCycle));
+			arg.occursHelp(seen, ret.occursHelp(new SeqBuffer<>(seen), foundCycle));
 		case Content.Error() -> foundCycle;
 		};
 	}
@@ -101,7 +101,7 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 		action.accept(this);
 		s.gMark = mark;
 		switch(s.content) {
-		case Content.Structure(FlatType.CtorApp1(_, List<Variable> args)) -> {
+		case Content.Structure(FlatType.CtorApp1(_, Seq<Variable> args)) -> {
 			args.forEach(arg -> arg.markAndWalk(mark, action));
 		}
 		case Content.Structure(FlatType.Fun1(Variable a, Variable b)) -> {

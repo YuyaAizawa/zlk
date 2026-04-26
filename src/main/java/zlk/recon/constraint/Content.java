@@ -1,6 +1,5 @@
 package zlk.recon.constraint;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -12,6 +11,7 @@ import zlk.recon.Variable;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -40,8 +40,8 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 	record Structure(FlatType flatType) implements Content {
 		public Structure traverse(Function<Variable, Variable> f) {
 			switch(flatType) {
-			case CtorApp1(Id id, List<Variable> args) -> {
-				return new Structure(new CtorApp1(id, args.stream().map(f).toList()));
+			case CtorApp1(Id id, Seq<Variable> args) -> {
+				return new Structure(new CtorApp1(id, args.map(f)));
 			}
 			case Fun1(Variable arg, Variable ret) -> {
 				return new Structure(new Fun1(f.apply(arg), f.apply(ret)));
@@ -52,7 +52,7 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 
 	record Error() implements Content {}
 
-	public static Content ctorApp(Id id, List<Variable> args) {
+	public static Content ctorApp(Id id, Seq<Variable> args) {
 		return new Structure(new CtorApp1(id, args));
 	}
 

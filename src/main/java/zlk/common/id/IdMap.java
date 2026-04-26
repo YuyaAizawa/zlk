@@ -1,20 +1,16 @@
 package zlk.common.id;
 
-import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.Set;
+import java.util.Optional;
 import java.util.function.BiConsumer;
-import java.util.function.BinaryOperator;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Collector;
 
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -60,6 +56,10 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return result;
 	}
 
+	public Optional<V> getOptional(Id id) {
+		return Optional.ofNullable(getOrNull(id));
+	}
+
 	public V getOrDefault(Id id, V value) {
 		return impl.getOrDefault(id, value);
 	}
@@ -97,12 +97,12 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		impl.remove(id);
 	}
 
-	public IdList keys() {
-		return new IdList(impl.keySet());
+	public Seq<Id> keys() {
+		return Seq.from(impl.keySet());
 	}
 
-	public List<V> values() {
-		return new ArrayList<>(impl.values());
+	public Seq<V> values() {
+		return Seq.from(impl.values());
 	}
 
 	@Override
@@ -129,34 +129,25 @@ public class IdMap<V> implements PrettyPrintable, Cloneable {
 		return result;
 	}
 
-	public static <E, V> Collector<E, ?, IdMap<V>> collector(Function<? super E, ? extends Id> idExtractor, Function<? super E, ? extends V> valueExtractor) {
-		return new Collector<E, IdMap<V>, IdMap<V>>() {
+	public static <E, V> Seq.Folder<E, ?, IdMap<V>> folder(
+			Function<? super E, ? extends Id> idExtractor,
+			Function<? super E, ? extends V> valueExtractor
+	) {
+		return new Seq.Folder<E, IdMap<V>, IdMap<V>>() {
 
 			@Override
-			public Supplier<IdMap<V>> supplier() {
-				return () -> new IdMap<>();
+			public BiFunction<? super E, IdMap<V>, IdMap<V>> accumulator() {
+				return (e, idMap) -> { idMap.put(idExtractor.apply(e), valueExtractor.apply(e)); return idMap; };
 			}
 
 			@Override
-			public BiConsumer<IdMap<V>, E> accumulator() {
-				return (map, e) -> map.put(idExtractor.apply(e), valueExtractor.apply(e));
+			public IdMap<V> initialValue() {
+				return new IdMap<>();
 			}
 
 			@Override
-			public BinaryOperator<IdMap<V>> combiner() {
-				return (l, r) -> { r.forEach(r::put); return l; };
-			}
-
-			@Override
-			public Function<IdMap<V>, IdMap<V>> finisher() {
+			public Function<? super IdMap<V>, ? extends IdMap<V>> finisher() {
 				return Function.identity();
-			}
-
-			@Override
-			public Set<Characteristics> characteristics() {
-				return EnumSet.of(
-						Collector.Characteristics.UNORDERED,
-						Collector.Characteristics.IDENTITY_FINISH);
 			}
 		};
 	}
