@@ -2,8 +2,6 @@ package zlk.tester;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.List;
-
 import zlk.ast.AnType;
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
@@ -12,6 +10,7 @@ import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.parser.Parser;
+import zlk.util.collection.Seq;
 
 public final class TypeTester {
 
@@ -38,9 +37,9 @@ public final class TypeTester {
 		return switch (aTy) {
 		case AnType.Unit _ -> Type.UNIT;
 		case AnType.Var(String name, _) -> new Type.Var(name);
-		case AnType.Type(String ctor, List<AnType> args, _) -> {
+		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
 			Id ctor_ = Id.intern(ctor);
-			List<Type> args_ = args.stream().map(arg -> simpleEval(arg)).toList();
+			Seq<Type> args_ = args.map(arg -> simpleEval(arg));
 			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(simpleEval(arg), simpleEval(ret));
@@ -53,8 +52,8 @@ public final class TypeTester {
 	 */
 	private Type importFromModule(Type ty) {
 		return switch(ty) {
-			case CtorApp(Id id, List<Type> typeArguments) -> {
-				yield new CtorApp(condidate(id), typeArguments.stream().map(t -> importFromModule(t)).toList());
+			case CtorApp(Id id, Seq<Type> typeArguments) -> {
+				yield new CtorApp(condidate(id), typeArguments.map(t -> importFromModule(t)));
 			}
 			case Arrow(Type arg, Type ret) -> {
 				yield new Arrow(importFromModule(arg), importFromModule(ret));

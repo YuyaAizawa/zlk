@@ -19,7 +19,7 @@ import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
-import zlk.common.id.IdList;
+import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.ExpOrPattern;
@@ -32,13 +32,13 @@ import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
+import zlk.util.collection.Seq;
 
 public class Main {
 
 	public static Class<?> clazz;
 
 	public static void main( String[] args ) throws IOException, ClassNotFoundException, NoSuchMethodException, SecurityException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchFieldException {
-
 		String name = "HelloMyLang.zlk";
 		String src =
 				"""
@@ -108,7 +108,7 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");
-		IdList builtinIds = Builtin.functions().stream().map(b -> b.id()).collect(IdList.collector());
+		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
 		NameEvaluator ne = new NameEvaluator(ast);
 		IcModule idcalc = ne.eval();
 		System.out.println(idcalc.buildString());

@@ -1,13 +1,12 @@
 package zlk.ast;
 
-import java.util.List;
-
 import zlk.ast.AnType.Arrow;
 import zlk.ast.AnType.Type;
 import zlk.ast.AnType.Unit;
 import zlk.ast.AnType.Var;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -15,14 +14,14 @@ public sealed interface AnType extends PrettyPrintable, LocationHolder
 permits Unit, Var, Type, Arrow {
 	record Unit(Location loc) implements AnType {};
 	record Var(String name, Location loc) implements AnType {};
-	record Type(String ctor, List<AnType> args, Location loc) implements AnType {};
+	record Type(String ctor, Seq<AnType> args, Location loc) implements AnType {};
 	record Arrow(AnType arg, AnType ret, Location loc) implements AnType {};
 
 	default AnType updateLoc(Location loc) {
 		return switch(this) {
 		case Unit(Location _) -> new Unit(loc);
 		case Var(String name, Location _) -> new Var(name, loc);
-		case Type(String ctor, List<AnType> args, Location _) -> new Type(ctor, args, loc);
+		case Type(String ctor, Seq<AnType> args, Location _) -> new Type(ctor, args, loc);
 		case Arrow(AnType arg, AnType ret, Location _) -> new Arrow(arg, ret, loc);
 		};
 	}
@@ -36,7 +35,7 @@ permits Unit, Var, Type, Arrow {
 		case Var var -> {
 			pp.append(var.name);
 		}
-		case Type(String ctor, List<AnType> args, _) -> {
+		case Type(String ctor, Seq<AnType> args, _) -> {
 			pp.append(ctor);
 			args.forEach(arg -> {
 				pp.append(" ");
