@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import zlk.common.id.Id;
-import zlk.util.Stack;
+import zlk.util.collection.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 

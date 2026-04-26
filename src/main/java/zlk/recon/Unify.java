@@ -1,13 +1,12 @@
 package zlk.recon;
 
-import java.util.List;
-
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;
 import zlk.recon.constraint.Content.Structure;
+import zlk.util.collection.Seq;
 
 public final class Unify {
 
@@ -54,13 +53,13 @@ public final class Unify {
 			case Structure v_ -> {
 				if(u_.flatType() instanceof CtorApp1 u__ && v_.flatType() instanceof CtorApp1 v__) {
 					if(u__.id().equals(v__.id())) {
-						List<Variable> args = u__.args();
-						List<Variable> otherArgs = v__.args();
+						Seq<Variable> args = u__.args();
+						Seq<Variable> otherArgs = v__.args();
 						if(args.size() != otherArgs.size()) {
 							throw new Missmatch();
 						}
 						for(int i = 0;i < args.size();i++) {
-							unify(args.get(i), otherArgs.get(i));
+							unify(args.at(i), otherArgs.at(i));
 						}
 					} else {
 						throw new Missmatch();

@@ -3,29 +3,30 @@ package zlk.nameeval;
 import java.util.function.BiConsumer;
 
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public final class IdToIds {
-	private IdMap<IdList> impl = new IdMap<>();
+	private IdMap<SeqBuffer<Id>> impl = new IdMap<>();
 
 	public void add(Id from, Id to) {
-		IdList list = impl.getOrNull(from);
-		if(list == null) {
-			list = new IdList();
-			impl.put(from, list);
+		SeqBuffer<Id> buffer = impl.getOrNull(from);
+		if(buffer == null) {
+			buffer = new SeqBuffer<>();
+			impl.put(from, buffer);
 		}
-		if(!list.contains(to)) {
-			list.add(to);
+		if(!buffer.contains(to)) {
+			buffer.add(to);
 		}
 	}
 
-	public IdList get(Id from) {
-		return impl.getOrDefault(from, new IdList());
+	public Seq<Id> get(Id from) {
+		return impl.getOptional(from).map(SeqBuffer::toSeq).orElse(Seq.of());
 	}
 
-	public void forEach(BiConsumer<Id, IdList> action) {
-		impl.forEach(action);
+	public void forEach(BiConsumer<Id, Seq<Id>> action) {
+		impl.forEach((id, buf) -> action.accept(id, buf.toSeq()));
 	}
 
 	@Override

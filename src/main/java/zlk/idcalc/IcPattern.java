@@ -1,7 +1,6 @@
 package zlk.idcalc;
 
-import java.util.Collection;
-import java.util.List;
+import java.util.Set;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
@@ -9,6 +8,8 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern.Dector;
 import zlk.idcalc.IcPattern.Var;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -21,7 +22,7 @@ permits Var, Dector {
 
 	record Dector(
 			IcExp.IcVarCtor ctor,
-			List<Arg> args,
+			Seq<Arg> args,
 			Location loc) implements IcPattern {
 
 		@Override
@@ -35,18 +36,28 @@ permits Var, Dector {
 		case Var(Id id, Location _) -> {
 			yield id;
 		}
-		case Dector(IcExp.IcVarCtor ctor, List<Arg> _, Location _) -> {
+		case Dector(IcExp.IcVarCtor ctor, Seq<Arg> _, Location _) -> {
 			yield ctor.id();
 		}
 		};
 	}
 
-	public default void accumulateVars(Collection<Id> known) {
+	public default void accumulateVars(Set<Id> known) {
 		switch(this) {
 		case Var(Id id, Location _) -> {
 			known.add(id);
 		}
-		case Dector(IcExp.IcVarCtor _, List<Arg> args, Location _) -> {
+		case Dector(IcExp.IcVarCtor _, Seq<Arg> args, Location _) -> {
+			args.forEach(arg -> arg.pattern().accumulateVars(known));
+		}
+		}
+	}
+	public default void accumulateVars(SeqBuffer<Id> known) {
+		switch(this) {
+		case Var(Id id, Location _) -> {
+			known.add(id);
+		}
+		case Dector(IcExp.IcVarCtor _, Seq<Arg> args, Location _) -> {
 			args.forEach(arg -> arg.pattern().accumulateVars(known));
 		}
 		}
@@ -58,7 +69,7 @@ permits Var, Dector {
 		case Var(Id id, Location _) -> {
 			pp.append(id);
 		}
-		case Dector(IcExp.IcVarCtor ctor, List<Arg> args, Location _) -> {
+		case Dector(IcExp.IcVarCtor ctor, Seq<Arg> args, Location _) -> {
 			pp.append(ctor);
 			for(Arg arg: args) {
 				pp.append(" ").append(arg);

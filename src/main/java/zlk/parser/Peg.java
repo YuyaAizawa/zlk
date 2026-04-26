@@ -1,11 +1,12 @@
 package zlk.parser;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import zlk.util.collection.SeqBuffer;
+import zlk.util.collection.Seq;
 
 /**
  * ソースからオブジェクトを読み取る解析表現文法パーサ.
@@ -154,17 +155,17 @@ public abstract class Peg<T> {
 		return choiceBase(s1, s2, s3, s4, s5);
 	}
 
-	public static <T> Peg<List<T>> star(Peg<T> p) {
+	public static <T> Peg<Seq<T>> star(Peg<T> p) {
 		return new Peg<>() {
 			@Override
-			public List<T> parse(Tokenized src) {
-				List<T> result = new ArrayList<>();
+			public Seq<T> parse(Tokenized src) {
+				SeqBuffer<T> result = new SeqBuffer<>();
 				while(true) {
 					int start = src.mark();
 					T r = p.parse(src);
 					if(r == null) {
 						src.jump(start);
-						return result;
+						return result.toSeq();
 					}
 					result.add(r);
 				}
@@ -172,11 +173,11 @@ public abstract class Peg<T> {
 		};
 	}
 
-	public static <T> Peg<List<T>> plus(Peg<T> p) {
+	public static <T> Peg<Seq<T>> plus(Peg<T> p) {
 		return new Peg<>() {
 			@Override
-			public List<T> parse(Tokenized src) {
-				List<T> result = new ArrayList<>();
+			public Seq<T> parse(Tokenized src) {
+				SeqBuffer<T> result = new SeqBuffer<>();
 				T r = p.parse(src);
 				if(r == null) {
 					return null;
@@ -187,7 +188,7 @@ public abstract class Peg<T> {
 					r = p.parse(src);
 					if(r == null) {
 						src.jump(start);
-						return result;
+						return result.toSeq();
 					}
 					result.add(r);
 				}

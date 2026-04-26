@@ -1,12 +1,11 @@
 package zlk.recon;
 
-import java.util.List;
+import java.util.function.Consumer;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcExp;
@@ -22,6 +21,8 @@ import zlk.idcalc.IcExp.IcVarLocal;
 import zlk.idcalc.IcModule;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcValDecl;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public class LetDependencyExtractor {
 	private LetDependencyExtractor() {}
@@ -31,67 +32,58 @@ public class LetDependencyExtractor {
 	 * @param module
 	 * @return
 	 */
-	public static IdMap<IdList> extract(IcModule module) {
-		IdMap<IdList> includes = new IdMap<>();
-		accIncluded(module.decls(), includes);
+	public static IdMap<Seq<Id>> extract(IcModule module) {
+		IdMap<Seq<Id>> includes = new IdMap<>();
+		accIncluded(module.decls(), includes, null);
 		// 依存されている側から引く（letで定義されるものだけでよい）
-		IdMap<IdList> dependency = new IdMap<>();
-		includes.keys().forEach(k -> dependency.put(k, new IdList()));
-		includes.forEach((d, es) -> es.stream()
-				.filter(dependency::containsKey)
-				.forEach(e -> dependency.get(e).addIfNotContains(d)));
-		return dependency;
+		IdMap<SeqBuffer<Id>> dependency = new IdMap<>();
+		includes.keys().forEach(k -> dependency.put(k, new SeqBuffer<>()));
+		includes.forEach(
+				(d, es) -> es
+						.filter(dependency::containsKey)
+						.forEach(e -> dependency.get(e).addIfNotContains(d))
+		);
+		return dependency.traverse(SeqBuffer::toSeq);
 	}
 
-	private static IdList accIncluded(List<IcValDecl> decls, IdMap<IdList> revRel) {
-		IdList all = new IdList();
+	private static void accIncluded(Seq<IcValDecl> decls, IdMap<Seq<Id>> revRel, SeqBuffer<Id> acc) {
 		for (IcValDecl decl : decls) {
-			IdList partial = accIncluded(decl.body(), revRel);
-			revRel.put(decl.id(), partial);
-			partial.forEach(all::addIfNotContains);
+			SeqBuffer<Id> partial = new SeqBuffer<>();
+			accIncluded(decl.body(), revRel, partial);
+			revRel.put(decl.id(), partial.toSeq());
+			if(acc != null) {
+				acc.addAll(partial.filter(id -> !acc.contains(id)));
+			}
 		}
-		return all;
 	}
 
-	private static IdList accIncluded(IcExp exp, IdMap<IdList> includes) {
-		return switch (exp) {
-		case IcCnst(ConstValue _, Location _) -> {
-			yield new IdList();
-		}
+	private static void accIncluded(IcExp exp, IdMap<Seq<Id>> includes, SeqBuffer<Id> acc) {
+		Consumer<IcExp> go = exp_ -> accIncluded(exp_, includes, acc);
+
+		switch (exp) {
+		case IcCnst(ConstValue _, Location _) -> {}
 		case IcVarLocal(Id id, Location _) -> {
-			IdList result = new IdList();
-			result.add(id);
-			yield result;
+			acc.addIfNotContains(id);
 		}
-		case IcVarForeign(Id _, Type _, Location _) -> {
-			yield new IdList();
+		case IcVarForeign(Id _, Type _, Location _) -> {}
+		case IcVarCtor(Id _, Type _, Location _) -> {}
+		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) -> {
+			accIncluded(body, includes, acc);
 		}
-		case IcVarCtor(Id _, Type _, Location _) -> {
-			yield new IdList();
-		}
-		case IcLamb(List<IcPattern> _, IcExp body, Location _) -> {
-			yield accIncluded(body, includes);
-		}
-		case IcApp(IcExp fun, List<IcExp> args, Location _) -> {
-			IdList result = accIncluded(fun, includes);
-			args.forEach(arg -> accIncluded(arg, includes).forEach(result::addIfNotContains));
-			yield result;
+		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
+			accIncluded(fun, includes, acc);
+			args.forEach(go);
 		}
 		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
-			IdList result = accIncluded(cond, includes);
-			accIncluded(thenExp, includes).forEach(result::addIfNotContains);
-			accIncluded(elseExp, includes).forEach(result::addIfNotContains);
-			yield result;
+			Seq.of(cond, thenExp, elseExp).forEach(go);
 		}
-		case IcLet(List<IcValDecl> decls, IcExp body, Location _) -> {
-			IdList result = accIncluded(decls, includes);
-			accIncluded(body, includes).forEach(result::addIfNotContains);
-			yield result;
+		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) -> {
+			accIncluded(decls, includes, acc);
+			accIncluded(body, includes, acc);
 		}
-		case IcCase(IcExp target, List<IcCaseBranch> branches, Location _) -> {
-			IdList result = accIncluded(target, includes);
-			branches.forEach(branch -> accIncluded(branch.body(), includes).forEach(result::addIfNotContains));
-			yield result;
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
+			accIncluded(target, includes, acc);
+			branches.map(IcCaseBranch::body).forEach(go);
 		}
 		};
 	}

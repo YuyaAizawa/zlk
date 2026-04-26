@@ -3,8 +3,6 @@ package zlk.core;
 import static zlk.common.Type.BOOL;
 import static zlk.common.Type.I32;
 
-import java.util.List;
-
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -13,6 +11,7 @@ import zlk.bytecodegen.Instructions;
 import zlk.bytecodegen.Primitive;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
 
 public record Builtin(
 		Id id,
@@ -20,11 +19,11 @@ public record Builtin(
 		Instructions insn)
 implements Instructions
 {
-	public static List<Builtin> functions(){
+	public static Seq<Builtin> functions(){
 		Type i32i32i32 = Type.arrow(I32, I32, I32);
 		Type i32bool = Type.arrow(I32, BOOL);
 
-		return List.of(
+		return Seq.of(
 				new Builtin("Basic.False", BOOL, mv -> {
 					mv.visitInsn(Opcodes.ICONST_0);
 					Primitive.BOOL.genBoxing(mv);

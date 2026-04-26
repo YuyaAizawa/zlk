@@ -2,12 +2,10 @@ package zlk.bytecodegen;
 
 import static zlk.util.ErrorUtils.neverHappen;
 
-import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
@@ -33,12 +31,13 @@ import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcPattern;
-import zlk.util.Stack;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
+import zlk.util.collection.Stack;
 
 /**
  * クロージャ解決後のトップレベルにフラットになったASTをJVMのバイトコードに変換する
@@ -71,14 +70,14 @@ public final class BytecodeGenerator {
 			false);
 
 	// for compileDecl
-	private IdList locals;
+	private SeqBuffer<Id> locals;
 	private MethodVisitor mv;
 	private Stack<Runnable> pendings;
 
-	public BytecodeGenerator(CcModule module, IdMap<Type> types, List<Builtin> builtins, String origin) {
+	public BytecodeGenerator(CcModule module, IdMap<Type> types, Seq<Builtin> builtins, String origin) {
 		this.module = module;
 		this.types = types;
-		this.builtins = builtins.stream().collect(IdMap.collector(b -> b.id(), b -> b));
+		this.builtins = builtins.fold(IdMap.folder(b -> b.id(), b -> b));
 		this.origin = origin;
 		this.toplevelDescs = new IdMap<>();
 		this.toplevelDecls = new IdMap<>();
@@ -171,7 +170,7 @@ public final class BytecodeGenerator {
 		cw.visitSource(origin, null);
 
 		for(int i = 0; i < ctor.args().size(); i++) {
-			Type type = ctor.args().get(i);
+			Type type = ctor.args().at(i);
 			cw.visitField(
 					Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL,
 					"val"+i,
@@ -206,7 +205,7 @@ public final class BytecodeGenerator {
 
 		for(int i = 0; i < ctor.args().size(); i++) {
 			mv.visitVarInsn(Opcodes.ALOAD, 0);
-			Type ty = ctor.args().get(i);
+			Type ty = ctor.args().at(i);
 			loadLocal(i+1, ty);
 			mv.visitFieldInsn(
 					Opcodes.PUTFIELD,
@@ -297,7 +296,7 @@ public final class BytecodeGenerator {
 	private void compileDecl(CcFunDecl decl) { // TODO トップレベルは全て非カリー化する
 		Id id = decl.id();
 		try {
-			this.locals = new IdList();
+			this.locals = new SeqBuffer<>();
 			mv = cw.visitMethod(
 					Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
 					javaMethodName(id),
@@ -325,7 +324,7 @@ public final class BytecodeGenerator {
 	 * 関数の引数をlocalsに登録する
 	 * @param args 引数
 	 */
-	private void registerArgs(List<IcPattern> args) {
+	private void registerArgs(Seq<IcPattern> args) {
 		args.forEach(arg -> {
 			if(arg instanceof IcPattern.Var var) {
 				locals.add(var.headId());
@@ -335,7 +334,7 @@ public final class BytecodeGenerator {
 		});
 
 		for (int i = 0; i < args.size(); i++) {
-			if(args.get(i) instanceof IcPattern.Dector ctor) {
+			if(args.at(i) instanceof IcPattern.Dector ctor) {
 				Type subClassTy = types.get(ctor.headId());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
@@ -350,7 +349,7 @@ public final class BytecodeGenerator {
 			locals.add(id);
 			storeLocal(locals.size()-1, types.get(id));
 		}
-		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
 			// stackの数を調整
 			if(args.size() == 0) { mv.visitInsn(Opcodes.POP); }
 			for (int i = 0; i < args.size()-1; i++) {
@@ -358,7 +357,7 @@ public final class BytecodeGenerator {
 			}
 
 			for(int fieldIdx = 0; fieldIdx < args.size(); fieldIdx++) {
-				IcPattern.Arg ctorArg = args.get(fieldIdx);
+				IcPattern.Arg ctorArg = args.at(fieldIdx);
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						javaClasses.get(ctor.id()).toClassName(),
@@ -391,15 +390,14 @@ public final class BytecodeGenerator {
 			}
 			loadLocal(localIndex, types.get(id));
 		}
-		case CcDirectApp(Id funId, List<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, Seq<CcExp> args, Location _) -> {
 			Type funTy = types.get(funId);
-			List<Type> flattenTys = funTy.flatten();
+			Seq<Type> flattenTys = funTy.flatten();
 
 			getDecl(funId, descriptor -> {
 				// 全ての引数をstackに載せる
-				for (int i = 0; i < args.size(); i++) {
-					compile(args.get(i), toJavaType(flattenTys.get(i)));
-				}
+				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
+
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
 						module.name(),
@@ -411,9 +409,7 @@ public final class BytecodeGenerator {
 				checkcastIfNeed(stackTopTy, ubTy);
 			}, builtin -> {
 				// 全ての引数をstackに載せる
-				for (int i = 0; i < args.size(); i++) {
-					compile(args.get(i), toJavaType(flattenTys.get(i)));
-				}
+				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
 				builtin.accept(mv);
 			}, ctor -> {
 				// <init>を呼ぶ
@@ -422,9 +418,7 @@ public final class BytecodeGenerator {
 				mv.visitInsn(Opcodes.DUP);  // 値を返さないのでポインタを複製しておく
 
 				// 全ての引数をstackに載せる
-				for (int i = 0; i < args.size(); i++) {
-					compile(args.get(i), toJavaType(flattenTys.get(i)));
-				}
+				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
 				mv.visitMethodInsn(
 						Opcodes.INVOKESPECIAL,
 						subclass.toClassName(),
@@ -435,19 +429,19 @@ public final class BytecodeGenerator {
 				checkcastIfNeed(subclass, ubTy);
 			});
 		}
-		case CcClosureApp(CcExp funExp, List<CcExp> args, Location _) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location _) -> {
 			compile(funExp, JavaType.FUNCTION);
 
-			compile(args.getFirst(), JavaType.OBJECT);
+			compile(args.head(), JavaType.OBJECT);
 			invokeApply();
-			for (int i = 1; i < args.size(); i++) {
+			for (CcExp arg : args.tail()) {
 				checkcast(JavaType.FUNCTION);
-				compile(args.get(i), JavaType.OBJECT);
+				compile(arg, JavaType.OBJECT);
 				invokeApply();
 			}
 			checkcastIfNeed(JavaType.OBJECT, ubTy);
 		}
-		case CcMkCls(Id implId, List<CcExp> caps, Location _) -> {
+		case CcMkCls(Id implId, Seq<CcExp> caps, Location _) -> {
 			if(ctors.containsKey(implId)) {  // データ型の場合
 				// 部分適用する前にコンストラクタ用メソッド（<init>とは別）があるか確認
 				ensureCtorOriginal(ctors.get(implId));
@@ -494,7 +488,7 @@ public final class BytecodeGenerator {
 			storeLocal(locals.size() - 1, varTy);
 			compile(body, ubTy);
 		}
-		case CcCase(CcExp target, Type targetTy, List<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Type targetTy, Seq<CcCaseBranch> branches, Location _) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）
 			// invokedynamic #0:typeSwitch, 0 2つ目の引数は型リストの前半を無視するとき使う
@@ -526,10 +520,10 @@ public final class BytecodeGenerator {
 			Label neck = new Label();
 
 			// マッチしないパターンに遭遇したら次の選択肢に進む
-			IdList localsBeforeBranch = new IdList(locals);
+			SeqBuffer<Id> localsBeforeBranch = new SeqBuffer<>(locals);
 			for (int branchIdx = 0; branchIdx < branches.size(); branchIdx++) {
 				Label nextBranchLabel = (branchIdx < branches.size() - 1) ? new Label() : null;
-				CcCaseBranch branch = branches.get(branchIdx);
+				CcCaseBranch branch = branches.at(branchIdx);
 				checkMatchAndStoreLocals(branch.pattern(), null, nextBranchLabel); // TODO: Dectorの分解にはdeclTyは要らないのでメソッドを分ける
 				compile(branch.body(), ubTy);
 				mv.visitJumpInsn(Opcodes.GOTO, neck);
@@ -575,7 +569,7 @@ public final class BytecodeGenerator {
 			}
 			locals.add(id);
 		}
-		case IcPattern.Dector(IcExp.IcVarCtor ctor, List<IcPattern.Arg> args, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
 			CcCtor ctorDecl = ctors.get(ctor.id());
 			String subClassName = javaClasses.get(ctor.id()).toClassName();
 			if(next != null) {
@@ -596,8 +590,8 @@ public final class BytecodeGenerator {
 						Opcodes.GETFIELD,
 						subClassName,
 						"val"+i,
-						toDesc(ctorDecl.args().get(i)));
-				checkMatchAndStoreLocals(args.get(i).pattern(), ctorDecl.args().get(i), next);
+						toDesc(ctorDecl.args().at(i)));
+				checkMatchAndStoreLocals(args.at(i).pattern(), ctorDecl.args().at(i), next);
 			}
 		}
 		};
@@ -616,9 +610,8 @@ public final class BytecodeGenerator {
 		// ディスクリプタを登録
 		String subclassName = javaClasses.get(id).toClassName();
 		String argsDesc = ctor.args()
-				.stream()
 				.map(arg -> toDesc(arg))
-				.collect(Collectors.joining(""));
+				.join("");
 		String retDesc = "L"+subclassName+";";
 		String desc = "("+argsDesc+")"+retDesc;
 		toplevelDescs.put(id, desc);
@@ -635,16 +628,13 @@ public final class BytecodeGenerator {
 			mv.visitTypeInsn(Opcodes.NEW, subclassName);
 			mv.visitInsn(Opcodes.DUP);
 
-			List<Type> argTys = ctor.args();
-			for (int i = 0; i < argTys.size(); i++) {
-				loadLocal(i, argTys.get(i));
-			}
+			ctor.args().forEachIndexed((i, ty) -> loadLocal(i, ty));
 
 			mv.visitMethodInsn(
 					Opcodes.INVOKESPECIAL,
 					subclassName,
 					"<init>",
-					toMethodDesc(argTys, Type.UNIT),
+					toMethodDesc(ctor.args(), Type.UNIT),
 					false);
 
 			mv.visitInsn(Opcodes.ARETURN);
@@ -693,12 +683,12 @@ public final class BytecodeGenerator {
 				? ctors.get(originalId).args().size()
 				: toplevelDecls.get(originalId).arity();
 
-		List<Type> implTy = types.get(originalId).flatten();
+		Seq<Type> implTy = types.get(originalId).flatten();
 
 		Id nextId = originalId;
 		for (int i = arity - 1; i >= 0; i--) {
-			List<Type> args = implTy.subList(0, i);
-			List<Type> ret = implTy.subList(i, implTy.size());
+			Seq<Type> args = implTy.slice(0, i);
+			Seq<Type> ret = implTy.slice(i, implTy.size());
 			Id lambdaId = Id.intern(originalId, "$" + i);
 			genCurryingStep(lambdaId, args, nextId, Type.arrow(ret));
 			nextId = lambdaId;
@@ -721,7 +711,7 @@ public final class BytecodeGenerator {
 	 * @param target 呼び出すメソッド
 	 * @param retTy 関数オブジェクトの型
 	 */
-	private void genCurryingStep(Id name, List<Type> argTys, Id target, Type.Arrow retTy) {
+	private void genCurryingStep(Id name, Seq<Type> argTys, Id target, Type.Arrow retTy) {
 		// 作成済みであれば何もしない
 		if(toplevelDescs.containsKey(name)) {
 			return;
@@ -755,7 +745,7 @@ public final class BytecodeGenerator {
 							javaMethodName(target),
 							toplevelDescs.get(target),
 							false),
-					toMethodType(toMethodDesc(List.of(retTy.arg()), retTy.ret())));
+					toMethodType(toMethodDesc(Seq.of(retTy.arg()), retTy.ret())));
 
 			mv.visitInsn(Opcodes.ARETURN);
 
@@ -817,9 +807,7 @@ public final class BytecodeGenerator {
 
 	private String getDescription(CcFunDecl decl) {
 
-		List<Type> argTys = decl.args().stream()
-				.map(pat -> types.get(pat.headId()))
-				.toList();
+		Seq<Type> argTys = decl.args().map(pat -> types.get(pat.headId()));
 		Type retTy = types.get(decl.id()).dropArgs(decl.arity());
 		return toMethodDesc(argTys, retTy);
 	}
@@ -856,7 +844,7 @@ public final class BytecodeGenerator {
 		};
 	}
 
-	private static String toMethodDesc(List<Type> argTys, Type retTy, Function<Type, JavaType> mapper) {
+	private static String toMethodDesc(Seq<Type> argTys, Type retTy, Function<Type, JavaType> mapper) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		argTys.forEach(ty -> sb.append(mapper.apply(ty).toDesc()));
@@ -864,7 +852,7 @@ public final class BytecodeGenerator {
 		sb.append(mapper.apply(retTy).toDesc());
 		return sb.toString();
 	}
-	private String toMethodDesc(List<Type> argTys, Type retTy) {
+	private String toMethodDesc(Seq<Type> argTys, Type retTy) {
 		return toMethodDesc(argTys, retTy, this::toJavaType);
 	}
 	private String toSignature(Type type) {
@@ -873,7 +861,7 @@ public final class BytecodeGenerator {
 		}
 		return toJavaType(type).toDesc();
 	}
-	private String toSignature(List<Type> args, Type ret) {
+	private String toSignature(Seq<Type> args, Type ret) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("(");
 		args.forEach(ty -> sb.append(toSignature(ty)));

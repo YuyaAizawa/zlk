@@ -1,11 +1,8 @@
 package zlk.recon;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
-import java.util.stream.Collectors;
 
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
@@ -29,6 +26,8 @@ import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Result;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public class TypeReconstructor {
 
@@ -43,7 +42,7 @@ public class TypeReconstructor {
 	/**
 	 * 検出された型エラー
 	 */
-	private List<TypeError> errors;
+	private SeqBuffer<TypeError> errors;
 
 	/**
 	 * 衝突しない型変数の生成器
@@ -57,18 +56,18 @@ public class TypeReconstructor {
 
 	private TypeReconstructor(FreshFlex freshFlex) {
 		this.result = new IdMap<>();
-		this.errors = new ArrayList<>();
+		this.errors = new SeqBuffer<>();
 		this.freshFlex = freshFlex;
 	}
 
-	public static Result<List<TypeError>, IdMap<Type>> recon(Constraint con, FreshFlex freshFlex) {
+	public static Result<Seq<TypeError>, IdMap<Type>> recon(Constraint con, FreshFlex freshFlex) {
 		TypeReconstructor self = new TypeReconstructor(freshFlex);
 		self.solve(con, 0, new IdMap<>());
 
 		if(self.errors.isEmpty()) {
 			return new Result.Ok<>(self.result.traverse(v -> v.toType()));
 		} else {
-			return new Result.Err<>(self.errors);  // TODO: unifyのmismatchなどを入れる
+			return new Result.Err<>(self.errors.toSeq());  // TODO: unifyのmismatchなどを入れる
 		}
 	}
 
@@ -84,29 +83,28 @@ public class TypeReconstructor {
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
 			Unify.unify(actual, expected);
 		}
-		case CForeign(Id id, Type type, RcType expectation) -> {
-			Map<String, Variable> typeVars =
-					type.getVarNames()
-							.stream()
-							.collect(Collectors.toMap(
-									name -> name,
-									name -> freshFlex.getVariable(name, letRank)));
+		case CForeign(Id _, Type type, RcType expectation) -> {
+			Map<String, Variable> typeVars = type.getVarNames()
+					.toMap(
+							name -> name,
+							name -> freshFlex.getVariable(name, letRank)
+					);
 
 			Variable actual = annoTypeToVar(letRank, typeVars, type);
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
 			Unify.unify(actual, expected);
 		}
-		case CPattern(Id id, RcType ctorTy, RcType expection) -> {
+		case CPattern(Id _, RcType ctorTy, RcType expection) -> {
 			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
 			Variable expected = typeToVar(letRank, expection, IdMap.of());
 			Unify.unify(actual, expected);
 		}
 		case CLet(
-				List<Variable> rigids,
-				List<Variable> flexes,
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
 				IdMap<RcType> header,
-				List<CPhase> headerCons,
-				List<Constraint> bodyCons)
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCons)
 		-> {
 			final int nextRank = letRank + 1;
 
@@ -122,7 +120,7 @@ public class TypeReconstructor {
 				solve(phase.cons(), nextRank, newEnv);
 
 				// let宣言の関数を一般化
-				List<Variable> anchors = phase.genTargets().stream().map(locals::get).toList();
+				Seq<Variable> anchors = phase.genTargets().map(locals::get);
 				final int youngMark = gMarkCounter++;
 				final int visitMark = gMarkCounter++;
 				generalizeAnchors(youngMark, visitMark, nextRank, anchors);
@@ -136,8 +134,8 @@ public class TypeReconstructor {
 			locals.forEach(this::occurCheck);
 		}
 		case CExists(
-			List<Variable> vars,
-			List<Constraint> cons)
+				Seq<Variable> vars,
+				Seq<Constraint> cons)
 		-> {
 			final int nextRank = letRank + 1;
 			introduce(vars, nextRank);
@@ -147,7 +145,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private void solve(List<Constraint> cons, int letRank, IdMap<Variable> env) {
+	private void solve(Seq<Constraint> cons, int letRank, IdMap<Variable> env) {
 		for(Constraint con : cons) {
 			solve(con, letRank, env);
 		}
@@ -163,8 +161,8 @@ public class TypeReconstructor {
 		case VarN(Variable var) -> {
 			return var;
 		}
-		case AppN(Id id, List<RcType> args) -> {
-			List<Variable> argVars = args.stream().map(go).toList();
+		case AppN(Id id, Seq<RcType> args) -> {
+			Seq<Variable> argVars = args.map(go);
 			return register(letRank, new Structure(new FlatType.CtorApp1(id, argVars)));
 		}
 		case FunN(var arg, var ret) -> {
@@ -179,8 +177,8 @@ public class TypeReconstructor {
 		Function<Type, Variable> go = t -> annoTypeToVar(letRank, typeVars, t);
 
 		switch(type) {
-		case CtorApp(Id id, List<Type> typeArguments) -> {
-			List<Variable> argVars = typeArguments.stream().map(go).toList();
+		case CtorApp(Id id, Seq<Type> typeArguments) -> {
+			Seq<Variable> argVars = typeArguments.map(go);
 			return register(letRank, new Structure(new FlatType.CtorApp1(id, argVars)));
 		}
 		case Arrow(Type arg, Type ret) -> {
@@ -206,7 +204,7 @@ public class TypeReconstructor {
 		}
 	}
 
-	private void generalizeAnchors(int youngMark, int visitMark, int youngRank, List<Variable> anchors) {
+	private void generalizeAnchors(int youngMark, int visitMark, int youngRank, Seq<Variable> anchors) {
 		// 外部に触れていたらrankを下げる
 		anchors.forEach(anchor -> anchor.markAndWalk(visitMark,
 				v -> adjustRank(youngMark, visitMark, youngRank, v)));
@@ -252,15 +250,15 @@ public class TypeReconstructor {
 		return switch(content) {
 		case Content.RigidVar _ -> groupRank;
 		case Content.FlexVar _ -> groupRank;
-		case Structure(FlatType.CtorApp1(_, List<Variable> args)) ->
-			args.stream().mapToInt(go).max().orElse(groupRank);
+		case Structure(FlatType.CtorApp1(_, Seq<Variable> args)) ->
+			args.mapToInt(go).max().orElse(groupRank);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
 		case Content.Error() -> groupRank;
 		};
 	}
 
-	private static void introduce(List<Variable> vars, int letRank) {
+	private static void introduce(Seq<Variable> vars, int letRank) {
 		for(Variable var : vars) {
 			var.get().rank = letRank;
 		}
@@ -319,7 +317,7 @@ public class TypeReconstructor {
 		case Content.RigidVar _ -> {}
 		case Content.Structure(FlatType term) -> {
 			switch(term) {
-			case FlatType.CtorApp1(_, List<Variable> args) -> {
+			case FlatType.CtorApp1(_, Seq<Variable> args) -> {
 				args.forEach(arg -> restore(arg));
 			}
 			case FlatType.Fun1(Variable arg, Variable ret) -> {
