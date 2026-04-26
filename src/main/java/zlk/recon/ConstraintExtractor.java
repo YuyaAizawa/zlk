@@ -6,7 +6,6 @@ import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.common.id.IdList;
 import zlk.common.id.IdMap;
 import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
@@ -39,10 +38,10 @@ import zlk.util.collection.SeqBuffer;
 public final class ConstraintExtractor {
 
 	private FreshFlex freshFlex;
-	private IdMap<IdList> letDependers; // dependee -> dependers
+	private IdMap<Seq<Id>> letDependers; // dependee -> dependers
 	private IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
-	private ConstraintExtractor(IdMap<IdList> dependers, FreshFlex freshFlex) {
+	private ConstraintExtractor(IdMap<Seq<Id>> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
 		this.nodeTypes = new IdentityHashMap<>();
@@ -101,7 +100,7 @@ public final class ConstraintExtractor {
 						Seq.of(),
 						args_.binder.vars.toSeq(),
 						args_.binder.headers,
-						Seq.of(new CPhase(args_.binder.cons.toSeq(), new IdList())),  // argsは一般化対象でない
+						Seq.of(new CPhase(args_.binder.cons.toSeq(), Seq.of())),  // argsは一般化対象でない
 						extract(body, args_.resultTy)),
 				new CEqual(args_.funTy, expected));
 			yield new CExists(args_.vars, argsCons);
@@ -142,7 +141,7 @@ public final class ConstraintExtractor {
 			}
 
 			cons.add(new CEqual(funTy, arityType));
-			argCons.forEach(cons::add);  // アリティの後にしないと引数の数のチェックができない
+			cons.addAll(argCons);  // アリティの後にしないと引数の数のチェックができない
 			cons.add(new CEqual(resultType, expected));
 
 			yield new CExists(vars.toSeq(), cons.toSeq());
@@ -213,40 +212,32 @@ public final class ConstraintExtractor {
 			Args a = extractFromArgs(decl.args());
 
 			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
-			a.binder.cons.forEach(headerCons::add);
+			headerCons.addAll(a.binder.cons);
 			headerCons.add(extract(decl.body(), a.resultTy));
 
 			Constraint rhs = new CLet(
 					Seq.of(), // TODO: 型注釈のrigid
 					a.binder.vars.toSeq(),
 					a.binder.headers,
-					Seq.of(new CPhase(headerCons.toSeq(), new IdList())),  // 内側CLetは一般化なし
+					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),  // 内側CLetは一般化なし
 					new CEqual(a.funTy, header.get(decl.id()))
 			);
 			defCons.put(decl.id(), rhs);
 		}
 
 		// 2) 同フレーム内の依存グラフ→SCC分解→トポ順
-		Seq<IdList> sccTopo = sccTopo(buildGraph(decls));
+		Seq<Seq<Id>> sccTopo = sccTopo(buildGraph(decls));
 
 		// 3) フェーズ列を作る SCCごとに rhs を並べtargets=SCCのid群
-		SeqBuffer<CPhase> phases = new SeqBuffer<>();
-		for (var scc : sccTopo) {
-			SeqBuffer<Constraint> items = new SeqBuffer<>();
-			IdList targets = new IdList();
-			for (Id id : scc) {
-				items.add(defCons.get(id));
-				targets.add(id);
-			}
-			phases.add(new CPhase(items.toSeq(), targets));
-		}
+		Seq<CPhase> phases = sccTopo.map(
+				scc -> new CPhase(scc.map(defCons::get), scc));
 
 		// 4) 外側の CLet にまとめる（実際の let フレーム）
 		return new CLet(
 				Seq.of(),
 				Seq.of(),
 				header,
-				phases.toSeq(),
+				phases,
 				bodyCon);
 	}
 
@@ -287,54 +278,55 @@ public final class ConstraintExtractor {
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		SeqBuffer<Constraint> cons = new SeqBuffer<>(pb.cons.size()+1);
-		pb.cons.forEach(cons::add);
+		cons.addAll(pb.cons);
 		cons.add(bodyCon);
 		return new CLet(
 				Seq.of(),
 				pb.vars.toSeq(),
 				pb.headers,
-				Seq.of(new CPhase(cons.toSeq(), new IdList())),  // case branchは一般化する対象なし
+				Seq.of(new CPhase(cons.toSeq(), Seq.of())),  // case branchは一般化する対象なし
 				new CEqual(branchExpected, branchExpected)  // TODO: 特に制約がないことを表せた方が良いか？
 		);
 	}
 
 	// let内での依存を関係を取得する
-	public IdMap<IdList> buildGraph(Seq<IcValDecl> decls) {
+	public IdMap<Seq<Id>> buildGraph(Seq<IcValDecl> decls) {
 		// 全体の依存関係から関係するものを抽出する
-		IdList targets = decls.fold(IdList.folder(decl -> decl.id()));
-		IdMap<IdList> result = new IdMap<>();
+		Seq<Id> targets = decls.map(IcValDecl::id);
+		IdMap<Seq<Id>> result = new IdMap<>();
 		for(Id target : targets) {
-			result.put(target, letDependers.get(target).stream().filter(targets::contains).collect(IdList.collector()));
+			result.put(target, letDependers.get(target).filter(targets::contains));
 		}
 		return result;
 	}
 
 	// 強連結成分分解 Kosaraju-Sharir's algorithm
-	public static Seq<IdList> sccTopo(IdMap<IdList> graph) {
-		IdList postorder = new IdList();
-		IdList seen = new IdList();
+	public static Seq<Seq<Id>> sccTopo(IdMap<Seq<Id>> graph) {
+		SeqBuffer<Id> postorder = new SeqBuffer<>();
+		SeqBuffer<Id> seen = new SeqBuffer<>();
 		for(Id v : graph.keys()) {
 			if(!seen.contains(v)) {
 				dfs(v, seen, graph, postorder);
 			}
 		}
 
-		IdMap<IdList> rgraph = new IdMap<>();
-		graph.keys().forEach(id -> rgraph.put(id, new IdList()));
-		graph.forEach((v, es) -> es.forEach(e -> rgraph.get(e).addIfNotContains(v)));
+		IdMap<SeqBuffer<Id>> rgraphBuffer = new IdMap<>();
+		graph.keys().forEach(id -> rgraphBuffer.put(id, new SeqBuffer<>()));
+		graph.forEach((v, es) -> es.forEach(e -> rgraphBuffer.get(e).addIfNotContains(v)));
+		IdMap<Seq<Id>> rgraph = rgraphBuffer.traverse(SeqBuffer::toSeq);
 
-		seen.clear();
-		SeqBuffer<IdList> result = new SeqBuffer<>();
-		for(Id v : postorder.reversed()) {
+		seen = new SeqBuffer<>(seen.size());
+		SeqBuffer<Seq<Id>> result = new SeqBuffer<>();
+		for(Id v : postorder.toSeq().reversed()) {
 			if(!seen.contains(v)) {
-				IdList scc = new IdList();
+				SeqBuffer<Id> scc = new SeqBuffer<>();
 				dfs(v, seen, rgraph, scc);
-				result.add(scc);
+				result.add(scc.toSeq());
 			}
 		}
 		return result.toSeq();
 	}
-	private static void dfs(Id v, IdList seen, IdMap<IdList> graph, IdList acc) {
+	private static void dfs(Id v, SeqBuffer<Id> seen, IdMap<Seq<Id>> graph, SeqBuffer<Id> acc) {
 		if(seen.contains(v)) {
 			return;
 		}

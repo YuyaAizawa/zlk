@@ -1,17 +1,16 @@
 package zlk.clcalc;
 
-import java.util.List;
-
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcCtor(
 		Id id,
-		List<Type> args,
+		Seq<Type> args,
 		Location loc
 ) implements PrettyPrintable, LocationHolder {
 	@Override

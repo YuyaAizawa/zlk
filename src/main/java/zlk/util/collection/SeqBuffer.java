@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -195,6 +196,39 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		modCount++;
 	}
 
+	public void addAll(Seq<E> elements) {
+		if(elements.isEmpty()) {
+			return;
+		}
+
+		Object[] data;
+		int srcIndex;
+		if(elements instanceof ArraySeq<E> arraySeq) {
+			data = arraySeq.data;
+			srcIndex = 0;
+		} else if(elements instanceof SliceSeq<E> sliceSeq) {
+			data = sliceSeq.ref;
+			srcIndex = sliceSeq.from;
+		} else {
+			elements.forEach(this::add);
+			return;
+		}
+		int srcLength = elements.size();
+
+		while(srcIndex < srcLength) {
+			if(tailSize == tailChunk.data.length) {
+				grow();
+			}
+
+			int copyLength = Math.min(srcLength - srcIndex, tailChunk.data.length - tailSize);
+			System.arraycopy(data, srcIndex, tailChunk.data, tailSize, copyLength);
+			srcIndex += copyLength;
+			tailSize += copyLength;
+			totalSize += copyLength;
+		}
+		modCount++;
+	}
+
 	/// 指定した要素が最初に出現するインデックスを返す．含まれていなければ-1．
 	/// @param element
 	public int indexOf(E element) {
@@ -241,6 +275,17 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		return indexOf(element) >= 0;
 	}
 
+	/// 指定した要素がこのバッファに含まれなければ追加する
+	///
+	/// @param element
+	public boolean addIfNotContains(E element) {
+		if(!contains(element)) {
+			add(element);
+			return true;
+		}
+		return false;
+	}
+
 	@SuppressWarnings("unchecked")
 	public void forEachIndexed(ConsumerIndexed<? super E> action) {
 		if(isEmpty()) {
@@ -260,6 +305,22 @@ public final class SeqBuffer<E> implements Iterable<E> {
 			}
 			length = cursor == tailChunk ? tailSize : cursor.data.length;
 		}
+	}
+
+	@Override
+	public void forEach(Consumer<? super E> action) {
+		ConsumerIndexed<? super E> ignoreIndex = (_, e) -> action.accept(e);
+		forEachIndexed(ignoreIndex);
+	}
+
+	public SeqBuffer<E> filter(Predicate<? super E> predicate) {
+		SeqBuffer<E> result = new SeqBuffer<>();
+		forEach(e -> {
+			if(predicate.test(e)) {
+				result.add(e);
+			}
+		});
+		return result;
 	}
 
 	public E[] toArray(IntFunction<E[]> builder) {

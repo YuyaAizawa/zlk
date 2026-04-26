@@ -1,11 +1,10 @@
 package zlk.clcalc;
 
-import java.util.List;
-
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern;
+import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -16,7 +15,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record CcFunDecl(
 		Id id,
-		List<IcPattern> args,
+		Seq<IcPattern> args,
 		CcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {

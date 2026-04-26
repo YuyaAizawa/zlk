@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.OptionalInt;
 import java.util.PrimitiveIterator;
 import java.util.function.Function;
 import java.util.function.IntBinaryOperator;
@@ -217,6 +218,19 @@ public sealed interface IntSeq extends Iterable<Integer> {
 
 	default void forEach(IntConsumer action) {
 		forEachIndexed((_, e) -> action.accept(e));
+	}
+
+	default OptionalInt max() {
+		if(isEmpty()) {
+			return OptionalInt.empty();
+		}
+		int max = head();
+		for(int i : tail()) {
+			if(i > max) {
+				max = i;
+			}
+		}
+		return OptionalInt.of(max);
 	}
 
 	/**

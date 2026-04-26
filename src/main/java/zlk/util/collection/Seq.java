@@ -2,13 +2,18 @@ package zlk.util.collection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 import zlk.util.BiFunctionIndexed;
 import zlk.util.ConsumerIndexed;
@@ -51,8 +56,29 @@ public sealed interface Seq<E> extends Iterable<E> {
 		}
 	}
 
+	public static <E> Seq<E> from(Collection<? extends E> original) {
+		int size = original.size();
+
+		if(size == 0) {
+			@SuppressWarnings("unchecked")
+			var result = (Seq<E>) EmptySeq.INSTANCE;
+			return result;
+		}
+
+		Iterator<? extends E> itr = original.iterator();
+		if(size == 1) {
+			return new SingletonSeq<>(itr.next());
+		}
+
+		Object[] data = new Object[size];
+		for(int i = 0; i < size; i++) {
+			data[i] = itr.next();
+		}
+		return new ArraySeq<>(data);
+	}
+
 	@SafeVarargs
-	public static <E> Seq<E> concat(Seq<E>...args) {
+	public static <E> Seq<E> concat(Seq<? extends E>...args) {
 		int totalSize = 0;
 		for (int i = 0; i < args.length; i++) {
 			totalSize += args[i].size();
@@ -62,18 +88,18 @@ public sealed interface Seq<E> extends Iterable<E> {
 		int count = 0;
 		for (int i = 0; i < args.length; i++) {
 			switch(args[i]) {
-			case EmptySeq<E> _:
+			case EmptySeq<? extends E> _:
 				break;
-			case SingletonSeq<E> s:
+			case SingletonSeq<? extends E> s:
 				result[count] = s.element;
 				break;
-			case ArraySeq<E> a:
+			case ArraySeq<? extends E> a:
 				System.arraycopy(a.data, 0, result, count, a.size());
 				break;
-			case SliceSeq<E> s:
+			case SliceSeq<? extends E> s:
 				System.arraycopy(s.ref, s.from, result, count, s.size());
 				break;
-			case ReversedSeq<E> r: {
+			case ReversedSeq<? extends E> r: {
 				int count_ = count;
 				r.forEachIndexed((j, e) -> result[count_+j] = e);
 			}
@@ -199,6 +225,13 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return mapIndexed((_, e) -> mapper.apply(e));
 	}
 
+	default IntSeq mapToInt(ToIntFunction<? super E> mapper) {
+		return foldIndexed(
+				(i, e, arr) -> { arr[i] = mapper.applyAsInt(e); return arr; },
+				new int[size()],
+				IntArraySeq::new);
+	}
+
 	// TODO: 虚無のaccumulatorを入れた以下のdefault実装は充分に最適化されないかもしれない
 	default Seq<E> filter(Predicate<? super E> predicate) {
 		return fold(
@@ -219,6 +252,51 @@ public sealed interface Seq<E> extends Iterable<E> {
 		forEachIndexed((_, e) -> action.accept(e));
 	}
 
+	default boolean equals(Seq<?> other) {
+		if(this == Objects.requireNonNull(other)) {
+			return true;
+		}
+		if(this.size() != other.size()) {
+			return false;
+		}
+		Iterator<E> thisItr = iterator();
+		Iterator<?> otherItr = other.iterator();
+		while(thisItr.hasNext()) {
+			E thisElm = thisItr.next();
+			if(thisElm == null && otherItr.next() != null) {
+				return false;
+			} else if(!thisElm.equals(otherItr.next())){
+				return false;
+			}
+		}
+		return true;
+	}
+
+	default String join(CharSequence delimiter) {
+		if(isEmpty()) {
+			return "";
+		}
+		StringBuilder sb = new StringBuilder();
+		Iterator<E> itr = iterator();
+		sb.append(itr.next());
+		itr.forEachRemaining(e -> {
+			sb.append(delimiter).append(e);
+		});
+		return sb.toString();
+	}
+
+	default boolean anyMatch(Predicate<? super E> predicate) {
+		if(isEmpty()) {
+			return false;
+		}
+		for(E e : this) {
+			if(predicate.test(e)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * 移行のために用意した
 	 * @return
@@ -228,6 +306,29 @@ public sealed interface Seq<E> extends Iterable<E> {
 		List<E> result = new ArrayList<>(size());
 		forEach(result::add);
 		return result;
+	}
+
+	default <K, V> Map<K, V> toMap(
+			Function<? super E, ? extends K> keyExtractor,
+			Function<? super E, ? extends V> valueExtractor
+	) {
+		return fold(new Seq.Folder<E, Map<K, V>, Map<K, V>>() {
+
+			@Override
+			public BiFunction<? super E, Map<K, V>, Map<K, V>> accumulator() {
+				return (e, idMap) -> { idMap.put(keyExtractor.apply(e), valueExtractor.apply(e)); return idMap; };
+			}
+
+			@Override
+			public Map<K, V> initialValue() {
+				return new HashMap<>();
+			}
+
+			@Override
+			public Function<? super Map<K, V>, ? extends Map<K, V>> finisher() {
+				return Function.identity();
+			}
+		});
 	}
 }
 
@@ -262,6 +363,14 @@ final class EmptySeq<E> implements Seq<E> {
 			@Override
 			public E next() { throw new NoSuchElementException(); }
 		};
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Seq other) {
+			return equals(other);
+		}
+		return false;
 	}
 }
 
@@ -341,6 +450,14 @@ final class SingletonSeq<E> implements Seq<E> {
 			}
 
 		};
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Seq other) {
+			return equals(other);
+		}
+		return false;
 	}
 }
 
@@ -433,6 +550,14 @@ final class ArraySeq<E> implements Seq<E> {
 				return (E) data[index++];
 			}
 		};
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Seq other) {
+			return equals(other);
+		}
+		return false;
 	}
 }
 
@@ -530,6 +655,14 @@ final class SliceSeq<E> implements Seq<E> {
 			}
 		};
 	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Seq other) {
+			return equals(other);
+		}
+		return false;
+	}
 }
 
 final class ReversedSeq<E> implements Seq<E> {
@@ -622,6 +755,14 @@ final class ReversedSeq<E> implements Seq<E> {
 				return (E) ref.ref[index--];
 			}
 		};
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Seq other) {
+			return equals(other);
+		}
+		return false;
 	}
 }
 
