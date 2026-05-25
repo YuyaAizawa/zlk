@@ -132,8 +132,7 @@ public class FeatureTest {
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getType("map").is("(a -> b) -> List a -> List b");
-		// TODO: Zlkデータの文字列表現
-		// module.getValue("test").is("Cons True (Cons False (Cons False Nil))");
+		module.getValue("test").isWrittenIn("Cons True (Cons False (Cons False Nil))");
 	}
 
 	@Test
@@ -216,17 +215,16 @@ public class FeatureTest {
 		    inverseResult = inverseAll bools
 		  in
 		    Pair_ incResult inverseResult
-		mapAndUseTwiceLeft pair =
-		  case pair of
+		mapAndUseTwiceLeft =
+		  case mapAndUseTwice of
 		    Pair_ left a -> left
-		mapAndUseTwiseRight pair =
-		  case pair of
+		mapAndUseTwiseRight =
+		  case mapAndUseTwice of
 		    Pair_ a right -> right
 		""";
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getType("mapAndUseTwice").is("Pair (List I32) (List Bool)");
-		// TODO: Zlkデータの文字列表現
-		// module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))");
+		module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))");
 	}
 
 	@Test
@@ -252,7 +250,7 @@ public class FeatureTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		// module.getValue("rectest").stringExpIs("Cons 1 (Cons 2 Nil)");  // TODO: ユーザー定義型のtoString
+		module.getValue("rectest").isWrittenIn("Cons 1 (Cons 2 Nil)");
 	}
 }
 
