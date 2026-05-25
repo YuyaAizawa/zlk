@@ -67,7 +67,7 @@ public class LetDependencyExtractor {
 		}
 		case IcVarForeign(Id _, Type _, Location _) -> {}
 		case IcVarCtor(Id _, Type _, Location _) -> {}
-		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) -> {
+		case IcLamb(Id _, Seq<IcPattern> _, IcExp body, Location _) -> {
 			accIncluded(body, includes, acc);
 		}
 		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {

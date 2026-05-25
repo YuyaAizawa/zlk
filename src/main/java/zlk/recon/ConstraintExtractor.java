@@ -92,18 +92,25 @@ public final class ConstraintExtractor {
 		case IcVarCtor(Id id, Type type, Location _) ->
 			new CForeign(id, type, expected);
 
-		case IcLamb(Seq<IcPattern> args, IcExp body, Location _) -> {
+		case IcLamb(Id id, Seq<IcPattern> args, IcExp body, Location _) -> {
 			Args args_ = extractFromArgs(args);
 
-			Seq<Constraint> argsCons = Seq.of(
-				new CLet(
-						Seq.of(),
-						args_.binder.vars.toSeq(),
-						args_.binder.headers,
-						Seq.of(new CPhase(args_.binder.cons.toSeq(), Seq.of())),  // argsは一般化対象でない
-						extract(body, args_.resultTy)),
-				new CEqual(args_.funTy, expected));
-			yield new CExists(args_.vars, argsCons);
+			IdMap<RcType> header = new IdMap<>();
+			args_.binder.headers.forEach(header::put);
+			header.put(id, args_.funTy);
+
+			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
+			headerCons.addAll(args_.binder.cons);
+
+			yield new CLet(
+					Seq.of(),
+					args_.vars,
+					header,
+					Seq.of(new CPhase(
+							args_.binder.cons.toSeq(),
+							Seq.of())),
+					Seq.of(extract(body, args_.resultTy),
+							new CEqual(args_.funTy, expected)));
 		}
 
 		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {

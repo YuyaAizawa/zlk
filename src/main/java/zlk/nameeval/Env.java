@@ -3,6 +3,7 @@ package zlk.nameeval;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import zlk.common.id.Id;
 import zlk.util.collection.Stack;
@@ -11,26 +12,29 @@ import zlk.util.pp.PrettyPrinter;
 
 public final class Env {
 	Map<String, Id> global;
-	Stack<Scope> scoped;
+	Stack<Scope> scopes;
 
 	public Env() {
 		global = new HashMap<>();
-		scoped = new Stack<>();
+		scopes = new Stack<>();
 	}
 
 	public void pushScope(String scopeSimpleName) {
-		Id scopeName = scoped.isEmpty()
+		Id scopeName = scopes.isEmpty()
 				? Id.intern(scopeSimpleName)
-				: Id.intern(scoped.peek().name(), scopeSimpleName);
-		scoped.push(new Scope(scopeName));
+				: Id.intern(scopes.peek().name(), scopeSimpleName);
+		scopes.push(new Scope(scopeName));
+	}
+	public void pushScope() { // lambda式用
+		pushScope("_lambda"+(scopes.peek().lambdaCounter().getAndIncrement()));
 	}
 
 	public void popScope() {
-		scoped.pop();
+		scopes.pop();
 	}
 
 	public Id getOrNull(String name) {
-		for(var scope : scoped) {
+		for(var scope : scopes) {
 			Id id = scope.ids().get(name);
 			if(id != null) {
 				return id;
@@ -47,6 +51,10 @@ public final class Env {
 		return id;
 	}
 
+	public Id getScopeName() {
+		return scopes.peek().name();
+	}
+
 	/**
 	 * この環境に現在のスコープを基準に名前を登録し，生成した{@link Id}を返す.
 	 *
@@ -59,7 +67,7 @@ public final class Env {
 			throw new Error("name cannot contain '.': "+name);
 		}
 
-		Scope topScope = scoped.peek();
+		Scope topScope = scopes.peek();
 		Id id = Id.intern(topScope.name(), name);
 		Id orig = topScope.ids().put(name, id);
 
@@ -88,11 +96,12 @@ public final class Env {
 
 record Scope(
 		Id name,
-		Map<String, Id> ids
+		Map<String, Id> ids,
+		AtomicInteger lambdaCounter
 ) implements PrettyPrintable {
 
 	Scope(Id id) {
-		this(id, new HashMap<>());
+		this(id, new HashMap<>(), new AtomicInteger(1));
 	}
 
 	@Override
