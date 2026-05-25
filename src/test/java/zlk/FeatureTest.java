@@ -174,41 +174,60 @@ public class FeatureTest {
 		module.getValue("a2").is(3);
 	}
 
-	// TODO ラムダ式の対応後に追加
-//	@Test
-//	void mapAndUseTwice() {
-//		String src="""
-//		type List a = Nil | Cons a (List a)
-//		type Pair a b = Pair_ a b
-//		mapAndUseTwice =
-//		  let
-//		    map f xs =
-//		      case xs of
-//		        Nil ->
-//		          Nil
-//		        Cons x xs1 ->
-//		          Cons (f x) (map f xs1)
-//		    incAll xs =
-//		      map (\\x -> x + 1) xs
-//		    negateAll xs =
-//		      map (\\b -> if b then False else True) xs
-//		    ints = Cons 1 (Cons 2 (Cons 3 Nil))
-//		    bools = Cons True (Cons False Nil)
-//		    incResult = incAll ints
-//		    negateResult = negateAll bools
-//		  in
-//		    Pair_ incResult negateResult
-//		mapAndUseTwiceLeft =
-//		  case mapAndUseTwice of
-//		  | Pair_ left _ -> left
-//		mapAndUseTwiseRight =
-//		  case mapAndUseTwice of
-//		  | Pair_ _ right -> right
-//		""";
-//		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-//		module.getType("mapAndUseTwice").is("Pair (List I32) (List Bool)");
-//		// module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))"); TODO: 作る
-//	}
+	@Test
+	void minimumLambda() {
+		String src ="""
+		id =
+		  \\x -> x
+		apply =
+		  \\f x -> f x
+		add_ =
+		  \\x y -> add x y
+		ans =
+		  (\\x -> add x 1) 2
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("id").is("a -> a");
+		module.getType("apply").is("(a -> b) -> a -> b");
+		module.getType("add_").is("I32 -> I32 -> I32");
+		module.getValue("ans").is(3);
+	}
+
+	@Test
+	void mapAndUseTwice() {
+		String src="""
+		type List a = Nil | Cons a (List a)
+		type Pair a b = Pair_ a b
+		mapAndUseTwice =
+		  let
+		    map f xs =
+		      case xs of
+		        Nil ->
+		          Nil
+		        Cons x xs1 ->
+		          Cons (f x) (map f xs1)
+		    incAll xs =
+		      map (\\x -> add x 1) xs
+		    inverseAll xs =
+		      map (\\b -> if b then False else True) xs
+		    ints = Cons 1 (Cons 2 (Cons 3 Nil))
+		    bools = Cons True (Cons False Nil)
+		    incResult = incAll ints
+		    inverseResult = inverseAll bools
+		  in
+		    Pair_ incResult inverseResult
+		mapAndUseTwiceLeft pair =
+		  case pair of
+		    Pair_ left a -> left
+		mapAndUseTwiseRight pair =
+		  case pair of
+		    Pair_ a right -> right
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("mapAndUseTwice").is("Pair (List I32) (List Bool)");
+		// TODO: Zlkデータの文字列表現
+		// module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))");
+	}
 
 	@Test
 	void genericTypeInLetExp() {

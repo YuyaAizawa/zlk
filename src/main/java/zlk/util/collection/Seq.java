@@ -703,6 +703,9 @@ final class ReversedSeq<E> implements Seq<E> {
 
 	@Override
 	public E at(int index) {
+		if(index < 0 || size() <= index) {
+			throw new ArrayIndexOutOfBoundsException(index);
+		}
 		return ref.at(rel(index));
 	}
 
