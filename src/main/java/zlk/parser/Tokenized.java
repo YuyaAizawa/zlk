@@ -80,6 +80,68 @@ public final class Tokenized {
 		Stream.of(tokens).forEach(action);
 	}
 
+	public String restSource() {
+		if(!hasNext()) {
+			return "";
+		}
+
+		Token start = peek();
+
+		// インデントを数える
+		int indent = 0;
+		int idx = 0;
+		while(tokens[idx] != start) {
+			switch(tokens[idx].kind) {
+			case Token.Kind.ENDENT:
+				indent++;
+				break;
+			case Token.Kind.DEDENT:
+				indent--;
+				break;
+			default:
+				break;
+			}
+			idx++;
+		}
+		StringBuilder sb = new StringBuilder();
+		boolean lineStart = false;
+		while(idx != tokens.length) {
+			switch(tokens[idx].kind) {
+			case Token.Kind.ENDENT:
+				indent++;
+				for (int i = 0; i < indent; i++) {
+					sb.append("  ");
+				}
+				lineStart = true;
+				break;
+			case Token.Kind.DEDENT:
+				indent--;
+				for (int i = 0; i < indent; i++) {
+					sb.append("  ");
+				}
+				lineStart = true;
+				break;
+			case Token.Kind.SAMENT:
+				sb.append(System.lineSeparator());
+				for (int i = 0; i < indent; i++) {
+					sb.append("  ");
+				}
+				lineStart = true;
+				break;
+			default:
+				if(!lineStart) {
+					sb.append(" ");
+				}
+				sb.append(tokens[idx].str());
+				lineStart = false;
+				break;
+			}
+			idx++;
+		}
+
+		return sb.toString();
+	}
+
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();

@@ -1,7 +1,5 @@
 package zlk.clconv;
 
-import static zlk.util.ErrorUtils.neverHappen;
-
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Optional;
@@ -102,18 +100,18 @@ public final class ClosureConverter {
 	 * 関数をトップレベルに変換し追加する．クロージャに変換された場合，その作成を返す．
 	 * @return クロージャの生成（クロージャが必要だったとき）
 	 */
-	private Optional<CcMkCls> compileFunc(Id id, Seq<IcPattern> args_, IcExp body) {
+	private Optional<CcMkCls> compileFunc(Id id, Seq<IcPattern> args, IcExp body) {
 
 		knowns.add(id);
 		CcExp ccBody = compile(body);
-		Seq<Id> frees = fvFunc(ccBody, args_);
+		Seq<Id> frees = fvFunc(ccBody, args);
 
 		if(frees.isEmpty()) {
-			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
+			toplevels.add(new CcFunDecl(id, args, ccBody, body.loc()));
 			return Optional.empty();
-
 		} else {
-			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, type.get(id).dropArgs(args_.size()), body.loc());
+			Type retTy = type.get(id).dropArgs(args.size());
+			CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, retTy, body.loc());
 			toplevels.add(closureFunc);
 			arities.remove(id);  // 直接呼出し出来なかったので取り除く
 			knowns.add(closureFunc.id());
@@ -122,6 +120,19 @@ public final class ClosureConverter {
 					frees.map(id_ -> (CcExp) new CcVar(id_, Location.noLocation())),
 					closureFunc.loc()));
 		}
+	}
+
+	private CcMkCls compileLambda(Id id, Seq<IcPattern> args, IcExp body) {
+		CcExp ccBody = compile(body);
+		Seq<Id> frees = fvFunc(ccBody, args);
+		Type retTy = type.get(id).dropArgs(args.size());
+		CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, retTy, body.loc());
+		toplevels.add(closureFunc);
+		knowns.add(closureFunc.id());
+		return new CcMkCls(
+				closureFunc.id(),
+				frees.map(id_ -> (CcExp) new CcVar(id_, Location.noLocation())),
+				closureFunc.loc());
 	}
 
 	/**
@@ -260,8 +271,8 @@ public final class ClosureConverter {
 			}
 			yield new CcMkCls(id, Seq.of(), loc);
 		}
-		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) -> {
-			yield neverHappen("no anonymous abs in this version.", body.loc());
+		case IcLamb(Id id, Seq<IcPattern> args, IcExp body, Location _) -> {
+			yield compileLambda(id, args, body);
 		}
 		case IcApp(IcExp fun, Seq<IcExp> args, Location loc) -> {
 			// 直接呼び出せて引数が揃っていればCcDirectApp

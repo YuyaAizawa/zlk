@@ -47,6 +47,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			Location loc) implements IcExp {}
 
 	record IcLamb(
+			Id id,
 			Seq<IcPattern> args,
 			IcExp body,
 			Location loc) implements IcExp {}
@@ -96,7 +97,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 	default void walk(Consumer<? super IcExp> action) {
 		action.accept(this);
 		switch (this) {
-		case IcLamb(Seq<IcPattern> _, IcExp body, Location _) ->
+		case IcLamb(Id _, Seq<IcPattern> _, IcExp body, Location _) ->
 			body.walk(action);
 		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
 			fun.walk(action);
@@ -139,7 +140,7 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 		case IcVarCtor(Id id, Type _, Location _) -> {
 			pp.append(id);
 		}
-		case IcLamb(Seq<IcPattern> args, IcExp body, Location _) -> {
+		case IcLamb(Id _, Seq<IcPattern> args, IcExp body, Location _) -> {
 			pp.append("\\");
 			args.forEach(arg -> {
 				pp.append(arg).append(" ");
