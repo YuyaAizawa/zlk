@@ -442,7 +442,7 @@ public final class BytecodeGenerator {
 			checkcastIfNeed(JavaType.OBJECT, ubTy);
 		}
 		case CcMkCls(Id implId, Seq<CcExp> caps, Location _) -> {
-			if(ctors.containsKey(implId)) {  // データ型の場合
+			if(ctors.containsKey(implId)) {  // データ型の初期化確認
 				// 部分適用する前にコンストラクタ用メソッド（<init>とは別）があるか確認
 				ensureCtorOriginal(ctors.get(implId));
 			}
@@ -451,6 +451,21 @@ public final class BytecodeGenerator {
 			Builtin builtinValue = builtins.getOrNull(implId);
 			if(builtinValue != null) {
 				builtinValue.accept(mv);
+				return;
+			}
+
+			// 引数が要らない場合戻り値のデータを置く
+			Type implTy = types.getOrNull(implId);
+			if(implTy == null) {
+				throw new RuntimeException(implId.toString());
+			}
+			if(implTy instanceof Type.CtorApp) {
+				mv.visitMethodInsn(
+						Opcodes.INVOKESTATIC,
+						module.name(),
+						javaMethodName(implId),
+						toplevelDescs.get(implId),
+						false);
 				return;
 			}
 
