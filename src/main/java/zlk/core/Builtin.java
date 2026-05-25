@@ -66,7 +66,7 @@ implements Instructions
 					mv.visitInsn(Opcodes.IMUL);
 					Primitive.INT.genBoxing(mv);
 				}),
-				new Builtin("Basic.div", i32i32i32, mv -> {
+				new Builtin("Basic.div", i32i32i32, mv -> {  // TODO: 0除算は0を返すように
 					Primitive.INT.genUnboxing(mv);
 					mv.visitInsn(Opcodes.SWAP);
 					Primitive.INT.genUnboxing(mv);

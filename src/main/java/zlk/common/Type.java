@@ -98,6 +98,10 @@ permits CtorApp, Arrow, Var {
 	}
 
 	public static Type.Arrow arrow(Seq<Type> args, Type ret) {
+		if(args.isEmpty()) {
+			throw new IllegalArgumentException();
+		}
+
 		Seq<Type> argsReversed = args.reversed();
 		Type.Arrow result = new Arrow(argsReversed.head(), ret);
 
@@ -194,14 +198,11 @@ permits CtorApp, Arrow, Var {
 		if(tys.isEmpty()) {
 			throw new IllegalArgumentException();
 		}
-
-		Seq<Type> revTys = tys.reversed();
-
-		Type result = revTys.head();
-		for(Type ty : revTys.tail()) {
-			result = new Arrow(ty, result);
+		if(tys.size() == 1) {
+			return tys.head();
 		}
-		return result;
+
+		return arrow(tys);
 	}
 
 	default Seq<String> getVarNames() {

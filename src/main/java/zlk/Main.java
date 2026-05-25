@@ -48,6 +48,11 @@ public class Main {
 				  | Nil
 				  | Cons a (List a)
 
+				foldl func acc list =
+				  case list of
+				    Nil -> acc
+				    Cons x xs -> foldl func (func x acc) xs
+
 				sq a =
 				  let
 				    pow b c =
@@ -84,7 +89,10 @@ public class Main {
 				    Cons hd tl -> add hd (sum tl)
 
 				ans1 =
-				  sq 42
+				  let
+				    input = Cons 1 (Cons 2 (Cons 3 (Nil)))
+				  in
+				    foldl (\\e total -> add total e) 0 input
 
 				ans2 =
 				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
@@ -128,8 +136,11 @@ public class Main {
 
 		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
 
-		idcalc.types().forEach(union -> union.ctors().forEach(ctor ->
-			types.put(ctor.id(), Type.arrow(ctor.args(), new Type.CtorApp(union.id(), union.vars())))));
+		idcalc.types().forEach(union -> union.ctors().forEach(ctor -> {
+			Type.CtorApp ctorApp = new Type.CtorApp(union.id(), union.vars());
+			Type ty = ctor.args().isEmpty() ? ctorApp : Type.arrow(ctor.args(), ctorApp);
+			types.put(ctor.id(), ty);
+		}));
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");
