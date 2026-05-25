@@ -93,6 +93,10 @@ public final class Parser {
 		if(result == null) {
 			todo("error");
 		}
+		if(src.hasNext()) {
+			System.out.println(src.restSource());
+			todo("error");
+		}
 		return result;
 	}
 
