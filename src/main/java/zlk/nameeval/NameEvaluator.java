@@ -138,7 +138,7 @@ public final class NameEvaluator {
 		});
 
 		env.popScope();
-		if(env.scoped.size() != 0) {
+		if(env.scopes.size() != 0) {
 			throw new AssertionError();
 		}
 		return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
@@ -197,11 +197,16 @@ public final class NameEvaluator {
 			yield new IcVarLocal(id, loc);
 		}
 
-		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) ->
-			new IcLamb(
+		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) -> {
+			env.pushScope();
+			IcExp result = new IcLamb(
+					env.getScopeName(),
 					patterns.map(a -> eval(a)),
 					eval(body, scope),
 					loc);
+			env.popScope();
+			yield result;
+		}
 
 		case App(Seq<Exp> exps, Location loc) ->
 			new IcApp(
