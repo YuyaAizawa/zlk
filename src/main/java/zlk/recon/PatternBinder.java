@@ -27,6 +27,9 @@ final class PatternBinder {
 	void bind(IcPattern pat, RcType expected, FreshFlex freshFlex) {
 		nodeTypes.put(pat, expected);
 		switch(pat) {
+		case IcPattern.Wildcard(_) -> {
+			// 型は nodeTypes に記録するが名前は導入しない
+		}
 		// TODO: リテラル
 		case IcPattern.Var(Id id, _) -> {
 			headers.put(id, expected);
