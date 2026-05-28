@@ -110,8 +110,7 @@ public final class ClosureConverter {
 			toplevels.add(new CcFunDecl(id, args, ccBody, body.loc()));
 			return Optional.empty();
 		} else {
-			Type retTy = type.get(id).dropArgs(args.size());
-			CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, retTy, body.loc());
+			CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, body.loc());
 			toplevels.add(closureFunc);
 			arities.remove(id);  // 直接呼出し出来なかったので取り除く
 			knowns.add(closureFunc.id());
@@ -125,8 +124,7 @@ public final class ClosureConverter {
 	private CcMkCls compileLambda(Id id, Seq<IcPattern> args, IcExp body) {
 		CcExp ccBody = compile(body);
 		Seq<Id> frees = fvFunc(ccBody, args);
-		Type retTy = type.get(id).dropArgs(args.size());
-		CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, retTy, body.loc());
+		CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, body.loc());
 		toplevels.add(closureFunc);
 		knowns.add(closureFunc.id());
 		return new CcMkCls(
@@ -137,29 +135,26 @@ public final class ClosureConverter {
 
 	/**
 	 * 自由変数を引数に入れた新しい関数宣言を作る
-	 * @param original 元の関数のId
+	 * @param origId 元の関数のId
 	 * @param frees 自由変数
 	 * @param args_ 元の関数の引数
 	 * @param body 元の関数の中身
-	 * @param retTy 元の関数の戻り値型
 	 * @param loc 元の関数のLocation
 	 * @return
 	 */
 	private CcFunDecl makeClosure(
-			Id original,
+			Id origId,
 			Seq<Id> frees,
 			Seq<IcPattern> args_,
 			CcExp body,
-			Type retTy,
 			Location loc
 	) {
-		SeqBuffer<Type> types = new SeqBuffer<>();
-		frees.forEach(id -> types.add(type.get(id)));
-		args_.forEach(pat -> types.add(type.get(pat.headId())));
-		types.add(retTy);
-
-		Type clsTy = Type.fromSeq(types.toSeq());
-		Id clsId = freshId(original);
+		Type clsTy = Type.fromSeq(
+			Seq.concat(  // 前に自由変数を付加
+					frees.map(id -> type.get(id)),
+					type.get(origId).flatten()
+			));
+		Id clsId = freshId(origId);
 		type.put(clsId, clsTy);
 
 		// 自由変数を外に出すために置き換えを作る
@@ -168,7 +163,7 @@ public final class ClosureConverter {
 						id -> id,
 						id -> Id.intern(clsId, id.simpleName())));
 		// 自己再帰のために元の関数名も置換対象
-		idMap.put(original, clsId);
+		idMap.put(origId, clsId);
 
 		SeqBuffer<IcPattern> clsArgs = new SeqBuffer<>();
 		SeqBuffer<CcVar> caps = new SeqBuffer<>();
@@ -180,7 +175,7 @@ public final class ClosureConverter {
 		}
 		clsArgs.addAll(args_);
 
-		CcExp clsBody = rewriteCls(original, clsId, caps.toSeq(), idMap, body);  // body.substId(idMap);
+		CcExp clsBody = rewriteCls(origId, clsId, caps.toSeq(), idMap, body);  // body.substId(idMap);
 
 		return new CcFunDecl(clsId, clsArgs.toSeq(), clsBody, loc);
 	}
