@@ -258,6 +258,9 @@ public final class NameEvaluator {
 
 	private IcPattern eval(Pattern pat) {
 		switch(pat) {
+		case Pattern.Wildcard(Location loc): {
+			return new IcPattern.Wildcard(loc);
+		}
 		case Pattern.Var(String name, Location loc): {
 			Id id;
 			try {
