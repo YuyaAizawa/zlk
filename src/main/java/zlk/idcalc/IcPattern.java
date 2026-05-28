@@ -8,13 +8,16 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.idcalc.IcPattern.Dector;
 import zlk.idcalc.IcPattern.Var;
+import zlk.idcalc.IcPattern.Wildcard;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcPattern extends PrettyPrintable, LocationHolder, ExpOrPattern
-permits Var, Dector {
+permits Wildcard, Var, Dector {
+
+	record Wildcard(Location loc) implements IcPattern {}
 
 	record Var(
 			Id id,
@@ -23,27 +26,11 @@ permits Var, Dector {
 	record Dector(
 			IcExp.IcVarCtor ctor,
 			Seq<Arg> args,
-			Location loc) implements IcPattern {
-
-		@Override
-		public Id headId() {
-			return ctor.id();
-		}
-	}
-
-	public default Id headId() {
-		return switch(this) {
-		case Var(Id id, Location _) -> {
-			yield id;
-		}
-		case Dector(IcExp.IcVarCtor ctor, Seq<Arg> _, Location _) -> {
-			yield ctor.id();
-		}
-		};
-	}
+			Location loc) implements IcPattern {}
 
 	public default void accumulateVars(Set<Id> known) {
 		switch(this) {
+		case Wildcard(Location _) -> {}
 		case Var(Id id, Location _) -> {
 			known.add(id);
 		}
@@ -54,6 +41,7 @@ permits Var, Dector {
 	}
 	public default void accumulateVars(SeqBuffer<Id> known) {
 		switch(this) {
+		case Wildcard(Location _) -> {}
 		case Var(Id id, Location _) -> {
 			known.add(id);
 		}
@@ -66,6 +54,9 @@ permits Var, Dector {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
+		case Wildcard(Location _) -> {
+			pp.append("_");
+		}
 		case Var(Id id, Location _) -> {
 			pp.append(id);
 		}

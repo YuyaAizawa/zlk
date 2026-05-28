@@ -136,6 +136,34 @@ public class FeatureTest {
 	}
 
 	@Test
+	void pairType() {
+		String src="""
+		type Pair a b = Pair_ a b
+
+		left pair =
+		  case pair of
+		    Pair_ a _ -> a
+
+		right pair =
+		  case pair of
+		    Pair_ _ b -> b
+
+		oneTrue = Pair_ 1 True
+
+		oneTrueLeft = left oneTrue
+
+		oneTrueRight = right oneTrue
+		""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("left").is("Pair a b -> a");
+		module.getType("right").is("Pair a b -> b");
+		module.getType("oneTrueLeft").is("I32");
+		module.getType("oneTrueRight").is("Bool");
+		module.getValue("oneTrueLeft").isWrittenIn("1");
+		module.getValue("oneTrueRight").isWrittenIn("True");
+	}
+
+	@Test
 	void genericAndClosure() {
 		String src="""
 		type Pair a b = Pair_ a b

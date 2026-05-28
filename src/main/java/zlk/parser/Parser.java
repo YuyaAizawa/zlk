@@ -63,7 +63,8 @@ import zlk.util.collection.Seq;
  * <pattern>    ::= <ctorHead> <aPattern>*
  *                | <aPattern>
  *
- * <aPattern>   ::= ( <pattern> )
+ * <aPattern>   ::= _
+ *                | ( <pattern> )
  *                | <lcid>
  *
  * <h3>型注釈</h3>
@@ -197,6 +198,7 @@ public final class Parser {
 	static final Peg<Token> RPAREN = kind(Kind.RPAREN);
 	static final Peg<Token> THEN = kind(Kind.THEN);
 	static final Peg<Token> TYPE = kind(Kind.TYPE);
+	static final Peg<Token> WILDCARD = kind(Kind.WILDCARD);
 
 	static final Peg<Token> FALSE = kind(Kind.FALSE);
 	static final Peg<Token> TRUE = kind(Kind.TRUE);
@@ -266,13 +268,15 @@ public final class Parser {
 	}
 
 	/* パターン
-	 * <aPattern>   ::= <lcid>
+	 * <aPattern>   ::= _
+	 *                | <lcid>
 	 *                | ( <pattern> )
 	 *
 	 * <pattern>    ::= <ctorHead> <aPattern>*
 	 *                | <aPattern>
 	 */
 	static final Peg<Pattern> aPattern = choice(
+			WILDCARD.map(t -> new Pattern.Wildcard(t.loc())),
 			LCID.map(t -> new Pattern.Var(t.str(), t.loc())),
 			sequence(LPAREN, lazy(() -> pattern()), RPAREN,
 					(s, pat, e) -> pat.updateLoc(locRange(s, e))));

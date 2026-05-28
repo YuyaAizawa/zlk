@@ -327,7 +327,7 @@ public final class BytecodeGenerator {
 	private void registerArgs(Seq<IcPattern> args) {
 		args.forEach(arg -> {
 			if(arg instanceof IcPattern.Var var) {
-				locals.add(var.headId());
+				locals.add(var.id());
 			} else {
 				locals.add(LOCAL_DUMMY_ID);
 			}
@@ -335,7 +335,7 @@ public final class BytecodeGenerator {
 
 		for (int i = 0; i < args.size(); i++) {
 			if(args.at(i) instanceof IcPattern.Dector ctor) {
-				Type subClassTy = types.get(ctor.headId());
+				Type subClassTy = types.get(ctor.ctor().id());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
 			}
@@ -345,14 +345,20 @@ public final class BytecodeGenerator {
 		// 事前条件：パターンに対応する値がstackのトップに乗っている
 		// 事後条件：パターンに対応する値をstackから消費
 		switch(pat) {
+		case IcPattern.Wildcard(Location _) -> {
+			mv.visitInsn(Opcodes.POP);  // TODO: 最適化 フィールドからとらないように
+		}
 		case IcPattern.Var(Id id, Location _) -> {
 			locals.add(id);
 			storeLocal(locals.size()-1, types.get(id));
 		}
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
 			// stackの数を調整
-			if(args.size() == 0) { mv.visitInsn(Opcodes.POP); }
-			for (int i = 0; i < args.size()-1; i++) {
+			if(args.size() == 0) {
+				mv.visitInsn(Opcodes.POP);
+			}
+
+			for (int i = 0; i < args.size() - 1; i++) {
 				mv.visitInsn(Opcodes.DUP);
 			}
 
@@ -573,6 +579,9 @@ public final class BytecodeGenerator {
 	 */
 	private void checkMatchAndStoreLocals(IcPattern pat, Type declTy, Label next) {
 		switch(pat) {
+		case IcPattern.Wildcard(Location _) -> {
+			mv.visitInsn(Opcodes.POP);
+		}
 		case IcPattern.Var(Id id, Location _) -> {
 			Type expTy = types.get(id);
 			if(declTy instanceof Type.Var) {
@@ -598,7 +607,7 @@ public final class BytecodeGenerator {
 			}
 			mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
 			for(int i = 0; i < args.size(); i++) {
-				if(i < args.size()-1) {
+				if(i < args.size() - 1) {
 					mv.visitInsn(Opcodes.DUP);
 				}
 				mv.visitFieldInsn(
@@ -821,9 +830,10 @@ public final class BytecodeGenerator {
 	}
 
 	private String getDescription(CcFunDecl decl) {
-
-		Seq<Type> argTys = decl.args().map(pat -> types.get(pat.headId()));
-		Type retTy = types.get(decl.id()).dropArgs(decl.arity());
+		Type funTy = types.get(decl.id());
+		int arity = decl.arity();
+		Seq<Type> argTys = funTy.flatten().take(arity);
+		Type retTy = funTy.dropArgs(arity);
 		return toMethodDesc(argTys, retTy);
 	}
 
