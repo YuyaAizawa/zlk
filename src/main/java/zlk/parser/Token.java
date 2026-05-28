@@ -31,6 +31,7 @@ public final class Token implements LocationHolder {
 		LAMBDA    ("\\"),
 		LPAREN    ("("),
 		RPAREN    (")"),
+		WILDCARD  ("_"),
 
 		TRUE("true"),
 		FALSE("false"),
@@ -53,7 +54,8 @@ public final class Token implements LocationHolder {
 						EQUAL,
 						LAMBDA,
 						LPAREN,
-						RPAREN)
+						RPAREN,
+						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止
 				.collect(Collectors.toMap(
 						k -> k.str().charAt(0),  // 1文字目が被ったら実行時例外
 						k -> k));
