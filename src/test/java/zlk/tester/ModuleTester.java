@@ -26,6 +26,8 @@ import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Tokenized;
+import zlk.patterncheck.PatternChecker;
+import zlk.patterncheck.PcError;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
 import zlk.recon.TypeError;
@@ -41,6 +43,7 @@ public class ModuleTester {
 		NAME_EVAL,
 		TYPE_CINT,
 		TYPE_RECON,
+		PATTERN_CHECK,
 		CLOSURE_CONV,
 		BYTECODE_GEN,
 		;
@@ -62,6 +65,7 @@ public class ModuleTester {
 	private Constraint cint = null;
 	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
+	private Seq<PcError> pcErrors = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
@@ -101,6 +105,11 @@ public class ModuleTester {
 			return;
 		}
 
+		this.pcErrors = PatternChecker.check(module, types);
+		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
+			return;
+		}
+
 		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
 		this.clconv = new ClosureConverter(module, types, callSiteTypes, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
@@ -135,6 +144,10 @@ public class ModuleTester {
 
 	public IcModule getIdcalcModule() {
 		return module;
+	}
+
+	public Seq<PcError> getPcErrors() {
+		return pcErrors;
 	}
 
 	private TypeTester toTypeTester(Type ty) {

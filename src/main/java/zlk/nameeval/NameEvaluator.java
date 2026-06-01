@@ -57,10 +57,14 @@ public final class NameEvaluator {
 		this.types = new IdMap<>();
 		this.ctors = new IdMap<>();
 
+		// TODO: 組込みのBasic.Boolを作るまでの暫定対応
+		ctors.put(Id.intern("Basic.True"), Type.BOOL);
+		ctors.put(Id.intern("Basic.False"), Type.BOOL);
+
 		env = new Env();
 		Type.BUILTIN.forEach(ty -> {
 			try {
-				types.put(env.registerGlobal(ty.ctor()), ty);
+				types.put(env.registerGlobal(ty.id()), ty);
 			} catch (DuplicatedNameException e) {
 				throw new Error("builtin type dupicated", e);
 			}

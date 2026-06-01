@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -74,6 +75,27 @@ public sealed interface Seq<E> extends Iterable<E> {
 		for(int i = 0; i < size; i++) {
 			data[i] = itr.next();
 		}
+		return new ArraySeq<>(data);
+	}
+
+	public static <E> Seq<E> repeat(E element, int count) {
+		if(count < 0) {
+			throw new IllegalArgumentException("count: "+count);
+		}
+		switch(count) {
+		case 0:
+			return Seq.of();
+		case 1:
+			return Seq.of(element);
+		case 2:
+			return new ArraySeq<>(new Object[] {element, element});
+		case 3:
+			return new ArraySeq<>(new Object[] {element, element, element});
+		case 4:
+			return new ArraySeq<>(new Object[] {element, element, element, element});
+		}
+		Object[] data = new Object[count];
+		Arrays.fill(data, element);
 		return new ArraySeq<>(data);
 	}
 
@@ -232,11 +254,19 @@ public sealed interface Seq<E> extends Iterable<E> {
 				IntArraySeq::new);
 	}
 
-	// TODO: 虚無のaccumulatorを入れた以下のdefault実装は充分に最適化されないかもしれない
+	// TODO: 要計測 抽象化しすぎて最適化されないかもしれない
 	default Seq<E> filter(Predicate<? super E> predicate) {
 		return fold(
 				(e, stack) -> { if(predicate.test(e) ) { stack.add(e); } return stack; },
 				new SeqBuffer<E>(size()),
+				SeqBuffer::toSeq);
+	}
+
+	// TODO: 要計測 抽象化しすぎて最適化されないかもしれない
+	default <R> Seq<R> filterMap(Function<? super E, Optional<? extends R>> mapper) {
+		return fold(
+				(e, stack) -> { mapper.apply(e).ifPresent(r -> stack.add(r)); return stack; },
+				new SeqBuffer<R>(size()),
 				SeqBuffer::toSeq);
 	}
 
@@ -285,16 +315,24 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return sb.toString();
 	}
 
-	default boolean anyMatch(Predicate<? super E> predicate) {
+	default Optional<E> findFirst(Predicate<? super E> predicate) {
 		if(isEmpty()) {
-			return false;
+			return Optional.empty();
 		}
 		for(E e : this) {
 			if(predicate.test(e)) {
-				return true;
+				return Optional.of(e);
 			}
 		}
-		return false;
+		return Optional.empty();
+	}
+
+	default boolean anyMatch(Predicate<? super E> predicate) {
+		return findFirst(predicate).isPresent();
+	}
+
+	default boolean allMatch(Predicate<? super E> predicate) {
+		return findFirst(predicate.negate()).isEmpty();
 	}
 
 	/**
@@ -371,6 +409,11 @@ final class EmptySeq<E> implements Seq<E> {
 			return equals(other);
 		}
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		return "[]";
 	}
 }
 
@@ -458,6 +501,11 @@ final class SingletonSeq<E> implements Seq<E> {
 			return equals(other);
 		}
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		return "[" + element + "]";
 	}
 }
 
@@ -558,6 +606,11 @@ final class ArraySeq<E> implements Seq<E> {
 			return equals(other);
 		}
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		return "[" + join(", ") + "]";
 	}
 }
 
@@ -663,6 +716,11 @@ final class SliceSeq<E> implements Seq<E> {
 		}
 		return false;
 	}
+
+	@Override
+	public String toString() {
+		return "[" + join(", ") + "]";
+	}
 }
 
 final class ReversedSeq<E> implements Seq<E> {
@@ -766,6 +824,11 @@ final class ReversedSeq<E> implements Seq<E> {
 			return equals(other);
 		}
 		return false;
+	}
+
+	@Override
+	public String toString() {
+		return "[" + join(", ") + "]";
 	}
 }
 

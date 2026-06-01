@@ -26,10 +26,10 @@ permits CtorApp, Arrow, Var {
 
 	/**
 	 * 関数型以外の型
-	 * @param ctor 型構築子
+	 * @param id 型構築子
 	 * @param args 型パラメータ
 	 */
-	record CtorApp(Id ctor, Seq<Type> args) implements Type {
+	record CtorApp(Id id, Seq<Type> args) implements Type {
 		public CtorApp(Id id) {
 			this(id, Seq.of());
 		}
