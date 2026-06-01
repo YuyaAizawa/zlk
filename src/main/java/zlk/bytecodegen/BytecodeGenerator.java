@@ -85,9 +85,9 @@ public final class BytecodeGenerator {
 		this.ctors = new IdMap<>();
 		this.pendings = new Stack<>();
 
-		javaClasses.put(Type.UNIT.ctor(), JavaType.VOID);
-		javaClasses.put(Type.BOOL.ctor(), new JavaType.Simple("java/lang/Boolean"));
-		javaClasses.put(Type.I32.ctor(), new JavaType.Simple("java/lang/Integer"));
+		javaClasses.put(Type.UNIT.id(), JavaType.VOID);
+		javaClasses.put(Type.BOOL.id(), new JavaType.Simple("java/lang/Boolean"));
+		javaClasses.put(Type.I32.id(), new JavaType.Simple("java/lang/Integer"));
 	}
 
 	/**
@@ -863,7 +863,7 @@ public final class BytecodeGenerator {
 	private JavaType toJavaType(Type type) {
 
 		return switch(type) {
-		case Type.CtorApp atom -> javaClasses.get(atom.ctor());
+		case Type.CtorApp atom -> javaClasses.get(atom.id());
 		case Type.Arrow _ -> JavaType.FUNCTION;
 		case Type.Var _ -> JavaType.OBJECT;
 		};
