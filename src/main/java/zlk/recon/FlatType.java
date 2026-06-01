@@ -29,10 +29,10 @@ permits CtorApp1, Fun1 {
 	default Type toType() {
 		return switch(this) {
 		case CtorApp1(Id id, Seq<Variable> args) -> {
-			if(id.equals(Type.BOOL.ctor())) {
+			if(id.equals(Type.BOOL.id())) {
 				yield Type.BOOL;
 			}
-			if(id.equals(Type.I32.ctor())) {
+			if(id.equals(Type.I32.id())) {
 				yield Type.I32;
 			}
 			// TODO: user defined type
