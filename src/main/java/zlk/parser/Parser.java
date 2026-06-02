@@ -270,14 +270,16 @@ public final class Parser {
 	/* パターン
 	 * <aPattern>   ::= _
 	 *                | <lcid>
+	 *                | <ctorHead>
 	 *                | ( <pattern> )
 	 *
-	 * <pattern>    ::= <ctorHead> <aPattern>*
+	 * <pattern>    ::= <ctorHead> <aPattern>+
 	 *                | <aPattern>
 	 */
 	static final Peg<Pattern> aPattern = choice(
 			WILDCARD.map(t -> new Pattern.Wildcard(t.loc())),
 			LCID.map(t -> new Pattern.Var(t.str(), t.loc())),
+			ctorHead.map(t -> new Pattern.Ctor(t.str(), Seq.of(), t.loc())),
 			sequence(LPAREN, lazy(() -> pattern()), RPAREN,
 					(s, pat, e) -> pat.updateLoc(locRange(s, e))));
 
@@ -292,8 +294,6 @@ public final class Parser {
 
 	/* 式
 	 * <literal>    ::= <digits>
-	 *                | True
-	 *                | False
 	 *
 	 * <aExp>       ::= <literal>
 	 *                | <lcid>
@@ -319,10 +319,8 @@ public final class Parser {
 	 */
 	static final Peg<Exp> exp_ = lazy(() -> exp());
 
-	static final Peg<Exp.Cnst> literal = choice(
-			DIGITS.map(t -> new Exp.Cnst(Integer.parseInt(t.str()), t.loc())),
-			TRUE.map(t -> new Exp.Cnst(true, t.loc())),
-			FALSE.map(t -> new Exp.Cnst(false, t.loc())));
+	static final Peg<Exp.Cnst> literal =
+			DIGITS.map(t -> new Exp.Cnst(Integer.parseInt(t.str()), t.loc()));
 
 	static final Peg<Exp> aExp = choice(
 			literal,

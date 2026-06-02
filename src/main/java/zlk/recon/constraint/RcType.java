@@ -23,8 +23,8 @@ permits VarN, AppN, FunN {
 	record AppN(Id id, Seq<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
 
-	public static final RcType BOOL = new AppN(Type.BOOL.ctor(), Seq.of());
-	public static final RcType I32  = new AppN(Type.I32.ctor() , Seq.of());
+	public static final RcType BOOL = new AppN(Type.BOOL.id(), Seq.of());
+	public static final RcType I32  = new AppN(Type.I32.id() , Seq.of());
 
 	/**
 	 * 注釈用の型から生成された制約用の型情報
