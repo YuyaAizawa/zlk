@@ -17,9 +17,8 @@ public record Builtin(
 		Id id,
 		Type type,
 		Instructions insn)
-implements Instructions
-{
-	public static Seq<Builtin> functions(){
+implements Instructions {
+	public static Seq<Builtin> functions() {
 		Type i32i32i32 = Type.arrow(I32, I32, I32);
 		Type i32bool = Type.arrow(I32, BOOL);
 
