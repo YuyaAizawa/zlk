@@ -24,6 +24,7 @@ import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.parser.Token.Kind;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 
 /**
@@ -117,12 +118,16 @@ public final class Parser {
 
 	// static fieldを上から初期化する都合で補助関数が最上部，全体のパーサは最下部にある
 
-	// TODO: blockを利用してエラー復帰機構
-	static <T> Peg<T> block(Peg<T> p) {
+	/**
+	 * 与えられたPegのExpをインデントブロックで囲んだものを受理するPegを返す
+	 * @param p
+	 * @return
+	 */
+	static Peg<Exp> block(Peg<Exp> p) {
 		return sequence(ENDENT, SAMENT, p, DEDENT, (_, _, r, _) -> r);
 	}
 
-	static <T> Peg<T> mayBlock(Peg<T> p) {
+	static Peg<Exp> mayBlock(Peg<Exp> p) {
 		return choice(block(p), p);
 	}
 
@@ -178,6 +183,12 @@ public final class Parser {
 		return locRange(from.head(), to);
 	}
 
+	static <T> Seq<T> flatten (Seq<Seq<T>> seqs) {
+		SeqBuffer<T> result = new SeqBuffer<>();
+		seqs.forEach(result::addAll);
+		return result.toSeq();
+	}
+
 	static final Peg<Token> ENDENT = kind(Kind.ENDENT);
 	static final Peg<Token> DEDENT = kind(Kind.DEDENT);
 	static final Peg<Token> SAMENT = kind(Kind.SAMENT);
@@ -206,6 +217,8 @@ public final class Parser {
 	static final Peg<Token> UCID = kind(Kind.UCID);
 	static final Peg<Token> LCID = kind(Kind.LCID);
 	static final Peg<Token> DIGITS = kind(Kind.DIGITS);
+
+	static final Peg<Token> BLACK = kind(Kind::isBlack);
 
 	/* 型注釈
 	 * <tyVar>      ::= <lcid>
@@ -310,12 +323,15 @@ public final class Parser {
 	 *
 	 * <caseExp>    ::= case <exp> of (<pattern> -> <exp>)+
 	 *
+	 * <errorExp>   ::= <panicBlockPiece>+
+	 *
 	 * <exp>        ::= <varExp>
 	 *                | <appExp>
 	 *                | <lambdaExp>
 	 *                | <letExp>
 	 *                | <ifExp>
 	 *                | <caseExp>
+	 *                | <errorExp>
 	 */
 	static final Peg<Exp> exp_ = lazy(() -> exp());
 
@@ -355,12 +371,39 @@ public final class Parser {
 			CASE, exp_, OF, blockPlus(caseBranch),
 			(s, c, _, cases) -> new Exp.Case(c, cases, locRange(s, cases)));
 
+	static Peg<Seq<Token>> panicBlockPiece() {
+		Peg<Seq<Token>> blacks = plus(BLACK);  // plus for speedup
+
+		Peg<Seq<Token>> sament =
+				SAMENT.map(Seq::of);
+
+		Peg<Seq<Token>> nestedBlock =
+				sequence(
+						ENDENT,
+						SAMENT,
+						plus(lazy(Parser::panicBlockPiece)).map(Parser::flatten),
+						DEDENT,
+						(e, s, p, d) -> Seq.concat(Seq.of(e, s), p, Seq.of(d)));
+
+		return choice(
+				blacks,
+				sament,
+				nestedBlock);
+	}
+
+	static final Peg<Exp> errExp =
+			plus(panicBlockPiece()).map(tss -> {
+				Seq<Token> tokens = flatten(tss);
+				return new Exp.Err(tokens, locRange(tokens.head(), tokens.last()));
+			});
+
 	static final Peg<Exp> exp = choice(
 			appExp,
 			lambdaExp,
 			letExp,
 			ifExp,
-			caseExp);
+			caseExp,
+			errExp);
 
 	private static Peg<Exp> exp() {
 		return exp;

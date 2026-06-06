@@ -6,23 +6,25 @@ import java.util.stream.Stream;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
-public final class Token implements LocationHolder {
+public final class Token implements PrettyPrintable, LocationHolder {
 	private final Source info;
 	public final Kind kind;
 	public final int start;
 	public final int end;
 
 	public enum Kind {
-		UCID(""),
-		LCID(""),
-		DIGITS(""),
-
 		ENDENT(""),
 		DEDENT(""),
 		SAMENT(""),  // no indentation change
 
 		ILL(""),
+
+		UCID(""),
+		LCID(""),
+		DIGITS(""),
 
 		ARROW     ("->"),
 		BAR       ("|"),
@@ -45,6 +47,13 @@ public final class Token implements LocationHolder {
 		THEN("then"),
 		ELSE("else"),
 		;
+
+		public boolean isBlack() {
+			return switch(this) {
+			case ENDENT, DEDENT, SAMENT -> false;
+			default -> true;
+			};
+		}
 
 		private static final Map<Character, Kind> punctuatorLookup =
 				Stream.of(
@@ -120,9 +129,8 @@ public final class Token implements LocationHolder {
 		return new Location(info, start, end);
 	}
 
-	// TODO 試したら消してよい
 	@Override
-	public String toString() {
-		return kind + ": \"" + str() + "\" " + loc();
+	public void mkString(PrettyPrinter pp) {
+		pp.append(str());
 	}
 }
