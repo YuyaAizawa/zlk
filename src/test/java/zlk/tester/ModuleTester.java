@@ -14,6 +14,8 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import zlk.ast.Decl;
+import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
@@ -34,7 +36,9 @@ import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.util.Result;
+import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public class ModuleTester {
 
@@ -61,11 +65,12 @@ public class ModuleTester {
 
 	// CompileLevelに応じて用意するもの
 	private Module ast = null;
+	private Seq<Exp.Err> parseErrors = null;
 	private IcModule module = null;
 	private Constraint cint = null;
 	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
-	private Seq<PcError> pcErrors = null;
+	private Seq<PcError> patternErrors = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
@@ -76,9 +81,14 @@ public class ModuleTester {
 
 		Tokenized tokens = new zlk.parser.Lexer(TARGET_FILE_NAME, this.src).lex();
 		this.ast = zlk.parser.Parser.parse(tokens);
+		this.parseErrors = collectParseErrors(ast);
 
 		if(this.compileLevel == CompileLevel.PARSE) {
 			return;
+		}
+		if(!parseErrors.isEmpty()) {
+			throw new IllegalStateException("parse errors in line "
+					+ parseErrors.map(exp -> exp.loc().startLine()).join(", "));
 		}
 
 		this.module = new NameEvaluator(ast).eval();
@@ -105,7 +115,7 @@ public class ModuleTester {
 			return;
 		}
 
-		this.pcErrors = PatternChecker.check(module);
+		this.patternErrors = PatternChecker.check(module);
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
 		}
@@ -123,6 +133,10 @@ public class ModuleTester {
 			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
 			addClass(clz.name, clz.bytecode);
 		});
+	}
+
+	public Module getAst() {
+		return ast;
 	}
 
 	public Constraint getConstraint() {
@@ -146,8 +160,16 @@ public class ModuleTester {
 		return module;
 	}
 
-	public Seq<PcError> getPcErrors() {
-		return pcErrors;
+	// 当面は行数だけ使うので使わない
+	public Seq<Exp.Err> getParseErrors() {
+		return parseErrors;
+	}
+	public IntSeq getParseErrorStartLines() {
+		return parseErrors.mapToInt(err -> err.loc().startLine() - 1);  // module Mainの分を引く
+	}
+
+	public Seq<PcError> getPatternErrors() {
+		return patternErrors;
 	}
 
 	private TypeTester toTypeTester(Type ty) {
@@ -184,6 +206,20 @@ public class ModuleTester {
 
 		ClassReader cr = new ClassReader(classBytes);
 		cr.accept(tcv, 0);
+	}
+
+	private static Seq<Exp.Err> collectParseErrors(Module module) {
+		SeqBuffer<Exp.Err> errors = new SeqBuffer<>();
+		for(Decl decl : module.decls()) {
+			if(decl instanceof Decl.ValDecl valDecl) {
+				valDecl.body().walk(exp -> {
+					if(exp instanceof Exp.Err err) {
+						errors.add(err);
+					}
+				});
+			}
+		}
+		return errors.toSeq();
 	}
 }
 

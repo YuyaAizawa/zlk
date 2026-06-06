@@ -24,7 +24,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertNoErrors(errors);
 	}
@@ -38,7 +38,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertEquals(1, errors.size());
 		PcError.Incomplete incomplete = (Incomplete) errors.head();
@@ -58,7 +58,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertEquals(1, errors.size());
 		assertTrue(errors.head() instanceof PcError.Redundant);
@@ -77,7 +77,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertEquals(1, errors.size());
 		PcError.Incomplete incomplete = (Incomplete) errors.head();
@@ -104,7 +104,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertNoErrors(errors);
 	}
@@ -124,7 +124,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertEquals(1, errors.size());
 		assertTrue(errors.head() instanceof PcError.Redundant);
@@ -145,7 +145,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertNoErrors(errors);
 	}
@@ -164,7 +164,7 @@ public class PatternMatchTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
-		Seq<PcError> errors = module.getPcErrors();
+		Seq<PcError> errors = module.getPatternErrors();
 
 		assertEquals(1, errors.size());
 		PcError.Incomplete incomplete = (Incomplete) errors.head();

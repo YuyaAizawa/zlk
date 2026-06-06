@@ -11,6 +11,7 @@ import zlk.ast.Exp;
 import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
 import zlk.ast.Exp.Cnst;
+import zlk.ast.Exp.Err;
 import zlk.ast.Exp.If;
 import zlk.ast.Exp.Lamb;
 import zlk.ast.Exp.Let;
@@ -249,6 +250,9 @@ public final class NameEvaluator {
 					eval(exp_, scope),
 					branches.mapIndexed((i, branch) -> eval(branch, i, scope)),
 					loc);
+
+		case Err _ ->
+			throw new IllegalArgumentException();
 		};
 	}
 
