@@ -32,6 +32,7 @@ import zlk.util.collection.SeqBuffer;
  *
  * <h2>文法</h2>
  * ※空白文字の記述を決めかねているためその点正確でない
+ * ※panicから始まる非終端記号はパースエラー用
  * <pre>{@code
  * <h3>コンパイル単位</h3>
  * <module>     ::= module <ucid> <topDecl>*
@@ -96,7 +97,7 @@ public final class Parser {
 			todo("error");
 		}
 		if(src.hasNext()) {
-			System.out.println(src.restSource());
+			System.err.println(src.restSource());
 			todo("error");
 		}
 		return result;
@@ -118,17 +119,26 @@ public final class Parser {
 
 	// static fieldを上から初期化する都合で補助関数が最上部，全体のパーサは最下部にある
 
+	static <T> Peg<T> block(Peg<? extends T> p) {
+		return sequence(
+				ENDENT,
+				SAMENT,
+				p,
+				DEDENT,
+				(_, _, body, _) -> body);
+	}
+
 	/**
 	 * 与えられたPegのExpをインデントブロックで囲んだものを受理するPegを返す
 	 * @param p
 	 * @return
 	 */
-	static Peg<Exp> block(Peg<Exp> p) {
-		return sequence(ENDENT, SAMENT, p, DEDENT, (_, _, r, _) -> r);
+	static Peg<Exp> blockExp(Peg<? extends Exp> p) {
+		return block(choice(p, lazy(() -> panicStmtExp())));
 	}
 
-	static Peg<Exp> mayBlock(Peg<Exp> p) {
-		return choice(block(p), p);
+	static Peg<Exp> mayBlockExp(Peg<? extends Exp> p) {
+		return choice(blockExp(p), p);
 	}
 
 	/**
@@ -218,7 +228,10 @@ public final class Parser {
 	static final Peg<Token> LCID = kind(Kind.LCID);
 	static final Peg<Token> DIGITS = kind(Kind.DIGITS);
 
+	static final Peg<Token> ILL = kind(Kind.ILL);
+
 	static final Peg<Token> BLACK = kind(Kind::isBlack);
+	static final Peg<Token> WORD = kind(Kind::isWord);
 
 	/* 型注釈
 	 * <tyVar>      ::= <lcid>
@@ -306,37 +319,44 @@ public final class Parser {
 	}
 
 	/* 式
-	 * <literal>    ::= <digits>
+	 * <literal>        ::= <digits>
 	 *
-	 * <aExp>       ::= <literal>
-	 *                | <lcid>
-	 *                | <ctorHead>
-	 *                | ( <exp> )
+	 * <aExp>           ::= <literal>
+	 *                    | <lcid>
+	 *                    | <ctorHead>
+	 *                    | ( <exp> )
+	 *                    | <panicAExp>
 	 *
-	 * <appExp>     ::= <aExp>+
+	 * <appExp>         ::= <aExp>+
 	 *
-	 * <lambdaExp>  ::= \ <pattern>+ -> <exp>
+	 * <lambdaExp>      ::= \ <pattern>+ -> <exp>
 	 *
-	 * <letExp>     ::= let <funDecl>+ in <exp>
+	 * <valDeclOrPanic> ::= <valDecl>
+	 *                    | <panicValDecl>
 	 *
-	 * <ifExp>      ::= if <exp> then <exp> else <exp>
+	 * <letExp>         ::= let <valDecl>+ in <exp>
 	 *
-	 * <caseExp>    ::= case <exp> of (<pattern> -> <exp>)+
+	 * <ifExp>          ::= if <exp> then <exp> else <exp>
 	 *
-	 * <errorExp>   ::= <panicBlockPiece>+
+	 * <caseExp>        ::= case <exp> of (<pattern> -> <exp>)+
 	 *
-	 * <exp>        ::= <varExp>
-	 *                | <appExp>
-	 *                | <lambdaExp>
-	 *                | <letExp>
-	 *                | <ifExp>
-	 *                | <caseExp>
-	 *                | <errorExp>
+	 * <errorExp>       ::= <panicBlockPiece>+
+	 *
+	 * <exp>            ::= <varExp>
+	 *                    | <appExp>
+	 *                    | <lambdaExp>
+	 *                    | <letExp>
+	 *                    | <ifExp>
+	 *                    | <caseExp>
+	 *                    | <panicExp>
 	 */
 	static final Peg<Exp> exp_ = lazy(() -> exp());
 
 	static final Peg<Exp.Cnst> literal =
 			DIGITS.map(t -> new Exp.Cnst(Integer.parseInt(t.str()), t.loc()));
+
+	static final Peg<Exp> panicAExp =  // TODO: 確実に落とせるのはILL位で他は個別の式構文ごとに対応
+			ILL.map(t -> new Exp.Err(t.loc()));
 
 	static final Peg<Exp> aExp = choice(
 			literal,
@@ -344,17 +364,18 @@ public final class Parser {
 			ctorHead.map(t -> new Exp.Var(t.str(), t.loc())),
 			sequence(
 					LPAREN, exp_, RPAREN,
-					(s, exp, e) -> exp.updateLoc(locRange(s, e))));
+					(s, exp, e) -> exp.updateLoc(locRange(s, e))),
+			panicAExp);
 
 	static final Peg<Exp> appExp =
 			plus(aExp).map(l -> l.size() == 1 ? l.head() : new Exp.App(l, locRange(l, l)));
 
 	static final Peg<Exp.Lamb> lambdaExp = sequence(
-			LAMBDA, plus(pattern), ARROW, mayBlock(exp_),
+			LAMBDA, plus(pattern), ARROW, mayBlockExp(exp_),
 			(s, pat, _, e) -> new Exp.Lamb(pat, e, locRange(s, e)));
 
 	static final Peg<Exp.Let> letExp = sequence(
-			LET, blockPlus(lazy(() -> valDecl())), SAMENT, IN, mayBlock(exp_),
+			LET, blockPlus(lazy(() -> valDeclOrPanic())), SAMENT, IN, mayBlockExp(exp_),
 			(s, decls, _, _, e) -> new Exp.Let(decls, e, locRange(s, e)));
 
 	static final Peg<Exp.If> ifExp = choice(
@@ -364,46 +385,47 @@ public final class Parser {
 					(s, c, _, e1, _, _, e2) -> new Exp.If(c, e1, e2, locRange(s, e2))));
 
 	static final Peg<CaseBranch> caseBranch = sequence(
-			pattern, ARROW, mayBlock(exp_),
+			pattern, ARROW, mayBlockExp(exp_),
 			(pat, _, e) -> new CaseBranch(pat, e, locRange(pat, e)));
 
 	static final Peg<Exp.Case> caseExp = sequence(
 			CASE, exp_, OF, blockPlus(caseBranch),
 			(s, c, _, cases) -> new Exp.Case(c, cases, locRange(s, cases)));
 
-	static Peg<Seq<Token>> panicBlockPiece() {
-		Peg<Seq<Token>> blacks = plus(BLACK);  // plus for speedup
+	record Panic(Location loc) implements LocationHolder {}
 
-		Peg<Seq<Token>> sament =
-				SAMENT.map(Seq::of);
+	static final Peg<Panic> panicLine =
+			plus(BLACK)
+			.map(tokens -> new Panic(locRange(tokens.head(), tokens.last())));
 
-		Peg<Seq<Token>> nestedBlock =
-				sequence(
-						ENDENT,
-						SAMENT,
-						plus(lazy(Parser::panicBlockPiece)).map(Parser::flatten),
-						DEDENT,
-						(e, s, p, d) -> Seq.concat(Seq.of(e, s), p, Seq.of(d)));
+	static final Peg<Panic> panicStmt = sequence(
+			panicLine,
+			optional(lazy(() -> panicBlock())),
+			(line, maybeBlock) -> new Panic(locRange(line, maybeBlock.orElse(line)))
+	);
 
-		return choice(
-				blacks,
-				sament,
-				nestedBlock);
+	static final Peg<Panic> panicBlock =
+			block(sequence(
+					panicStmt,
+					star(sequence(SAMENT, panicStmt, (_, stmt) -> stmt)),
+					(hd, tl) -> new Panic(locRange(hd, tl)
+			)));
+	private static Peg<Panic> panicBlock() {
+		return panicBlock;
 	}
 
-	static final Peg<Exp> errExp =
-			plus(panicBlockPiece()).map(tss -> {
-				Seq<Token> tokens = flatten(tss);
-				return new Exp.Err(tokens, locRange(tokens.head(), tokens.last()));
-			});
+	static final Peg<Exp.Err> panicStmtExp =
+			panicStmt.map(p -> new Exp.Err(p.loc));
+	private static Peg<Exp.Err> panicStmtExp() {
+		return panicStmtExp;
+	}
 
 	static final Peg<Exp> exp = choice(
 			appExp,
 			lambdaExp,
 			letExp,
 			ifExp,
-			caseExp,
-			errExp);
+			caseExp);
 
 	private static Peg<Exp> exp() {
 		return exp;
@@ -423,6 +445,8 @@ public final class Parser {
 	 *
 	 * <topDecl>    ::= <tyDecl>
 	 *                | <valDecl>
+	 *                | <panicTyDecl>
+	 *                | <panicValDecl>
 	 */
 	static final Peg<Constructor> ctorImpl = sequence(
 			UCID, star(ctorArg),
@@ -442,21 +466,44 @@ public final class Parser {
 			LCID, COLON, type, SAMENT,
 			(name, _, ty, _) -> new NameAndTyAnno(name.str(), ty, locRange(name, ty)));
 
-	static final Peg<Decl.ValDecl> valDecl = sequence(
-			optional(tyAnno), LCID, star(pattern), EQUAL, mayBlock(exp),
+	static final Peg<Decl.Value> valDecl = sequence(
+			optional(tyAnno), LCID, star(pattern), EQUAL, mayBlockExp(exp),
 			(maybe, name, args, _, e) -> {
-				if(maybe.isEmpty()) {
-					return new Decl.ValDecl(name.str(), Optional.empty(), args, e, locRange(name, e));
+				if(maybe.isPresent()) {
+					NameAndTyAnno anno = maybe.get();
+					if(!anno.name.equals(name.str())) {
+						return new Decl.ValErr(locRange(anno, e));
+					}
+					return new Decl.ValDecl(name.str(), Optional.of(anno.ty), args, e, locRange(anno, e));
 				}
-				NameAndTyAnno anno = maybe.get();
-				if(!anno.name.equals(name.str())) {
-					todo("type annotaion name missmatch");
-				}
-				return new Decl.ValDecl(name.str(), Optional.of(anno.ty), args, e, locRange(anno, e));
+				return new Decl.ValDecl(name.str(), Optional.empty(), args, e, locRange(name, e));
 			});
 
-	private static Peg<Decl.ValDecl> valDecl() {
-		return valDecl;
+	private static final Peg<Pattern> patternOrWord =
+			choice(
+					pattern,
+					WORD.map(token -> new Pattern.Err(token, token.loc()))
+			);
+	// TODO: tyAnnoエラーの復帰
+	static final Peg<Decl.ValErr> panicValDecl = sequence(
+			optional(tyAnno), LCID, star(patternOrWord), EQUAL, choice(panicStmt, panicBlock),
+			(tyAnno, name, _, _, body) -> new Decl.ValErr(locRange(tyAnno.<LocationHolder>map(x -> x).orElse(name), body)));
+
+	static final Peg<Decl.TypeErr> panicTyDecl = sequence(
+			TYPE,
+			star(BLACK),
+			Peg.optional(blockPlus(BLACK)).map(plus -> plus.orElse(Seq.of())),
+			(t, b1, b2) -> {
+				Seq<Token> tokens = Seq.concat(Seq.of(t), b1, b2);
+				return new Decl.TypeErr(locRange(tokens.head(), tokens.last()));
+			});
+
+	static final Peg<Decl.Value> valDeclOrPanic = choice(
+			valDecl,
+			panicValDecl);
+
+	private static Peg<Decl.Value> valDeclOrPanic() {
+		return valDeclOrPanic;
 	}
 
 	// コンパイル単位
@@ -464,7 +511,9 @@ public final class Parser {
 
 	static final Peg<Decl> topDecl = choice(
 			tyDecl,
-			valDecl);
+			valDecl,
+			panicTyDecl,
+			panicValDecl);
 
 	static final Peg<Module> module = sequence(
 			sequence(SAMENT, MODULE, UCID, (_, _, name) -> name.str()),
