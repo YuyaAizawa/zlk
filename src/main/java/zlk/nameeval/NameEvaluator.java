@@ -5,8 +5,11 @@ import java.util.Optional;
 import zlk.ast.AnType;
 import zlk.ast.CaseBranch;
 import zlk.ast.Constructor;
+import zlk.ast.Decl;
 import zlk.ast.Decl.TypeDecl;
+import zlk.ast.Decl.TypeErr;
 import zlk.ast.Decl.ValDecl;
+import zlk.ast.Decl.ValErr;
 import zlk.ast.Exp;
 import zlk.ast.Exp.App;
 import zlk.ast.Exp.Case;
@@ -129,7 +132,11 @@ public final class NameEvaluator {
 					// TODO コンパイルメッセージに追加
 					throw new RuntimeException(e);
 				}
-			}}
+			}
+			case ValErr _, TypeErr _ -> {
+				throw new IllegalStateException();
+			}
+			}
 		});
 
 		SeqBuffer<IcTypeDecl> icTypes = new SeqBuffer<>();
@@ -139,6 +146,7 @@ public final class NameEvaluator {
 			switch(def) {
 			case TypeDecl ty -> icTypes.add(eval(ty));
 			case ValDecl fun -> icDecls.add(eval(fun));
+			case ValErr _, TypeErr _ -> {}
 			}
 		});
 
@@ -226,11 +234,15 @@ public final class NameEvaluator {
 					eval(exp2, scope),
 					loc);
 
-		case Let(Seq<ValDecl> decls, Exp body, Location loc) -> {
+		case Let(Seq<Decl.Value> decls, Exp body, Location loc) -> {
 			if(decls.isEmpty()) {
 				yield eval(body, scope);
 			} else {
-				for(ValDecl decl: decls) {
+				Seq<ValDecl> validDecls = decls.map(decl -> switch(decl) {
+				case ValDecl valDecl -> valDecl;
+				case ValErr _ -> throw new IllegalArgumentException();
+				});
+				for(ValDecl decl: validDecls) {
 					try {
 						env.register(decl.name());
 					} catch (DuplicatedNameException e) {
@@ -239,7 +251,7 @@ public final class NameEvaluator {
 					}
 				}
 				yield new IcLet(
-						decls.map(decl -> eval(decl)),
+						validDecls.map(decl -> eval(decl)),
 						eval(body, scope),
 						loc);
 			}
@@ -285,6 +297,9 @@ public final class NameEvaluator {
 			Seq<Type> argTys = ctors.get(ctor).flatten();
 			Seq<Arg> dectorArgs = args.mapIndexed((i, arg) -> new IcPattern.Arg(eval(arg), argTys.at(i)));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
+		}
+		case Pattern.Err _: {
+			throw new IllegalArgumentException();
 		}
 		}
 	}

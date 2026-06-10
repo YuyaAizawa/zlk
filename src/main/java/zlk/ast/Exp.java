@@ -6,7 +6,6 @@ import zlk.ast.Decl.ValDecl;
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
-import zlk.parser.Token;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -35,9 +34,9 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 		}
 	}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
-	record Let(Seq<ValDecl> decls, Exp body, Location loc) implements Exp {}
+	record Let(Seq<Decl.Value> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, Seq<CaseBranch> branches, Location loc) implements Exp {}
-	record Err(Seq<Token> tokens, Location loc) implements Exp {}
+	record Err(Location loc) implements Exp {}
 
 	static boolean isIf(Exp exp) {
 		return exp instanceof If;
@@ -54,9 +53,9 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 		case Lamb(Seq<Pattern> args, Exp body, Location _) -> new Lamb(args, body, loc);
 		case App(Seq<Exp> exps, Location _) -> new App(exps, loc);
 		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> new If(cond, thenExp, elseExp, loc);
-		case Let(Seq<ValDecl> decls, Exp body, Location _) -> new Let(decls, body, loc);
+		case Let(Seq<Decl.Value> decls, Exp body, Location _) -> new Let(decls, body, loc);
 		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
-		case Err(Seq<Token> tokens, Location _) -> new Err(tokens, loc);
+		case Err(Location _) -> new Err(loc);
 		};
 	}
 
@@ -79,8 +78,13 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 			thenExp.walk(action);
 			elseExp.walk(action);
 		}
-		case Let(Seq<ValDecl> decls, Exp body, Location _) -> {
-			decls.forEach(decl -> decl.body().walk(action));
+		case Let(Seq<Decl.Value> decls, Exp body, Location _) -> {
+			decls.forEach(decl -> {
+				switch(decl) {
+				case ValDecl valDecl -> valDecl.body().walk(action);
+				case Decl.ValErr _ -> {}
+				}
+			});
 			body.walk(action);
 		}
 		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> {
@@ -146,11 +150,11 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 				pp.inc().append(exp2).dec();
 			}
 		}
-		case Let(Seq<ValDecl> decls, Exp body, _) -> {
+		case Let(Seq<Decl.Value> decls, Exp body, _) -> {
 			pp.append("let").endl();
 
 			pp.inc();
-			for(ValDecl decl : decls) {
+			for(Decl.Value decl : decls) {
 				pp.append(decl).endl();
 			}
 			pp.dec();
@@ -171,8 +175,8 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 				branches.forEach(branch -> pp.endl().append(branch));
 			});
 		}
-		case Err(Seq<Token> tokens, _) -> {
-			PrettyPrintable.join(tokens, " ");
+		case Err(Location loc) -> {
+			pp.append("<parse-error ").append(loc).append(">");
 		}
 		}
 	}

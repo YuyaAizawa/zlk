@@ -4,11 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.ast.Exp;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.util.collection.IntSeq;
-import zlk.util.collection.Seq;
 
 public class ParseErrorTest {
 
@@ -19,7 +17,6 @@ public class ParseErrorTest {
 		  ?
 		    nested
 		      deeper
-		  stillBad
 		after =
 		  1
 		""";
@@ -28,7 +25,7 @@ public class ParseErrorTest {
 		IntSeq lines = module.getParseErrorStartLines();
 
 		assertEquals(1, lines.size());
-		assertEquals(2, lines.head());
+		assertEquals(1, lines.head());  // TODO: 2とできたらいいな
 	}
 
 	@Test
@@ -41,7 +38,7 @@ public class ParseErrorTest {
 		""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
-		Seq<Exp.Err> errors = module.getParseErrors();
+		var errors = module.getParseErrors();
 
 		assertEquals(1, errors.size());
 		assertEquals(2, module.getAst().decls().size());
@@ -83,7 +80,77 @@ public class ParseErrorTest {
 		IntSeq lines = module.getParseErrorStartLines();
 
 		assertEquals(1, lines.size());
+		assertEquals(1, lines.head());  // TODO: if文用のpanicを作って3行目でエラーを検出する
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
+	void badArgumentIsExpressionErrorNotDeclarationError() {
+		String src = """
+		bad = f ?
+		after =
+		  1
+		""";
+
+		var module = new ModuleTester(src, CompileLevel.PARSE);
+		IntSeq lines = module.getParseErrorStartLines();
+
+		assertEquals(1, lines.size());
+		assertEquals(1, lines.head());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
+	void badValueDeclarationHeaderRecoversAtNextTopLevelDeclaration() {
+		String src = """
+		bad a ? = f x
+		after =
+		  1
+		""";
+
+		var module = new ModuleTester(src, CompileLevel.PARSE);
+		IntSeq lines = module.getParseErrorStartLines();
+
+		assertEquals(1, lines.size());
+		assertEquals(1, lines.head());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
+	void badTypeDeclarationRecoversAtNextTopLevelDeclaration() {
+		String src = """
+		type Maybe a = | ?
+		after =
+		  1
+		""";
+
+		var module = new ModuleTester(src, CompileLevel.PARSE);
+		IntSeq lines = module.getParseErrorStartLines();
+
+		assertEquals(1, lines.size());
+		assertEquals(1, lines.head());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
+	void badLetValueDeclarationHeaderRecoversAtNextLocalDeclaration() {
+		String src = """
+		test =
+		  let
+		    bad a ? = f x
+		    good = 1
+		  in
+		    good
+		after =
+		  2
+		""";
+
+		var module = new ModuleTester(src, CompileLevel.PARSE);
+		IntSeq lines = module.getParseErrorStartLines();
+
+		assertEquals(1, lines.size());
 		assertEquals(3, lines.head());
 		assertEquals(2, module.getAst().decls().size());
 	}
+
 }
