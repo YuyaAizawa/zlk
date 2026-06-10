@@ -26,6 +26,7 @@ public final class Token implements PrettyPrintable, LocationHolder {
 		LCID(""),
 		DIGITS(""),
 
+		// punctuators
 		ARROW     ("->"),
 		BAR       ("|"),
 		COLON     (":"),
@@ -35,6 +36,7 @@ public final class Token implements PrettyPrintable, LocationHolder {
 		RPAREN    (")"),
 		WILDCARD  ("_"),
 
+		// keywords
 		TRUE("true"),
 		FALSE("false"),
 		MODULE("module"),
@@ -55,6 +57,23 @@ public final class Token implements PrettyPrintable, LocationHolder {
 			};
 		}
 
+		public boolean isPunctuators() {
+			return switch(this) {
+			case ARROW    -> true;
+			case BAR      -> true;
+			case COLON    -> true;
+			case EQUAL    -> true;
+			case LAMBDA   -> true;
+			case LPAREN   -> true;
+			case RPAREN   -> true;
+			default -> false;
+			};
+		}
+
+		public boolean isWord() {
+			return isBlack() && !isPunctuators();
+		}
+
 		private static final Map<Character, Kind> punctuatorLookup =
 				Stream.of(
 						ARROW,
@@ -64,7 +83,7 @@ public final class Token implements PrettyPrintable, LocationHolder {
 						LAMBDA,
 						LPAREN,
 						RPAREN,
-						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止
+						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止 正確にはpunctuatorではない
 				.collect(Collectors.toMap(
 						k -> k.str().charAt(0),  // 1文字目が被ったら実行時例外
 						k -> k));
