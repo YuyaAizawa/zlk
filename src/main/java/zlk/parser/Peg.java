@@ -3,10 +3,11 @@ package zlk.parser;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 /**
  * ソースからオブジェクトを読み取る解析表現文法パーサ.
@@ -69,6 +70,18 @@ public abstract class Peg<T> {
 			@Override
 			public Token parse(Tokenized src) {
 				if(src.hasNext() && src.peek().kind == kind) {
+					return src.next();
+				}
+				return null;
+			}
+		};
+	}
+
+	public static Peg<Token> kind(Predicate<? super Token.Kind> predicate) {
+		return new Peg<>() {
+			@Override
+			public Token parse(Tokenized src) {
+				if(src.hasNext() && predicate.test(src.peek().kind)) {
 					return src.next();
 				}
 				return null;
@@ -153,6 +166,18 @@ public abstract class Peg<T> {
 			Peg<? extends T> s5
 	) {
 		return choiceBase(s1, s2, s3, s4, s5);
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <T> Peg<T> choice(
+			Peg<? extends T> s1,
+			Peg<? extends T> s2,
+			Peg<? extends T> s3,
+			Peg<? extends T> s4,
+			Peg<? extends T> s5,
+			Peg<? extends T> s6
+	) {
+		return choiceBase(s1, s2, s3, s4, s5, s6);
 	}
 
 	public static <T> Peg<Seq<T>> star(Peg<T> p) {

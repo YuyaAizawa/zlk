@@ -1,13 +1,8 @@
 package zlk.ast;
 
+import java.util.function.Consumer;
+
 import zlk.ast.Decl.ValDecl;
-import zlk.ast.Exp.App;
-import zlk.ast.Exp.Case;
-import zlk.ast.Exp.Cnst;
-import zlk.ast.Exp.If;
-import zlk.ast.Exp.Lamb;
-import zlk.ast.Exp.Let;
-import zlk.ast.Exp.Var;
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
@@ -18,8 +13,7 @@ import zlk.util.pp.PrettyPrinter;
 /**
  * パースした構文木の式を表す
  */
-public sealed interface Exp extends PrettyPrintable, LocationHolder
-permits Cnst, Var, Lamb, App, If, Let, Case {
+public sealed interface Exp extends PrettyPrintable, LocationHolder {
 	record Cnst(ConstValue value, Location loc) implements Exp {
 			public Cnst(boolean value, Location loc) {
 				this(value ? ConstValue.TRUE : ConstValue.FALSE, loc);
@@ -40,8 +34,9 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		}
 	}
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
-	record Let(Seq<ValDecl> decls, Exp body, Location loc) implements Exp {}
+	record Let(Seq<Decl.Value> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, Seq<CaseBranch> branches, Location loc) implements Exp {}
+	record Err(Location loc) implements Exp {}
 
 	static boolean isIf(Exp exp) {
 		return exp instanceof If;
@@ -58,9 +53,45 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 		case Lamb(Seq<Pattern> args, Exp body, Location _) -> new Lamb(args, body, loc);
 		case App(Seq<Exp> exps, Location _) -> new App(exps, loc);
 		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> new If(cond, thenExp, elseExp, loc);
-		case Let(Seq<ValDecl> decls, Exp body, Location _) -> new Let(decls, body, loc);
+		case Let(Seq<Decl.Value> decls, Exp body, Location _) -> new Let(decls, body, loc);
 		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
+		case Err(Location _) -> new Err(loc);
 		};
+	}
+
+	/**
+	 * 式を行きがけ順に走査する
+	 * @param action 各 Exp に対して実行する処理
+	 */
+	default void walk(Consumer<? super Exp> action) {
+		action.accept(this);
+		switch(this) {
+		case Cnst _, Var _, Err _ -> {}
+		case Lamb(Seq<Pattern> _, Exp body, Location _) -> {
+			body.walk(action);
+		}
+		case App(Seq<Exp> exps, Location _) -> {
+			exps.forEach(exp -> exp.walk(action));
+		}
+		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> {
+			cond.walk(action);
+			thenExp.walk(action);
+			elseExp.walk(action);
+		}
+		case Let(Seq<Decl.Value> decls, Exp body, Location _) -> {
+			decls.forEach(decl -> {
+				switch(decl) {
+				case ValDecl valDecl -> valDecl.body().walk(action);
+				case Decl.ValErr _ -> {}
+				}
+			});
+			body.walk(action);
+		}
+		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> {
+			exp.walk(action);
+			branches.forEach(branch -> branch.body().walk(action));
+		}
+		}
 	}
 
 	/**
@@ -88,7 +119,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 			Exp hd = exps.head();
 			switch(hd) {
 			case Cnst _, Var _, App _ -> pp.append(hd);
-			case Lamb _, If _, Let _, Case _ -> { pp
+			case Lamb _, If _, Let _, Case _, Err _ -> { pp
 						.append("(").endl()
 						.inc().append(hd).endl()
 						.dec().append(")");
@@ -100,7 +131,7 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 				switch(exp) {
 				case Cnst _, Var _ -> pp.append(exp);
 				case App _ -> pp.append("(").append(exp).append(")");
-				case Lamb _, If _, Let _, Case _ -> { pp
+				case Lamb _, If _, Let _, Case _, Err _ -> { pp
 					.append("(").endl()
 					.inc().append(exp).endl()
 					.dec().append(")");
@@ -119,11 +150,11 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 				pp.inc().append(exp2).dec();
 			}
 		}
-		case Let(Seq<ValDecl> decls, Exp body, _) -> {
+		case Let(Seq<Decl.Value> decls, Exp body, _) -> {
 			pp.append("let").endl();
 
 			pp.inc();
-			for(ValDecl decl : decls) {
+			for(Decl.Value decl : decls) {
 				pp.append(decl).endl();
 			}
 			pp.dec();
@@ -143,6 +174,9 @@ permits Cnst, Var, Lamb, App, If, Let, Case {
 			pp.indent(() -> {
 				branches.forEach(branch -> pp.endl().append(branch));
 			});
+		}
+		case Err(Location loc) -> {
+			pp.append("<parse-error ").append(loc).append(">");
 		}
 		}
 	}

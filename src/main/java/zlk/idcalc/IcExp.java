@@ -91,12 +91,13 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 	}
 
 	/**
-	 * 式を行きがけ順に捜査する
-	 * @param action
+	 * 式を行きがけ順に走査する
+	 * @param action 各 IcExp に対して実行する処理
 	 */
 	default void walk(Consumer<? super IcExp> action) {
 		action.accept(this);
 		switch (this) {
+		case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _ -> {}
 		case IcLamb(Id _, Seq<IcPattern> _, IcExp body, Location _) ->
 			body.walk(action);
 		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
@@ -116,7 +117,6 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			target.walk(action);
 			branches.forEach(branch -> branch.body().walk(action));
 		}
-		default -> {}
 		}
 	}
 

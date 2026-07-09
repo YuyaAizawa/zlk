@@ -14,10 +14,13 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
+import zlk.ast.Decl;
+import zlk.ast.Exp;
 import zlk.ast.Module;
 import zlk.bytecodegen.BytecodeGenerator;
 import zlk.clcalc.CcModule;
 import zlk.clconv.ClosureConverter;
+import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -34,7 +37,9 @@ import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
 import zlk.util.Result;
+import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public class ModuleTester {
 
@@ -61,11 +66,12 @@ public class ModuleTester {
 
 	// CompileLevelに応じて用意するもの
 	private Module ast = null;
+	private Seq<LocationHolder> parseErrors = null;
 	private IcModule module = null;
 	private Constraint cint = null;
 	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
-	private Seq<PcError> pcErrors = null;
+	private Seq<PcError> patternErrors = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 
@@ -76,9 +82,14 @@ public class ModuleTester {
 
 		Tokenized tokens = new zlk.parser.Lexer(TARGET_FILE_NAME, this.src).lex();
 		this.ast = zlk.parser.Parser.parse(tokens);
+		this.parseErrors = collectParseErrors(ast);
 
 		if(this.compileLevel == CompileLevel.PARSE) {
 			return;
+		}
+		if(!parseErrors.isEmpty()) {
+			throw new IllegalStateException("parse errors in line "
+					+ parseErrors.map(exp -> exp.loc().startLine()).join(", "));
 		}
 
 		this.module = new NameEvaluator(ast).eval();
@@ -105,7 +116,7 @@ public class ModuleTester {
 			return;
 		}
 
-		this.pcErrors = PatternChecker.check(module);
+		this.patternErrors = PatternChecker.check(module);
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
 		}
@@ -123,6 +134,10 @@ public class ModuleTester {
 			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
 			addClass(clz.name, clz.bytecode);
 		});
+	}
+
+	public Module getAst() {
+		return ast;
 	}
 
 	public Constraint getConstraint() {
@@ -146,8 +161,16 @@ public class ModuleTester {
 		return module;
 	}
 
-	public Seq<PcError> getPcErrors() {
-		return pcErrors;
+	// 当面は行数だけ使うので使わない
+	public Seq<LocationHolder> getParseErrors() {
+		return parseErrors;
+	}
+	public IntSeq getParseErrorStartLines() {
+		return parseErrors.mapToInt(err -> err.loc().startLine() - 1);  // module Mainの分を引く
+	}
+
+	public Seq<PcError> getPatternErrors() {
+		return patternErrors;
 	}
 
 	private TypeTester toTypeTester(Type ty) {
@@ -184,6 +207,46 @@ public class ModuleTester {
 
 		ClassReader cr = new ClassReader(classBytes);
 		cr.accept(tcv, 0);
+	}
+
+	private static Seq<LocationHolder> collectParseErrors(Module module) {
+		SeqBuffer<LocationHolder> errors = new SeqBuffer<>();
+		for(Decl decl : module.decls()) {
+			switch(decl) {
+			case Decl.ValDecl valDecl -> collectParseErrors(valDecl.body(), errors);
+			case Decl.ValErr err -> errors.add(err);
+			case Decl.TypeErr err -> errors.add(err);
+			case Decl.TypeDecl _ -> {}
+			}
+		}
+		return errors.toSeq();
+	}
+
+	private static void collectParseErrors(Exp exp, SeqBuffer<LocationHolder> errors) {
+		switch(exp) {
+		case Exp.Cnst _, Exp.Var _ -> {}
+		case Exp.Err err -> errors.add(err);
+		case Exp.Lamb(_, Exp body, _) -> collectParseErrors(body, errors);
+		case Exp.App(Seq<Exp> exps, _) -> exps.forEach(e -> collectParseErrors(e, errors));
+		case Exp.If(Exp cond, Exp thenExp, Exp elseExp, _) -> {
+			collectParseErrors(cond, errors);
+			collectParseErrors(thenExp, errors);
+			collectParseErrors(elseExp, errors);
+		}
+		case Exp.Let(Seq<Decl.Value> decls, Exp body, _) -> {
+			decls.forEach(decl -> {
+				switch(decl) {
+				case Decl.ValDecl valDecl -> collectParseErrors(valDecl.body(), errors);
+				case Decl.ValErr err -> errors.add(err);
+				}
+			});
+			collectParseErrors(body, errors);
+		}
+		case Exp.Case(Exp scrutinee, Seq<zlk.ast.CaseBranch> branches, _) -> {
+			collectParseErrors(scrutinee, errors);
+			branches.forEach(branch -> collectParseErrors(branch.body(), errors));
+		}
+		}
 	}
 }
 

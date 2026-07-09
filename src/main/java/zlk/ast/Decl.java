@@ -2,8 +2,6 @@ package zlk.ast;
 
 import java.util.Optional;
 
-import zlk.ast.Decl.TypeDecl;
-import zlk.ast.Decl.ValDecl;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.util.collection.Seq;
@@ -11,9 +9,14 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Decl extends PrettyPrintable, LocationHolder
-permits ValDecl, TypeDecl {
-	record ValDecl(String name, Optional<AnType> anno, Seq<Pattern> args, Exp body, Location loc) implements Decl {}
-	record TypeDecl(String name, Seq<AnType.Var> vars, Seq<Constructor> ctors, Location loc) implements Decl {}
+permits Decl.Value, Decl.Type {
+	public sealed interface Value extends Decl permits ValDecl, ValErr {}
+	public sealed interface Type extends Decl permits TypeDecl, TypeErr {}
+
+	record ValDecl(String name, Optional<AnType> anno, Seq<Pattern> args, Exp body, Location loc) implements Value {}
+	record ValErr(Location loc) implements Value {}
+	record TypeDecl(String name, Seq<AnType.Var> vars, Seq<Constructor> ctors, Location loc) implements Type {}
+	record TypeErr(Location loc) implements Type {}
 
 	@Override
 	default void mkString(PrettyPrinter pp) {
@@ -29,6 +32,9 @@ permits ValDecl, TypeDecl {
 				pp.append(body);
 			});
 		}
+		case ValErr(Location loc) -> {
+			pp.append("<parse-error ").append(loc).append(">");
+		}
 		case TypeDecl(String name, Seq<AnType.Var> tyArgs, Seq<Constructor> ctors, _) -> {
 			pp.append("type ").append(name).append(" ");
 			tyArgs.forEach(arg -> pp.append(arg).append(" "));
@@ -40,6 +46,9 @@ permits ValDecl, TypeDecl {
 					ctors.forEach(ctor -> pp.endl().append("| ").append(ctor));
 				});
 			}
+		}
+		case TypeErr(Location loc) -> {
+			pp.append("<parse-error ").append(loc).append(">");
 		}
 		}
 	}
