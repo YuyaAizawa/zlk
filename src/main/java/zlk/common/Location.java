@@ -42,6 +42,20 @@ public final class Location implements PrettyPrintable {
 		return new Location(from.src, from.start, to.end);
 	}
 
+	public int startLine() {
+		if(this == NO_LOC) {
+			return -1;
+		}
+		return src.getLine(start);
+	}
+
+	public int endLine() {
+		if(this == NO_LOC) {
+			return -1;
+		}
+		return src.getLine(end);
+	}
+
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		if(this == NO_LOC) {
