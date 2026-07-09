@@ -6,24 +6,27 @@ import java.util.stream.Stream;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
 
-public final class Token implements LocationHolder {
+public final class Token implements PrettyPrintable, LocationHolder {
 	private final Source info;
 	public final Kind kind;
 	public final int start;
 	public final int end;
 
 	public enum Kind {
-		UCID(""),
-		LCID(""),
-		DIGITS(""),
-
 		ENDENT(""),
 		DEDENT(""),
 		SAMENT(""),  // no indentation change
 
 		ILL(""),
 
+		UCID(""),
+		LCID(""),
+		DIGITS(""),
+
+		// punctuators
 		ARROW     ("->"),
 		BAR       ("|"),
 		COLON     (":"),
@@ -33,6 +36,7 @@ public final class Token implements LocationHolder {
 		RPAREN    (")"),
 		WILDCARD  ("_"),
 
+		// keywords
 		TRUE("true"),
 		FALSE("false"),
 		MODULE("module"),
@@ -46,6 +50,30 @@ public final class Token implements LocationHolder {
 		ELSE("else"),
 		;
 
+		public boolean isBlack() {
+			return switch(this) {
+			case ENDENT, DEDENT, SAMENT -> false;
+			default -> true;
+			};
+		}
+
+		public boolean isPunctuators() {
+			return switch(this) {
+			case ARROW    -> true;
+			case BAR      -> true;
+			case COLON    -> true;
+			case EQUAL    -> true;
+			case LAMBDA   -> true;
+			case LPAREN   -> true;
+			case RPAREN   -> true;
+			default -> false;
+			};
+		}
+
+		public boolean isWord() {
+			return isBlack() && !isPunctuators();
+		}
+
 		private static final Map<Character, Kind> punctuatorLookup =
 				Stream.of(
 						ARROW,
@@ -55,7 +83,7 @@ public final class Token implements LocationHolder {
 						LAMBDA,
 						LPAREN,
 						RPAREN,
-						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止
+						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止 正確にはpunctuatorではない
 				.collect(Collectors.toMap(
 						k -> k.str().charAt(0),  // 1文字目が被ったら実行時例外
 						k -> k));
@@ -120,9 +148,8 @@ public final class Token implements LocationHolder {
 		return new Location(info, start, end);
 	}
 
-	// TODO 試したら消してよい
 	@Override
-	public String toString() {
-		return kind + ": \"" + str() + "\" " + loc();
+	public void mkString(PrettyPrinter pp) {
+		pp.append(str());
 	}
 }
