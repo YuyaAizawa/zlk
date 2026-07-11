@@ -1,6 +1,7 @@
 # binary
 /bin
 *.class
+zlk.zip
 
 # Eclipse
 .classpath
