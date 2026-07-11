@@ -51,6 +51,7 @@ public final class NameEvaluator {
 
 	private final Module module;
 	private final Env env;
+	private final TyEnv typeEnv;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<Type> types;
 	private final IdMap<Type> ctors;
@@ -66,9 +67,10 @@ public final class NameEvaluator {
 		ctors.put(Id.intern("Basic.False"), Type.BOOL);
 
 		env = new Env();
+		typeEnv = new TyEnv();
 		Type.BUILTIN.forEach(ty -> {
 			try {
-				types.put(env.registerGlobal(ty.id()), ty);
+				types.put(typeEnv.register(ty.id().simpleName(), ty.id()), ty);
 			} catch (DuplicatedNameException e) {
 				throw new Error("builtin type dupicated", e);
 			}
@@ -88,17 +90,16 @@ public final class NameEvaluator {
 		// resister types
 		module.decls().forEach(def -> {
 			switch(def) {
-			case TypeDecl(String name, Seq<AnType.Var>args, _, _) -> {
-				Id id;
+			case TypeDecl(String name, Seq<AnType.Var> args, _, _) -> {
+				Id id = Id.intern(env.getScopeName(), name);
 				try {
-					id = env.register(name);
+					typeEnv.register(name, id);
 				} catch (DuplicatedNameException e) {
 					// TODO コンパイルメッセージに追加
 					throw new RuntimeException(e);
 				}
 				Seq<Type> tyArgs = args.map(this::eval);
-				Type type = new Type.CtorApp(id, tyArgs);
-				types.put(id, type);
+				types.put(id, new Type.CtorApp(id, tyArgs));
 			}
 			default -> {}
 			}
@@ -109,16 +110,17 @@ public final class NameEvaluator {
 			switch(def) {
 			case TypeDecl(String name, _, Seq<Constructor> ctors, _) -> {
 				// 2 step registrations for mutual recursion types
-				Type retTy = types.get(env.get(name));
+				Id typeId = typeEnv.get(name);
+				Type retTy = types.get(typeId);
 				ctors.forEach(ctor -> {
 					Id ctorId;
 					try {
-						ctorId = env.register(ctor.name());
+						ctorId = env.register(ctor.name(), Id.intern(typeId, ctor.name()));
 					} catch (DuplicatedNameException e) {
 						// TODO コンパイルメッセージに追加
 						throw new RuntimeException(e);
 					}
-					// TODO: 宣言された型とコンストラクタの型の整合性検査
+					// TODO: 型変数が宣言されたものか検査
 					Type type = Type.fromSeq(Seq.concat(
 							ctor.args().map(ty -> eval(ty)),
 							Seq.of(retTy)));
@@ -158,7 +160,7 @@ public final class NameEvaluator {
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {
-		Id id = env.get(union.name());
+		Id id = typeEnv.get(union.name());
 
 		Seq<Type> vars = union.vars().map(var -> eval(var));
 
@@ -309,7 +311,7 @@ public final class NameEvaluator {
 		case AnType.Unit _ -> Type.UNIT;
 		case AnType.Var(String name, _) -> new Type.Var(name);
 		case AnType.Type(String ctor, Seq<AnType> args, _) ->
-			new Type.CtorApp(env.get(ctor), args.map(arg -> eval(arg)));
+			new Type.CtorApp(typeEnv.get(ctor), args.map(arg -> eval(arg)));
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
 		};
 	}
