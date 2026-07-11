@@ -20,5 +20,5 @@ jobs:
         distribution: 'temurin'
         java-version: '23'
 
-    - name: Build and run tests with Maven
-      run: mvn test
+    - name: Build and run tests with Maven Wrapper
+      run: ./mvnw test
