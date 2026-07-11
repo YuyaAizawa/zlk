@@ -138,17 +138,17 @@ public class FeatureTest {
 	@Test
 	void pairType() {
 		String src="""
-		type Pair a b = Pair_ a b
+		type Pair a b = Pair a b
 
 		left pair =
 		  case pair of
-		    Pair_ a _ -> a
+		    Pair a _ -> a
 
 		right pair =
 		  case pair of
-		    Pair_ _ b -> b
+		    Pair _ b -> b
 
-		oneTrue = Pair_ 1 True
+		oneTrue = Pair 1 True
 
 		oneTrueLeft = left oneTrue
 

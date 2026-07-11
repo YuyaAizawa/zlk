@@ -84,7 +84,7 @@ public class PatternMatchTest {
 
 		Seq<PcPattern> witness = incomplete.examples();
 		assertEquals(1, witness.size());
-		PcPattern.Ctor cons = assertCtor(witness.head(), "Main.List", "Main.Cons", 2);
+		PcPattern.Ctor cons = assertCtor(witness.head(), "Main.List", "Main.List.Cons", 2);
 		assertTrue(cons.args().at(0) instanceof PcPattern.Anything);
 		assertTrue(cons.args().at(1) instanceof PcPattern.Anything);
 	}
@@ -172,7 +172,7 @@ public class PatternMatchTest {
 		Seq<PcPattern> witness = incomplete.examples();
 		assertEquals(1, witness.size());
 
-		PcPattern.Ctor just = assertCtor(witness.head(), "Main.Maybe", "Main.Just", 1);
+		PcPattern.Ctor just = assertCtor(witness.head(), "Main.Maybe", "Main.Maybe.Just", 1);
 		assertCtor(just.args().head(), "Bool", "Basic.False", 0);
 	}
 
