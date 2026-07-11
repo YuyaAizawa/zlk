@@ -10,7 +10,7 @@ import zlk.util.collection.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public final class Env {
+final class Env {
 	Map<String, Id> global;
 	Stack<Scope> scopes;
 
@@ -63,16 +63,17 @@ public final class Env {
 	 * @throws DuplicatedNameException
 	 */
 	public Id register(String name) throws DuplicatedNameException {
-		if(name.contains(".")) {
-			throw new Error("name cannot contain '.': "+name);
-		}
-
 		Scope topScope = scopes.peek();
 		Id id = Id.intern(topScope.name(), name);
-		Id orig = topScope.ids().put(name, id);
+		return register(name, id);
+	}
+
+	public Id register(String name, Id id) throws DuplicatedNameException {
+		Scope topScope = scopes.peek();
+		Id orig = topScope.ids().putIfAbsent(name, id);
 
 		if(orig != null) {
-			throw new DuplicatedNameException(topScope.name(), name);
+			throw new DuplicatedNameException(orig, id);
 		}
 		return id;
 	}
@@ -86,9 +87,9 @@ public final class Env {
 	 */
 	public Id registerGlobal(Id id) throws DuplicatedNameException {
 		String name = id.simpleName();
-		Id orig = global.put(name, id);
+		Id orig = global.putIfAbsent(name, id);
 		if(orig != null) {
-			throw new DuplicatedNameException(null, name);
+			throw new DuplicatedNameException(orig, id);
 		}
 		return id;
 	}
@@ -110,15 +111,39 @@ record Scope(
 	}
 }
 
+final class TyEnv {
+	private final Map<String, Id> impl;
+
+	TyEnv() {
+		impl = new HashMap<>();
+	}
+
+	Id register(String name, Id id) throws DuplicatedNameException {
+		Id old = impl.putIfAbsent(name, id);
+		if(old != null) {
+			throw new DuplicatedNameException(old, id);
+		}
+		return id;
+	}
+
+	Id get(String name) {
+		Id result = impl.get(name);
+		if(result == null) {
+			throw new NoSuchElementException(name);
+		}
+		return result;
+	}
+}
+
 class DuplicatedNameException extends Exception {
 	private static final long serialVersionUID = 1L;
 
-	public final Id scopeId;
-	public final String name;
+	public final Id oldId;
+	public final Id newId;
 
-	public DuplicatedNameException(Id scopeId, String name) {
-		super("scope: "+scopeId+", name: "+name);
-		this.scopeId = scopeId;
-		this.name = name;
+	public DuplicatedNameException(Id oldId, Id newId) {
+		super("old: "+oldId+", new: "+newId);
+		this.oldId = oldId;
+		this.newId = newId;
 	}
 }
