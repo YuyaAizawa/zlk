@@ -1,3 +1,5 @@
 *.java      text eol=lf
 *.zlk       text eol=lf
 *.class     binary
+mvnw        text eol=lf
+mvnw.cmd    text eol=crlf
