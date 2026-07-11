@@ -419,7 +419,7 @@ public class ConstrainerTest {
 				                                Exists:
 				                                  vars: [[12], [13], [17], [32]]
 				                                  cons: [
-				                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [12],
+				                                    Foreign: Main.IntList.Cons:I32 -> Main.IntList -> Main.IntList = [12],
 				                                    [12] = [13] -> [17] -> [32],
 				                                    Exists:
 				                                      vars: [[14], [15], [16]]
@@ -432,7 +432,7 @@ public class ConstrainerTest {
 				                                    Exists:
 				                                      vars: [[18], [19], [30], [31]]
 				                                      cons: [
-				                                        Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [18],
+				                                        Foreign: Main.IntList.Cons:I32 -> Main.IntList -> Main.IntList = [18],
 				                                        [18] = [19] -> [30] -> [31],
 				                                        Exists:
 				                                          vars: [[20], [21], [29]]
@@ -447,17 +447,17 @@ public class ConstrainerTest {
 				                                                Exists:
 				                                                  vars: [[24], [25], [26], [27]]
 				                                                  cons: [
-				                                                    Foreign: Main.Cons:I32 -> Main.IntList -> Main.IntList = [24],
+				                                                    Foreign: Main.IntList.Cons:I32 -> Main.IntList -> Main.IntList = [24],
 				                                                    [24] = [25] -> [26] -> [27],
 				                                                    I32 = [25],
-				                                                    Foreign: Main.Nil:Main.IntList = [26],
+				                                                    Foreign: Main.IntList.Nil:Main.IntList = [26],
 				                                                    [27] = [23],
 				                                                  ],
 				                                                [28] = [21],
 				                                              ],
 				                                            [29] = [19],
 				                                          ],
-				                                        Foreign: Main.Nil:Main.IntList = [30],
+				                                        Foreign: Main.IntList.Nil:Main.IntList = [30],
 				                                        [31] = [17],
 				                                      ],
 				                                    [32] = [11],
