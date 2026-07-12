@@ -31,18 +31,15 @@ public final class Unify {
 		case FlexVar _ -> {
 			switch(vState.content) {
 			case FlexVar v_ -> merge(u, uState, v, vState, v_.name().isEmpty() ? uState.content : vState.content);
-			case RigidVar _ -> throw new Missmatch();
+			case RigidVar _ -> merge(u, uState, v, vState, vState.content);
 			case Structure _ -> merge(u, uState, v, vState, vState.content);
 			case Content.Error e -> merge(u, uState, v, uState, e);
 			}
 		}
-		case RigidVar(String uName) -> {
+		case RigidVar _ -> {
 			switch(vState.content) {
-			case RigidVar(String vName) -> {
-				if(!uName.equals(vName)) {
-					throw new Missmatch();
-				}
-			}
+			case FlexVar _ -> merge(u, uState, v, vState, uState.content);
+			case RigidVar _ -> throw new Missmatch();
 			default -> throw new Missmatch();
 			}
 		}
