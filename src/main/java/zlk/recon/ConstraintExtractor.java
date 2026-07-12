@@ -1,6 +1,7 @@
 package zlk.recon;
 
 import java.util.IdentityHashMap;
+import java.util.Map;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
@@ -40,11 +41,13 @@ public final class ConstraintExtractor {
 	private FreshFlex freshFlex;
 	private IdMap<Seq<Id>> letDependers; // dependee -> dependers
 	private IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
+	private Map<String, Variable> rigidVars;
 
 	private ConstraintExtractor(IdMap<Seq<Id>> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
 		this.nodeTypes = new IdentityHashMap<>();
+		this.rigidVars = Map.of();
 	}
 
 	public static Result extract(IcModule module, FreshFlex freshFlex) {
@@ -81,7 +84,7 @@ public final class ConstraintExtractor {
 		return switch (exp) {
 
 		case IcCnst(ConstValue value, Location _) ->
-			new CEqual(RcType.from(value.type(), freshFlex).resultTy(), expected);
+			new CEqual(RcType.instantiate(value.type(), freshFlex).resultTy(), expected);
 
 		case IcVarLocal(Id id, Location _) ->
 			new CLocal(id, expected);
@@ -205,7 +208,68 @@ public final class ConstraintExtractor {
 			RcType resultTy,
 			PatternBinder binder) {}
 
+	private record AnnotatedDef(IcValDecl decl, RcType.Anno anno) {}
+
 	public CLet extractFromDef(Seq<IcValDecl> decls, Constraint bodyCon) {
+		SeqBuffer<AnnotatedDef> annotatedDefs = new SeqBuffer<>();
+		SeqBuffer<IcValDecl> inferredDefs = new SeqBuffer<>();
+		for(IcValDecl decl : decls) {
+			decl.anno().ifPresentOrElse(
+					ty -> annotatedDefs.add(new AnnotatedDef(decl, RcType.fromAnnotation(ty, rigidVars))),
+					() -> inferredDefs.add(decl));
+		}
+
+		if(annotatedDefs.isEmpty()) {
+			return extractFromInferredDefs(decls, Seq.of(bodyCon));
+		}
+
+		// 注釈付き宣言を先に一般化し，再帰グループ内から注釈の型スキームを利用可能にする．
+		// 各宣言の本体を検査するときだけ，その注釈で新しく導入した型変数を再びrigidとして導入する．
+		IdMap<RcType> annotatedHeaders = new IdMap<>();
+		SeqBuffer<Variable> rigids = new SeqBuffer<>();
+		SeqBuffer<Constraint> annotatedCons = new SeqBuffer<>();
+		for(AnnotatedDef annotated : annotatedDefs.toSeq()) {
+			annotatedHeaders.put(annotated.decl.id(), annotated.anno.type());
+			rigids.addAll(annotated.anno.rigids());
+			annotatedCons.add(extractFromAnnotatedDef(annotated));
+		}
+
+		annotatedCons.add(bodyCon);
+		CLet inferredCon = extractFromInferredDefs(inferredDefs.toSeq(), annotatedCons.toSeq());
+		return new CLet(
+				rigids.toSeq(),
+				Seq.of(),
+				annotatedHeaders,
+				Seq.of(new CPhase(Seq.of(), annotatedHeaders.keys())),
+				inferredCon);
+	}
+
+	private Constraint extractFromAnnotatedDef(AnnotatedDef annotated) {
+		IcValDecl decl = annotated.decl;
+		RcType.Anno anno = annotated.anno;
+
+		Map<String, Variable> outerRigidVars = rigidVars;
+		rigidVars = anno.typeVars();
+		try {
+			Args a = extractFromArgs(decl.args());
+
+			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
+			headerCons.addAll(a.binder.cons);
+			headerCons.add(extract(decl.body(), a.resultTy));
+			headerCons.add(new CEqual(a.funTy, anno.type()));
+
+			return new CLet(
+					anno.rigids(),
+					a.binder.vars.toSeq(),
+					a.binder.headers,
+					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),
+					new CExists(Seq.of(), Seq.of()));
+		} finally {
+			rigidVars = outerRigidVars;
+		}
+	}
+
+	private CLet extractFromInferredDefs(Seq<IcValDecl> decls, Seq<Constraint> bodyCons) {
 		// 0) 先に “外へ出る器 = アンカー” を全部配る（別オブジェクト！）
 		IdMap<RcType> header = new IdMap<>();
 		for (var decl : decls) {
@@ -223,7 +287,7 @@ public final class ConstraintExtractor {
 			headerCons.add(extract(decl.body(), a.resultTy));
 
 			Constraint rhs = new CLet(
-					Seq.of(), // TODO: 型注釈のrigid
+					Seq.of(),
 					a.binder.vars.toSeq(),
 					a.binder.headers,
 					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),  // 内側CLetは一般化なし
@@ -245,7 +309,7 @@ public final class ConstraintExtractor {
 				Seq.of(),
 				header,
 				phases,
-				bodyCon);
+				bodyCons);
 	}
 
 	public Args extractFromArgs(Seq<IcPattern> args) {
