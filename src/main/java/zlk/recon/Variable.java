@@ -27,6 +27,10 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 		return new Variable(new VariableState(new FlexVar(flexId, maybeName), letRank));
 	}
 
+	public static Variable ofRigid(String name) {
+		return new Variable(new VariableState(new RigidVar(name), 0));
+	}
+
 	public Variable(Content con, int letRank) {
 		this(new VariableState(con, letRank));
 	}
