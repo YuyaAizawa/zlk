@@ -36,7 +36,7 @@ final class PatternBinder {
 		}
 
 		case IcPattern.Dector(IcVarCtor ctor, Seq<Arg> args, _) -> {
-			RcType.FromType ctorInfo = RcType.from(ctor.type(), freshFlex);
+			RcType.Inst ctorInfo = RcType.instantiate(ctor.type(), freshFlex);
 			vars.addAll(ctorInfo.flexes());
 
 			if (args.size() != ctorInfo.argTys().size()) {
