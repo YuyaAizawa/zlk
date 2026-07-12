@@ -125,6 +125,18 @@ public class TypeReconstructor {
 				final int visitMark = gMarkCounter++;
 				generalizeAnchors(youngMark, visitMark, nextRank, anchors);
 			}
+			// rigidはスコープ外の型へ接続されていなければ再量化できる．
+			// 低いrankへ落ちたrigidはskolem escapeなのでコンパイラエラーとする．
+			if(!rigids.isEmpty()) {
+				final int youngMark = gMarkCounter++;
+				final int visitMark = gMarkCounter++;
+				generalizeAnchors(youngMark, visitMark, nextRank, rigids);
+				for(Variable rigid : rigids) {
+					if(!rigid.get().isQuantified()) {
+						throw new IllegalStateException("rigid variable escaped its scope: " + rigid);
+					}
+				}
+			}
 			// let宣言の結果を保存
 			locals.forEach((id, v) -> result.put(id, v));
 
@@ -214,6 +226,9 @@ public class TypeReconstructor {
 				v -> {
 					VariableState s = v.get();
 					if(s.content instanceof Content.RigidVar) {
+						if(s.rank == youngRank) {
+							s.rank = 0;
+						}
 						return;
 					}
 					if(s.rank < youngRank) {
