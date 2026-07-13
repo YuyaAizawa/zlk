@@ -45,6 +45,8 @@ import zlk.util.collection.Stack;
 
 public final class BytecodeGenerator {
 
+	public static final int OPCODE_VERSION = Opcodes.V23;
+
 	private final CcModule module;
 	private final String origin;
 	private final IdMap<Type> types;
@@ -147,7 +149,7 @@ public final class BytecodeGenerator {
 	private void genUnionSuperClass(CcTypeDecl union) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(
-				Opcodes.V16,
+				OPCODE_VERSION,
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_INTERFACE + Opcodes.ACC_ABSTRACT,
 				javaClasses.get(union.id()).toClassName(),
 				null,
@@ -161,7 +163,7 @@ public final class BytecodeGenerator {
 	private void genUnionSubClass(CcCtor ctor, CcTypeDecl union) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(
-				Opcodes.V16,
+				OPCODE_VERSION,
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
 				javaClasses.get(ctor.id()).toClassName(),
 				null,
@@ -248,7 +250,7 @@ public final class BytecodeGenerator {
 		};
 
 		cw.visit(
-				Opcodes.V16,
+				OPCODE_VERSION,
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
 				module.name(),
 				null,
