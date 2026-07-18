@@ -26,7 +26,6 @@ import zlk.clcalc.CcExp.CcMkCls;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
-import zlk.clcalc.CcTypeDecl;
 import zlk.common.ConstValue;
 import zlk.common.Location;
 import zlk.common.Type;
@@ -45,6 +44,8 @@ import zlk.util.collection.Stack;
 
 public final class BytecodeGenerator {
 
+	public static final int OPCODE_VERSION = Opcodes.V23;
+
 	private final CcModule module;
 	private final String origin;
 	private final IdMap<Type> types;
@@ -53,6 +54,7 @@ public final class BytecodeGenerator {
 	private final IdMap<CcFunDecl> toplevelDecls;
 	private final IdMap<JavaType> javaClasses;
 	private final IdMap<CcCtor> ctors;
+	private final Seq<CustomType> customTypes;
 	private ClassWriter cw;
 
 	private static final Id LOCAL_DUMMY_ID = Id.intern("..DUMMY..");
@@ -83,11 +85,13 @@ public final class BytecodeGenerator {
 		this.toplevelDecls = new IdMap<>();
 		this.javaClasses = new IdMap<>();
 		this.ctors = new IdMap<>();
+		this.customTypes = module.types().map(decl -> new CustomType(module.name(), decl, origin));
 		this.pendings = new Stack<>();
 
 		javaClasses.put(Type.UNIT.id(), JavaType.VOID);
 		javaClasses.put(Type.BOOL.id(), new JavaType.Simple("java/lang/Boolean"));
 		javaClasses.put(Type.I32.id(), new JavaType.Simple("java/lang/Integer"));
+		customTypes.forEach(ct -> ct.putJavaClasses(javaClasses, ctors));
 	}
 
 	/**
@@ -97,134 +101,21 @@ public final class BytecodeGenerator {
 	 * @param fileWriter
 	 */
 	public void compile(BiConsumer<String, byte[]> fileWriter) {
-		module.types().forEach(union -> {
-			String unionSuperName = unionSuperName(union);
-			javaClasses.put(union.id(), new JavaType.Simple(unionSuperName));
-			union.ctors().forEach(ctor -> {
-				String unionSubName = unionSubName(union, ctor);
-				javaClasses.put(ctor.id(), new JavaType.Variant(unionSubName, unionSuperName));
-				ctors.put(ctor.id(), ctor);
-			});
-		});
 		module.funcs().forEach(decl -> {
 			toplevelDescs.put(decl.id(), getDescription(decl));
 			toplevelDecls.put(decl.id(), decl);
 		});
 
-		module.types().forEach(union -> genUnionClass(union, fileWriter));
+		customTypes.forEach(generator -> generator.compile(OPCODE_VERSION, this::toDesc, fileWriter));
 		genMainClass(fileWriter);
-	}
-
-	private String unionSuperName(CcTypeDecl union) {
-		return module.name().replace('.', '/')+"$"+union.id().simpleName();
-	}
-
-	private String unionSubName(CcTypeDecl union, CcCtor ctor) {
-		return module.name().replace('.', '/')+"$"+union.id().simpleName()+"$"+ctor.id().simpleName();
-	}
-
-	/**
-	 * カスタムクラスのバイトコードを生成する．
-	 *
-	 * カスタムクラスは（今のところ）共通のinterfaceと各バリアントのfinal classで実装される．
-	 * 命名はmoduleName$interfaceName$variantName
-	 * nestのhostは（暫定的に）記述されたmoduleとなる
-	 * @param union
-	 * @param fileWriter
-	 */
-	private void genUnionClass(CcTypeDecl union, BiConsumer<String, byte[]> fileWriter) {
-		// super class
-		genUnionSuperClass(union);
-		fileWriter.accept(javaClasses.get(union.id()).toClassName(), cw.toByteArray());
-
-		// sub classes
-		for(CcCtor ctor : union.ctors()) {
-			genUnionSubClass(ctor, union);
-			fileWriter.accept(javaClasses.get(ctor.id()).toClassName(), cw.toByteArray());
-		}
-	}
-
-	private void genUnionSuperClass(CcTypeDecl union) {
-		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-		cw.visit(
-				Opcodes.V16,
-				Opcodes.ACC_PUBLIC + Opcodes.ACC_INTERFACE + Opcodes.ACC_ABSTRACT,
-				javaClasses.get(union.id()).toClassName(),
-				null,
-				"java/lang/Object",
-				null);
-		cw.visitSource(origin, null);
-		cw.visitNestHost(module.name().replace(".", "/"));
-		cw.visitEnd();
-	}
-
-	private void genUnionSubClass(CcCtor ctor, CcTypeDecl union) {
-		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-		cw.visit(
-				Opcodes.V16,
-				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
-				javaClasses.get(ctor.id()).toClassName(),
-				null,
-				"java/lang/Object",
-				new String[] {javaClasses.get(union.id()).toClassName()});
-		cw.visitSource(origin, null);
-
-		for(int i = 0; i < ctor.args().size(); i++) {
-			Type type = ctor.args().at(i);
-			cw.visitField(
-					Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL,
-					"val"+i,
-					toDesc(type),
-					null,
-					null);
-		}
-
-		genUnionSubClassConstructor(ctor, union);
-
-		cw.visitNestHost(module.name().replace(".", "/"));
-
-		cw.visitEnd();
-	}
-
-	private void genUnionSubClassConstructor(CcCtor ctor, CcTypeDecl union) {
-		mv = cw.visitMethod(
-				Opcodes.ACC_PUBLIC,
-				"<init>",
-				toMethodDesc(ctor.args(), Type.UNIT),
-				null,
-				null);
-		mv.visitCode();
-
-		mv.visitVarInsn(Opcodes.ALOAD, 0);
-		mv.visitMethodInsn(
-				Opcodes.INVOKESPECIAL,
-				"java/lang/Object",
-				"<init>",
-				"()V",
-				false);
-
-		for(int i = 0; i < ctor.args().size(); i++) {
-			mv.visitVarInsn(Opcodes.ALOAD, 0);
-			Type ty = ctor.args().at(i);
-			loadLocal(i+1, ty);
-			mv.visitFieldInsn(
-					Opcodes.PUTFIELD,
-					javaClasses.get(ctor.id()).toClassName(),
-					"val"+i,
-					toDesc(ty));
-		}
-
-		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(0, 0);
-		mv.visitEnd();
 	}
 
 	private void genMainClass(BiConsumer<String, byte[]> fileWriter) {
 		cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES) {
 			/*
-			 * フロー合流箇所のframeの計算でCustomTypeNameを求める．
-			 * CustomTypeのVariant以外の型はここに持ち込まなれない想定．
-			 * FUTURE: Record型もここで合流するか？
+			 * フロー合流箇所のframeの計算でカスタム型名を求める．
+			 * カスタム型のvariant以外の型はここに持ち込まなれない想定．
+			 * FUTURE: 将来ZLKへrecord型を追加する場合，ここでの型合流処理の対象とするか？
 			 */
 			@Override
 			protected String getCommonSuperClass(String type1, String type2) {
@@ -248,7 +139,7 @@ public final class BytecodeGenerator {
 		};
 
 		cw.visit(
-				Opcodes.V16,
+				OPCODE_VERSION,
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SUPER,
 				module.name(),
 				null,
@@ -259,12 +150,7 @@ public final class BytecodeGenerator {
 
 		genConstructor();
 
-		module.types().forEach(union -> {
-			cw.visitNestMember(javaClasses.get(union.id()).toClassName());
-			union.ctors().forEach(ctor -> {
-				cw.visitNestMember(javaClasses.get(ctor.id()).toClassName());
-			});
-		});
+		customTypes.forEach(ct -> ct.registerNestMembers(cw));
 
 		module.funcs().forEach(decl -> compileDecl(decl));
 
@@ -367,7 +253,7 @@ public final class BytecodeGenerator {
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						javaClasses.get(ctor.id()).toClassName(),
-						"val"+fieldIdx,
+						CustomType.componentName(fieldIdx),
 						toDesc(ctorArg.type()));
 				registerArgRec(ctorArg.pattern());
 			}
