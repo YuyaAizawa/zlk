@@ -132,8 +132,9 @@ public class ModuleTester {
 		new BytecodeGenerator(clconv, types, Builtin.functions(), TARGET_FILE_NAME).compile((name, bytecode) -> classes.add(new NameAndBytecode(name, bytecode)));
 		classes.forEach(clz -> {
 			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
-			addClass(clz.name, clz.bytecode);
+			defineClass(clz.name, clz.bytecode);
 		});
+		registerFunctions();
 	}
 
 	public Module getAst() {
@@ -180,17 +181,26 @@ public class ModuleTester {
 				module.types().map(d -> d.id()).fold(IdMap.folder(i -> i, i -> new Type.CtorApp(i, Seq.of()))));
 	}
 
-	public void addClass(String className, byte[] bytecode) {
+	private void defineClass(String className, byte[] bytecode) {
 		try {
-			Class<?> cls = classLoader.define(className, bytecode);
+			classLoader.define(className, bytecode);
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to load class: " + className, e);
+		}
+	}
+
+	private void registerFunctions() {
+		try {
+			Class<?> cls = classLoader.loadClass(TARGET_MODULE_NAME);
 			for (Method method : cls.getDeclaredMethods()) {
-				if(method.accessFlags().contains(AccessFlag.PUBLIC)) {
+				if(method.accessFlags().contains(AccessFlag.PUBLIC)
+						&& method.accessFlags().contains(AccessFlag.STATIC)) {
 					String name = method.getName();
 					functions.put(name, ValueTester.of(method));
 				}
 			}
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to load class: " + className, e);
+		} catch (ClassNotFoundException e) {
+			throw new RuntimeException("Failed to load class: " + TARGET_MODULE_NAME, e);
 		}
 	}
 
