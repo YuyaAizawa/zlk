@@ -70,8 +70,8 @@ flowchart TD
 | 対象 | `Id` | クラスファイル中の名前 |
 |---|---|---|
 | モジュール | `Id`なし | クラス`M` |
-| 型`T` | `M.T` | interface `M$T` |
-| コンストラクタ`C` | `M.T.C` | class `M$T$C` |
+| 型`T` | `M.T` | sealed interface `M$T` |
+| コンストラクタ`C` | `M.T.C` | record `M$T$C` |
 | トップレベル関数`f` | `M.f` | `M`のstaticメソッド`f` |
 | 関数`f`の引数または局所変数`x` | `M.f.x` | ローカル変数スロット．名前情報なし |
 | `f`内の局所関数`g` | `M.f.g` | 自由変数がなければ`f$g`．クロージャ化されれば`k$f$g` |
@@ -80,7 +80,7 @@ flowchart TD
 | クロージャ変換後の関数 | `M.<k>.<元のモジュール以下のId>` | `<k>$<元の名前を$で連結した名前>` |
 | 関数の第`i`カリー化段階 | `<元のId>.$<i>` | `<元のメソッド名>$$<i>` |
 | コンストラクタの部分適用用メソッド | `M.T.C` | 必要な場合に`M`へ追加されるsyntheticメソッド`T$C` |
-| コンストラクタの第`i`引数 | 専用の`Id`なし | コンストラクタクラスのフィールド`val<i>` |
+| コンストラクタの第`i`引数 | 専用の`Id`なし | record componentおよびprivateフィールド`val<i>` |
 | 型変数 | `Id`ではなく`Type.Var` | 型消去後の`java/lang/Object` |
 
 ## パッケージ構成
@@ -98,6 +98,7 @@ flowchart TD
 | `clconv` | クロージャ変換 |
 | `clcalc` | クロージャ変換後のIR |
 | `bytecodegen` | JVMバイトコード生成 |
+| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
 | `common` | `Id`，`Location`，`Type`などの共通データ構造 |
 | `core` | 組み込み関数と組み込み値 |
 | `util` | コレクション，`Result`，Pretty Printerなどの汎用部品 |

@@ -2,15 +2,13 @@ package zlk.tester;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.function.Function;
 
 import org.opentest4j.AssertionFailedError;
 
+import zlk.runtime.CustomType;
 import zlk.tester.ValueTester.VData;
 import zlk.tester.ValueTester.VFunction;
 import zlk.tester.ValueTester.VMethod;
@@ -88,21 +86,15 @@ permits VMethod, VFunction, VData {
 		}
 
 		Class<?> cls = value.getClass();
-		Field[] fields = valueFields(cls);
-		if(fields != null) {
+		Object[] args = valueArgs(value);
+		if(args != null) {
 			String ctorName = ctorName(cls);
-			if(fields.length == 0) {
+			if(args.length == 0) {
 				return ctorName;
 			}
 
 			StringBuilder sb = new StringBuilder(ctorName);
-			for(Field field : fields) {
-				Object arg;
-				try {
-					arg = field.get(value);
-				} catch(IllegalAccessException e) {
-					throw new AssertionFailedError(e.toString());
-				}
+			for(Object arg : args) {
 				sb.append(' ').append(toWrittenStringAsArg(arg));
 			}
 			return sb.toString();
@@ -114,8 +106,8 @@ permits VMethod, VFunction, VData {
 	private static String toWrittenStringAsArg(Object value) {
 		String string = toWrittenString(value);
 
-		Field[] fields = value == null ? null : valueFields(value.getClass());
-		if(fields != null && fields.length != 0) {
+		Object[] args = value == null ? null : valueArgs(value);
+		if(args != null && args.length != 0) {
 			return "(" + string + ")";
 		}
 		return string;
@@ -127,16 +119,20 @@ permits VMethod, VFunction, VData {
 		return index == -1 ? cls.getSimpleName() : name.substring(index + 1);
 	}
 
-	private static Field[] valueFields(Class<?> cls) {
-		Field[] fields = Arrays.stream(cls.getDeclaredFields())
-				.filter(field -> field.getName().matches("val\\d+"))
-				.filter(field -> Modifier.isPublic(field.getModifiers()))
-				.sorted(Comparator.comparingInt(field -> Integer.parseInt(field.getName().substring(3))))
-				.toArray(Field[]::new);
-
-		if(fields.length != cls.getDeclaredFields().length) {
+	private static Object[] valueArgs(Object value) {
+		Class<?> cls = value.getClass();
+		if(!(value instanceof CustomType) || !cls.isRecord()) {
 			return null;
 		}
-		return fields;
+
+		return Arrays.stream(cls.getRecordComponents())
+				.map(component -> {
+					try {
+						return component.getAccessor().invoke(value);
+					} catch(ReflectiveOperationException e) {
+						throw new AssertionFailedError(e.toString());
+					}
+				})
+				.toArray();
 	}
 }
