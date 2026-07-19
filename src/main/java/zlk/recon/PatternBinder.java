@@ -2,6 +2,7 @@ package zlk.recon;
 
 import java.util.IdentityHashMap;
 
+import zlk.common.RecordField;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.idcalc.ExpOrPattern;
@@ -47,6 +48,17 @@ final class PatternBinder {
 			for (int i = 0; i < args.size(); i++) {
 				bind(args.at(i).pattern(), ctorInfo.argTys().at(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
 			}
+		}
+		case IcPattern.Record(Seq<IcPattern.RecordField> fields, _) -> {
+			SeqBuffer<RecordField<RcType>> fieldTypes = new SeqBuffer<>(fields.size());
+			for(IcPattern.RecordField field : fields) {
+				Variable fieldVar = freshFlex.getVariable();
+				RcType fieldType = new RcType.VarN(fieldVar);
+				vars.add(fieldVar);
+				bind(field.pattern(), fieldType, freshFlex);
+				fieldTypes.add(new RecordField<>(field.name(), fieldType));
+			}
+			cons.add(new Constraint.CRecordPattern(expected, fieldTypes.toSeq()));
 		}
 		}
 	}

@@ -60,6 +60,18 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 			Seq<CcCaseBranch> branches,
 			Location loc) implements CcExp {}
 
+	record CcRecordField(String name, CcExp value, Location loc) implements LocationHolder {}
+
+	record CcRecord(
+			Seq<CcRecordField> fields,
+			Location loc) implements CcExp {}
+
+	record CcRecordAccess(CcExp target, String field, Location loc) implements CcExp {}
+	record CcRecordUpdate(
+			CcExp target,
+			Seq<CcRecordField> fields,
+			Location loc) implements CcExp {}
+
 	default CcExp substId(IdMap<Id> map) {
 		return switch (this) {
 		case CcCnst _ -> {
@@ -107,6 +119,19 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 					branches.map(branch -> branch.substId(map)),
 					loc);
 		}
+		case CcRecord(Seq<CcRecordField> fields, Location loc) ->
+			new CcRecord(
+					fields.map(field -> new CcRecordField(
+							field.name(), field.value().substId(map), field.loc())),
+					loc);
+		case CcRecordAccess(CcExp target, String field, Location loc) ->
+			new CcRecordAccess(target.substId(map), field, loc);
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location loc) ->
+			new CcRecordUpdate(
+					target.substId(map),
+					fields.map(field -> new CcRecordField(
+							field.name(), field.value().substId(map), field.loc())),
+					loc);
 		};
 	}
 
@@ -202,6 +227,25 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 					});
 				});
 			});
+		}
+		case CcRecord(Seq<CcRecordField> fields, Location _) -> {
+			pp.append("record:");
+			pp.indent(() -> fields.forEach(field ->
+					pp.endl().append(field.name()).append(": ").append(field.value())));
+		}
+		case CcRecordAccess(CcExp target, String field, Location _) -> {
+			switch(target) {
+			case CcCnst _, CcVar _, CcMkCls _, CcRecord _, CcRecordAccess _, CcRecordUpdate _ ->
+				pp.append(target);
+			case CcDirectApp _, CcClosureApp _, CcIf _, CcLet _, CcCase _ ->
+				pp.append("(").append(target).append(")");
+			}
+			pp.append(".").append(field);
+		}
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location _) -> {
+			pp.append("record-update ").append(target);
+			pp.indent(() -> fields.forEach(field -> pp.endl()
+					.append(field.name()).append(": ").append(field.value())));
 		}
 		}
 	}

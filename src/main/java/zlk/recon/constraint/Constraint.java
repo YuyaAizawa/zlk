@@ -1,5 +1,6 @@
 package zlk.recon.constraint;
 
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -7,15 +8,17 @@ import zlk.recon.Variable;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.Constraint.CExists;
 import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CHasField;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Constraint.CPattern;
+import zlk.recon.constraint.Constraint.CRecordPattern;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface Constraint extends PrettyPrintable
-permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
+permits CEqual, CLocal, CForeign, CPattern, CHasField, CRecordPattern, CLet, CExists {
 
 	// TODO: エラーメッセージ用の制約の由来
 	// どんな情報が必要か詰めてから
@@ -49,6 +52,15 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			Id id,  // TODO Ctor以外のカテゴリに対応
 			RcType ctorTy,
 			RcType expected) implements Constraint {}
+
+	record CHasField(
+			RcType record,
+			String field,
+			RcType fieldType) implements Constraint {}
+
+	record CRecordPattern(
+			RcType record,
+			Seq<RecordField<RcType>> fields) implements Constraint {}
 
 	/**
 	 * letやcaseのパターンとスコープに関わる制約．
@@ -130,6 +142,16 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 		}
 		case CPattern(Id id, RcType ctorTy, RcType expected) -> {
 			pp.append("Pattern: ").append(id).append(": ").append(ctorTy).append(" = ").append(expected);
+		}
+		case CHasField(RcType record, String field, RcType fieldType) ->
+			pp.append(record).append(" has ").append(field).append(": ").append(fieldType);
+		case CRecordPattern(RcType record, Seq<RecordField<RcType>> fields) -> {
+			pp.append(record).append(" matches record fields {");
+			fields.forEachIndexed((i, field) -> {
+				if(i > 0) pp.append(", ");
+				pp.append(field.name()).append(": ").append(field.value());
+			});
+			pp.append("}");
 		}
 		case CLet(
 				Seq<Variable> rigids,

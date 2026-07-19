@@ -23,6 +23,7 @@ import zlk.ast.Module;
 import zlk.ast.Pattern;
 import zlk.common.ConstValue;
 import zlk.common.Location;
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -265,6 +266,24 @@ public final class NameEvaluator {
 					branches.mapIndexed((i, branch) -> eval(branch, i, scope)),
 					loc);
 
+		case Exp.Record(Seq<Exp.RecordField> fields, Location loc) ->
+			new IcExp.IcRecord(
+					fields.map(field -> new IcExp.IcRecordField(
+							field.name(),
+							eval(field.value(), scope),
+							field.loc())),
+					loc);
+
+		case Exp.RecordAccess(Exp target, String field, Location loc) ->
+			new IcExp.IcRecordAccess(eval(target, scope), field, loc);
+
+		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, Location loc) ->
+			new IcExp.IcRecordUpdate(
+					eval(target, scope),
+					fields.map(field -> new IcExp.IcRecordField(
+							field.name(), eval(field.value(), scope), field.loc())),
+					loc);
+
 		case Err _ ->
 			throw new IllegalArgumentException();
 		};
@@ -300,6 +319,12 @@ public final class NameEvaluator {
 			Seq<Arg> dectorArgs = args.mapIndexed((i, arg) -> new IcPattern.Arg(eval(arg), argTys.at(i)));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
 		}
+		case Pattern.Record(Seq<Pattern.RecordField> fields, Location loc): {
+			return new IcPattern.Record(
+					fields.map(field -> new IcPattern.RecordField(
+							field.name(), eval(field.pattern()), field.loc())),
+					loc);
+		}
 		case Pattern.Err _: {
 			throw new IllegalArgumentException();
 		}
@@ -313,6 +338,8 @@ public final class NameEvaluator {
 		case AnType.Type(String ctor, Seq<AnType> args, _) ->
 			new Type.CtorApp(typeEnv.get(ctor), args.map(arg -> eval(arg)));
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
+		case AnType.Record(Seq<AnType.RecordField> fields, _) ->
+			new Type.Record(fields.map(field -> new RecordField<>(field.name(), eval(field.type()))));
 		};
 	}
 }

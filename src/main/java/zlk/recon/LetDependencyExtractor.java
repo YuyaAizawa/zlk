@@ -85,6 +85,14 @@ public class LetDependencyExtractor {
 			accIncluded(target, includes, acc);
 			branches.map(IcCaseBranch::body).forEach(go);
 		}
+		case IcExp.IcRecord(Seq<IcExp.IcRecordField> fields, Location _) ->
+			fields.forEach(field -> accIncluded(field.value(), includes, acc));
+		case IcExp.IcRecordAccess(IcExp target, String _, Location _) ->
+			accIncluded(target, includes, acc);
+		case IcExp.IcRecordUpdate(IcExp target, Seq<IcExp.IcRecordField> fields, Location _) -> {
+			accIncluded(target, includes, acc);
+			fields.forEach(field -> accIncluded(field.value(), includes, acc));
+		}
 		};
 	}
 }

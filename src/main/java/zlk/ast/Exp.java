@@ -36,6 +36,10 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 	record If(Exp cond, Exp thenExp, Exp elseExp, Location loc) implements Exp {}
 	record Let(Seq<Decl.Value> decls, Exp body, Location loc) implements Exp {}
 	record Case(Exp exp, Seq<CaseBranch> branches, Location loc) implements Exp {}
+	record RecordField(String name, Exp value, Location loc) implements LocationHolder {}
+	record Record(Seq<RecordField> fields, Location loc) implements Exp {}
+	record RecordAccess(Exp target, String field, Location loc) implements Exp {}
+	record RecordUpdate(Exp target, Seq<RecordField> fields, Location loc) implements Exp {}
 	record Err(Location loc) implements Exp {}
 
 	static boolean isIf(Exp exp) {
@@ -55,6 +59,9 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 		case If(Exp cond, Exp thenExp, Exp elseExp, Location _) -> new If(cond, thenExp, elseExp, loc);
 		case Let(Seq<Decl.Value> decls, Exp body, Location _) -> new Let(decls, body, loc);
 		case Case(Exp exp, Seq<CaseBranch> branches, Location _) -> new Case(exp, branches, loc);
+		case Record(Seq<RecordField> fields, Location _) -> new Record(fields, loc);
+		case RecordAccess(Exp target, String field, Location _) -> new RecordAccess(target, field, loc);
+		case RecordUpdate(Exp target, Seq<RecordField> fields, Location _) -> new RecordUpdate(target, fields, loc);
 		case Err(Location _) -> new Err(loc);
 		};
 	}
@@ -91,6 +98,13 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 			exp.walk(action);
 			branches.forEach(branch -> branch.body().walk(action));
 		}
+		case Record(Seq<RecordField> fields, Location _) ->
+			fields.forEach(field -> field.value().walk(action));
+		case RecordAccess(Exp target, String _, Location _) -> target.walk(action);
+		case RecordUpdate(Exp target, Seq<RecordField> fields, Location _) -> {
+			target.walk(action);
+			fields.forEach(field -> field.value().walk(action));
+		}
 		}
 	}
 
@@ -118,7 +132,7 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 		case App(Seq<Exp> exps, _) -> {
 			Exp hd = exps.head();
 			switch(hd) {
-			case Cnst _, Var _, App _ -> pp.append(hd);
+			case Cnst _, Var _, App _, Record _, RecordAccess _, RecordUpdate _ -> pp.append(hd);
 			case Lamb _, If _, Let _, Case _, Err _ -> { pp
 						.append("(").endl()
 						.inc().append(hd).endl()
@@ -129,7 +143,7 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 				pp.append(" ");
 				Exp exp = exps.at(i);
 				switch(exp) {
-				case Cnst _, Var _ -> pp.append(exp);
+				case Cnst _, Var _, Record _, RecordAccess _, RecordUpdate _ -> pp.append(exp);
 				case App _ -> pp.append("(").append(exp).append(")");
 				case Lamb _, If _, Let _, Case _, Err _ -> { pp
 					.append("(").endl()
@@ -174,6 +188,33 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 			pp.indent(() -> {
 				branches.forEach(branch -> pp.endl().append(branch));
 			});
+		}
+		case Record(Seq<RecordField> fields, _) -> {
+			pp.append("{");
+			fields.forEachIndexed((i, field) -> {
+				pp.append(i == 0 ? " " : ", ");
+				pp.append(field.name()).append(" = ").append(field.value());
+			});
+			if(!fields.isEmpty()) {
+				pp.append(" ");
+			}
+			pp.append("}");
+		}
+		case RecordAccess(Exp target, String field, _) -> {
+			switch(target) {
+			case Cnst _, Var _, Record _, RecordAccess _, RecordUpdate _ -> pp.append(target);
+			case Lamb _, App _, If _, Let _, Case _, Err _ ->
+				pp.append("(").append(target).append(")");
+			}
+			pp.append(".").append(field);
+		}
+		case RecordUpdate(Exp target, Seq<RecordField> fields, _) -> {
+			pp.append("{ ").append(target).append(" | ");
+			fields.forEachIndexed((i, field) -> {
+				if(i > 0) pp.append(", ");
+				pp.append(field.name()).append(" = ").append(field.value());
+			});
+			pp.append(" }");
 		}
 		case Err(Location loc) -> {
 			pp.append("<parse-error ").append(loc).append(">");
