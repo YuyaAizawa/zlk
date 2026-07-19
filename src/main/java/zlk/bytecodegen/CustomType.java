@@ -17,7 +17,8 @@ import zlk.common.id.IdMap;
  * 1つのtype宣言に対応するJVMクラス群を生成する．
  */
 final class CustomType {
-	private static final String RUNTIME_CUSTOM_TYPE = "zlk/runtime/CustomType";
+	private static final String RUNTIME_ZLK_VALUE = "zlk/runtime/ZlkValue";
+	private static final String RUNTIME_ZLK_CUSTOM = "zlk/runtime/ZlkCustom";
 	private static final String APPEND_STRING_TO = "appendStringTo";
 	private static final String APPEND_STRING_AS_ARG_TO = "appendStringAsArgTo";
 	private static final String APPEND_STRING_DESC = "(Ljava/lang/StringBuilder;)V";
@@ -84,7 +85,7 @@ final class CustomType {
 	 * type宣言に対応するsealed interfaceを生成する．
 	 *
 	 * <pre>{@code
-	 * sealed interface T extends zlk.runtime.CustomType permits C1, C2 {}
+	 * sealed interface T extends zlk.runtime.ZlkCustom permits C1, C2 {}
 	 * }</pre>
 	 */
 	private ClassWriter genInterfaceClass(int opcodeVersion) {
@@ -95,7 +96,7 @@ final class CustomType {
 				interfaceClass.toClassName(),
 				null,
 				"java/lang/Object",
-				new String[] { RUNTIME_CUSTOM_TYPE });
+				new String[] { RUNTIME_ZLK_CUSTOM });
 		cw.visitSource(origin, null);
 		decl.ctors().forEach(ctor ->
 				cw.visitPermittedSubclass(variantClasses.get(ctor.id()).toClassName()));
@@ -310,7 +311,7 @@ final class CustomType {
 					toDesc.apply(ctor.args().at(i)));
 			mv.visitMethodInsn(
 					Opcodes.INVOKESTATIC,
-					RUNTIME_CUSTOM_TYPE,
+					RUNTIME_ZLK_VALUE,
 					APPEND_STRING_AS_ARG_TO,
 					APPEND_VALUE_DESC,
 					true);

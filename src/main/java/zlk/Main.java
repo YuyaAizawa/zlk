@@ -128,16 +128,6 @@ public class Main {
 		System.out.println(idcalc.buildString());
 		System.out.println();
 
-		System.out.println("-- PATTERN CHECK --");
-		Seq<PcError> patternErrors = PatternChecker.check(idcalc);
-		if(!patternErrors.isEmpty()) {
-			throw new IllegalStateException(
-					"pattern check failed:" + System.lineSeparator()
-							+ patternErrors.join(System.lineSeparator()));
-		}
-		System.out.println("OK");
-		System.out.println();
-
 		System.out.println("-- CONSTRAIN EXTRACTION --");
 		FreshFlex freshFlex = new FreshFlex();
 		ConstraintExtractor.Result extractResult = ConstraintExtractor.extract(idcalc, freshFlex);
@@ -151,6 +141,16 @@ public class Main {
 		System.out.println();
 
 		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
+
+		System.out.println("-- PATTERN CHECK --");
+		Seq<PcError> patternErrors = PatternChecker.check(idcalc, nodeTypes);
+		if(!patternErrors.isEmpty()) {
+			throw new IllegalStateException(
+					"pattern check failed:" + System.lineSeparator()
+							+ patternErrors.join(System.lineSeparator()));
+		}
+		System.out.println("OK");
+		System.out.println();
 
 		idcalc.types().forEach(union -> union.ctors().forEach(ctor -> {
 			Type.CtorApp ctorApp = new Type.CtorApp(union.id(), union.vars());

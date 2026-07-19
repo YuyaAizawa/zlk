@@ -1,6 +1,7 @@
 package zlk.ast;
 
 import zlk.ast.AnType.Arrow;
+import zlk.ast.AnType.Record;
 import zlk.ast.AnType.Type;
 import zlk.ast.AnType.Unit;
 import zlk.ast.AnType.Var;
@@ -11,11 +12,18 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface AnType extends PrettyPrintable, LocationHolder
-permits Unit, Var, Type, Arrow {
+permits Unit, Var, Type, Arrow, Record {
 	record Unit(Location loc) implements AnType {};
 	record Var(String name, Location loc) implements AnType {};
 	record Type(String ctor, Seq<AnType> args, Location loc) implements AnType {};
 	record Arrow(AnType arg, AnType ret, Location loc) implements AnType {};
+	record RecordField(String name, AnType type, Location loc) implements LocationHolder, PrettyPrintable {
+		@Override
+		public void mkString(PrettyPrinter pp) {
+			pp.append(name).append(" : ").append(type);
+		}
+	};
+	record Record(Seq<RecordField> fields, Location loc) implements AnType {};
 
 	default AnType updateLoc(Location loc) {
 		return switch(this) {
@@ -23,6 +31,7 @@ permits Unit, Var, Type, Arrow {
 		case Var(String name, Location _) -> new Var(name, loc);
 		case Type(String ctor, Seq<AnType> args, Location _) -> new Type(ctor, args, loc);
 		case Arrow(AnType arg, AnType ret, Location _) -> new Arrow(arg, ret, loc);
+		case Record(Seq<RecordField> fields, Location _) -> new Record(fields, loc);
 		};
 	}
 
@@ -53,6 +62,13 @@ permits Unit, Var, Type, Arrow {
 				pp.append(arg);
 			}
 			pp.append(" -> ").append(ret);
+		}
+		case Record(Seq<RecordField> fields, _) -> {
+			if(fields.isEmpty()) {
+				pp.append("{}");
+			} else {
+				pp.append("{ ").append(PrettyPrintable.join(fields, ", ")).append(" }");
+			}
 		}
 		}
 	}

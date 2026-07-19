@@ -1,11 +1,14 @@
 package zlk.patterncheck;
 
+import java.util.IdentityHashMap;
 import java.util.Optional;
 
 import zlk.common.Location;
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
@@ -17,8 +20,10 @@ import zlk.util.collection.SeqBuffer;
 // http://moscova.inria.fr/~maranget/papers/warn/warn.pdf
 
 public final class PatternChecker {
-	public static Seq<PcError> check(IcModule module) {
-		PatternChecker checker = new PatternChecker(module);
+	public static Seq<PcError> check(
+			IcModule module,
+			IdentityHashMap<ExpOrPattern, Type> nodeTypes) {
+		PatternChecker checker = new PatternChecker(module, nodeTypes);
 		module.decls().forEach(decl -> {
 			decl.body().walk(exp -> {
 				if(exp instanceof IcExp.IcCase caseExp) {
@@ -32,7 +37,10 @@ public final class PatternChecker {
 	private final IdMap<UnionInfo> unionInfos;
 	private final IdMap<Id> ctorToUnion;
 	private final SeqBuffer<PcError> errors;
-	private PatternChecker(IcModule module) {
+	private final IdentityHashMap<ExpOrPattern, Type> nodeTypes;
+	private PatternChecker(
+			IcModule module,
+			IdentityHashMap<ExpOrPattern, Type> nodeTypes) {
 		this.unionInfos = new IdMap<>();
 		this.ctorToUnion = new IdMap<>();
 		// 組込み
@@ -54,6 +62,7 @@ public final class PatternChecker {
 		});
 
 		this.errors = new SeqBuffer<>();
+		this.nodeTypes = nodeTypes;
 	}
 
 	private record CtorInfo(
@@ -80,7 +89,7 @@ public final class PatternChecker {
 
 		// 冗長パターンチェック
 		patterns.forEachIndexed((caseIdx, pat) -> {
-			Seq<PcPattern> row = Seq.of(toPcPattern(pat));
+			Seq<PcPattern> row = Seq.of(toPcPattern(pat, nodeTypes.get(pat)));
 
 			// 上の行まで完全に覆われている行は冗長
 			if(findWitness(row, usefulRows).isEmpty()) {
@@ -96,14 +105,40 @@ public final class PatternChecker {
 		});
 	}
 
-	private PcPattern toPcPattern(IcPattern pattern) {
+	private PcPattern toPcPattern(IcPattern pattern, Type expected) {
 		return switch(pattern) {
 		case IcPattern.Wildcard(Location _) -> PcPattern.Anything.SINGLETON;
 		case IcPattern.Var(Id _, Location _) -> PcPattern.Anything.SINGLETON;
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<Arg> args, Location _) -> {
 			Id ctorId = ctor.id();
 			Id unionId = ctorToUnion.get(ctorId);
-			yield new PcPattern.Ctor(unionId, ctorId, args.map(arg -> toPcPattern(arg.pattern())));
+			yield new PcPattern.Ctor(
+					unionId,
+					ctorId,
+					args.map(arg -> toPcPattern(
+							arg.pattern(), nodeTypes.get(arg.pattern()))));
+		}
+		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
+			if(!(expected instanceof Type.Record(Seq<RecordField<Type>> shape))) {
+				throw new IllegalArgumentException("record pattern has non-record type: " + expected);
+			}
+			StringBuilder key = new StringBuilder("$record$");
+			shape.forEach(field -> key
+					.append(field.name().length()).append('$').append(field.name()));
+			Id productId = Id.intern(key.toString());
+			CtorInfo product = new CtorInfo(productId, productId, shape.size());
+			if(!unionInfos.containsKey(productId)) {
+				unionInfos.put(productId, new UnionInfo(productId, Seq.of(product)));
+			}
+			Seq<PcPattern> productArgs = shape.map(shapeField -> fields
+					.findFirst(field -> field.name().equals(shapeField.name()))
+					.map(field -> toPcPattern(field.pattern(), shapeField.value()))
+					.orElse(PcPattern.Anything.SINGLETON));
+			if(productArgs.size() != shape.size()) {
+				throw new IllegalStateException(
+						"record product arity mismatch: " + shape.size() + " vs " + productArgs.size());
+			}
+			yield new PcPattern.Ctor(productId, productId, productArgs);
 		}
 		};
 	}
@@ -286,7 +321,11 @@ public final class PatternChecker {
 
 	private static Seq<PcPattern> recoverCtor(CtorInfo ctor, Seq<PcPattern> specializedWitness) {
 		if (specializedWitness.size() < ctor.arity()) {
-			throw new IllegalStateException("witness is shorter than constructor arity");
+			throw new IllegalStateException(
+					"witness is shorter than constructor arity: "
+							+ ctor.id() + " requires " + ctor.arity()
+							+ " but got " + specializedWitness.size()
+							+ ": " + specializedWitness);
 		}
 
 		Seq<PcPattern> args = specializedWitness.take(ctor.arity());

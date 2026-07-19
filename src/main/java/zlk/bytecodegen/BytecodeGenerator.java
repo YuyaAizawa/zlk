@@ -2,6 +2,7 @@ package zlk.bytecodegen;
 
 import static zlk.util.ErrorUtils.neverHappen;
 
+import java.util.Comparator;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -68,6 +69,16 @@ public final class BytecodeGenerator {
 			+ "Ljava/lang/invoke/MethodType;"
 			+ "Ljava/lang/invoke/MethodHandle;"
 			+ "Ljava/lang/invoke/MethodType;"
+			+ ")Ljava/lang/invoke/CallSite;",
+			false);
+	private static final Handle RECORD_LITERAL_BOOTSTRAP = new Handle(
+			Opcodes.H_INVOKESTATIC,
+			"zlk/runtime/ArrayRecord",
+			"bootstrapLiteral",
+			"(Ljava/lang/invoke/MethodHandles$Lookup;"
+			+ "Ljava/lang/String;"
+			+ "Ljava/lang/invoke/MethodType;"
+			+ "Ljava/lang/String;"
 			+ ")Ljava/lang/invoke/CallSite;",
 			false);
 
@@ -224,6 +235,9 @@ public final class BytecodeGenerator {
 				Type subClassTy = types.get(ctor.ctor().id());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
+			} else if(args.at(i) instanceof IcPattern.Record record) {
+				mv.visitVarInsn(Opcodes.ALOAD, i);
+				registerArgRec(record);
 			}
 		}
 	}
@@ -235,10 +249,13 @@ public final class BytecodeGenerator {
 			mv.visitInsn(Opcodes.POP);  // TODO: 最適化 フィールドからとらないように
 		}
 		case IcPattern.Var(Id id, Location _) -> {
+			Type varType = types.get(id);
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(varType));
+			storeLocal(locals.size(), varType);
 			locals.add(id);
-			storeLocal(locals.size()-1, types.get(id));
 		}
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
+			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
 			// stackの数を調整
 			if(args.size() == 0) {
 				mv.visitInsn(Opcodes.POP);
@@ -256,6 +273,22 @@ public final class BytecodeGenerator {
 						CustomType.componentName(fieldIdx),
 						toDesc(ctorArg.type()));
 				registerArgRec(ctorArg.pattern());
+			}
+		}
+		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
+			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
+			if(fields.isEmpty()) mv.visitInsn(Opcodes.POP);
+			for(int i = 0; i < fields.size(); i++) {
+				if(i < fields.size() - 1) mv.visitInsn(Opcodes.DUP);
+				IcPattern.RecordField field = fields.at(i);
+				mv.visitLdcInsn(field.name());
+				mv.visitMethodInsn(
+						Opcodes.INVOKEINTERFACE,
+						JavaType.RECORD.toClassName(),
+						"get",
+						"(Ljava/lang/String;)Ljava/lang/Object;",
+						true);
+				registerArgRec(field.pattern());
 			}
 		}
 		}
@@ -351,7 +384,7 @@ public final class BytecodeGenerator {
 			if(implTy == null) {
 				throw new RuntimeException(implId.toString());
 			}
-			if(implTy instanceof Type.CtorApp) {
+			if(!implTy.isArrow()) {
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
 						module.name(),
@@ -424,6 +457,9 @@ public final class BytecodeGenerator {
 			 * にする．
 			 */
 			compile(target, toJavaType(targetTy));
+			int caseTargetLocal = locals.size();
+			locals.add(LOCAL_DUMMY_ID);
+			mv.visitVarInsn(Opcodes.ASTORE, caseTargetLocal);
 			Label neck = new Label();
 
 			// マッチしないパターンに遭遇したら次の選択肢に進む
@@ -431,6 +467,7 @@ public final class BytecodeGenerator {
 			for (int branchIdx = 0; branchIdx < branches.size(); branchIdx++) {
 				Label nextBranchLabel = (branchIdx < branches.size() - 1) ? new Label() : null;
 				CcCaseBranch branch = branches.at(branchIdx);
+				mv.visitVarInsn(Opcodes.ALOAD, caseTargetLocal);
 				checkMatchAndStoreLocals(branch.pattern(), null, nextBranchLabel); // TODO: Dectorの分解にはdeclTyは要らないのでメソッドを分ける
 				compile(branch.body(), ubTy);
 				mv.visitJumpInsn(Opcodes.GOTO, neck);
@@ -441,6 +478,61 @@ public final class BytecodeGenerator {
 				locals = localsBeforeBranch;
 			}
 			mv.visitLabel(neck);
+		}
+		case CcExp.CcRecord(Seq<CcExp.CcRecordField> fields, Location _) -> {
+			// 計算順序は記述順に（この制限は外してもよい）
+			record StoredField(CcExp.CcRecordField field, int localIndex) {}
+			SeqBuffer<StoredField> canonicalFields = new SeqBuffer<>(fields.size());
+			for(CcExp.CcRecordField field : fields) {
+				compile(field.value(), JavaType.OBJECT);
+				int localIndex = locals.size();
+				locals.add(LOCAL_DUMMY_ID);
+				mv.visitVarInsn(Opcodes.ASTORE, localIndex);
+				canonicalFields.add(new StoredField(field, localIndex));
+			}
+			Seq<StoredField> canonicalFieldsSorted = canonicalFields.toSeq().sorted(
+					Comparator.comparing(stored -> stored.field().name()));
+			canonicalFieldsSorted.forEach(stored ->
+				mv.visitVarInsn(Opcodes.ALOAD, stored.localIndex()));
+
+			String descriptor = "(" + "Ljava/lang/Object;".repeat(fields.size())
+					+ ")Lzlk/runtime/ZlkRecord;";
+			StringBuilder encodedNames = new StringBuilder("v1;");
+			canonicalFieldsSorted.forEach(stored -> encodedNames
+					.append(stored.field().name().length())
+					.append('#')
+					.append(stored.field().name()));
+			mv.visitInvokeDynamicInsn(
+					"recordLiteral",
+					descriptor,
+					RECORD_LITERAL_BOOTSTRAP,
+					encodedNames.toString());
+			checkcastIfNeed(JavaType.RECORD, ubTy);
+		}
+		case CcExp.CcRecordAccess(CcExp target, String field, Location _) -> {
+			compile(target, JavaType.RECORD);
+			mv.visitLdcInsn(field);
+			mv.visitMethodInsn(
+					Opcodes.INVOKEINTERFACE,
+					JavaType.RECORD.toClassName(),
+					"get",
+					"(Ljava/lang/String;)Ljava/lang/Object;",
+					true);
+			checkcastIfNeed(JavaType.OBJECT, ubTy);
+		}
+		case CcExp.CcRecordUpdate(CcExp target, Seq<CcExp.CcRecordField> fields, Location _) -> {
+			compile(target, JavaType.RECORD);
+			for(CcExp.CcRecordField field : fields) {
+				mv.visitLdcInsn(field.name());
+				compile(field.value(), JavaType.OBJECT);
+				mv.visitMethodInsn(
+						Opcodes.INVOKEINTERFACE,
+						JavaType.RECORD.toClassName(),
+						"update",
+						"(Ljava/lang/String;Ljava/lang/Object;)Lzlk/runtime/ZlkRecord;",
+						true);
+			}
+			checkcastIfNeed(JavaType.RECORD, ubTy);
 		}
 		}
 	}
@@ -470,13 +562,8 @@ public final class BytecodeGenerator {
 		}
 		case IcPattern.Var(Id id, Location _) -> {
 			Type expTy = types.get(id);
-			if(declTy instanceof Type.Var) {
-				// 必要ならキャストする
-				mv.visitTypeInsn(Opcodes.CHECKCAST, toClassName(expTy));
-				storeLocal(locals.size(), expTy);
-			} else {
-				storeLocal(locals.size(), declTy);
-			}
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(expTy));
+			storeLocal(locals.size(), expTy);
 			locals.add(id);
 		}
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
@@ -484,24 +571,42 @@ public final class BytecodeGenerator {
 			String subClassName = javaClasses.get(ctor.id()).toClassName();
 			if(next != null) {
 				mv.visitInsn(Opcodes.DUP);
-				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);  // サブクラスのインスタンスなら1
-				mv.visitJumpInsn(Opcodes.IFEQ, next);  // 0なら分岐
-			}
-			if(args.isEmpty()) {
-				mv.visitInsn(Opcodes.POP);  // fieldを引き出すためのオブジェクトを捨てる
-				return;
+				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
+				Label matched = new Label();
+				mv.visitJumpInsn(Opcodes.IFNE, matched);
+				mv.visitInsn(Opcodes.POP);
+				mv.visitJumpInsn(Opcodes.GOTO, next);
+				mv.visitLabel(matched);
 			}
 			mv.visitTypeInsn(Opcodes.CHECKCAST, subClassName);
+			int ctorLocal = locals.size();
+			locals.add(LOCAL_DUMMY_ID);
+			mv.visitVarInsn(Opcodes.ASTORE, ctorLocal);
 			for(int i = 0; i < args.size(); i++) {
-				if(i < args.size() - 1) {
-					mv.visitInsn(Opcodes.DUP);
-				}
+				mv.visitVarInsn(Opcodes.ALOAD, ctorLocal);
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						subClassName,
 						"val"+i,
 						toDesc(ctorDecl.args().at(i)));
 				checkMatchAndStoreLocals(args.at(i).pattern(), ctorDecl.args().at(i), next);
+			}
+		}
+		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
+			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
+			int recordLocal = locals.size();
+			locals.add(LOCAL_DUMMY_ID);
+			mv.visitVarInsn(Opcodes.ASTORE, recordLocal);
+			for(IcPattern.RecordField field : fields) {
+				mv.visitVarInsn(Opcodes.ALOAD, recordLocal);
+				mv.visitLdcInsn(field.name());
+				mv.visitMethodInsn(
+						Opcodes.INVOKEINTERFACE,
+						JavaType.RECORD.toClassName(),
+						"get",
+						"(Ljava/lang/String;)Ljava/lang/Object;",
+						true);
+				checkMatchAndStoreLocals(field.pattern(), null, next);
 			}
 		}
 		};
@@ -752,6 +857,7 @@ public final class BytecodeGenerator {
 		case Type.CtorApp atom -> javaClasses.get(atom.id());
 		case Type.Arrow _ -> JavaType.FUNCTION;
 		case Type.Var _ -> JavaType.OBJECT;
+		case Type.Record _ -> JavaType.RECORD;
 		};
 	}
 

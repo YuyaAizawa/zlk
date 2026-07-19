@@ -29,10 +29,14 @@ public final class Token implements PrettyPrintable, LocationHolder {
 		// punctuators
 		ARROW     ("->"),
 		BAR       ("|"),
+		COMMA     (","),
 		COLON     (":"),
+		DOT       ("."),
 		EQUAL     ("="),
 		LAMBDA    ("\\"),
+		LBRACE    ("{"),
 		LPAREN    ("("),
+		RBRACE    ("}"),
 		RPAREN    (")"),
 		WILDCARD  ("_"),
 
@@ -61,10 +65,14 @@ public final class Token implements PrettyPrintable, LocationHolder {
 			return switch(this) {
 			case ARROW    -> true;
 			case BAR      -> true;
+			case COMMA    -> true;
 			case COLON    -> true;
+			case DOT      -> true;
 			case EQUAL    -> true;
 			case LAMBDA   -> true;
+			case LBRACE   -> true;
 			case LPAREN   -> true;
+			case RBRACE   -> true;
 			case RPAREN   -> true;
 			default -> false;
 			};
@@ -78,10 +86,14 @@ public final class Token implements PrettyPrintable, LocationHolder {
 				Stream.of(
 						ARROW,
 						BAR,
+						COMMA,
 						COLON,
+						DOT,
 						EQUAL,
 						LAMBDA,
+						LBRACE,
 						LPAREN,
+						RBRACE,
 						RPAREN,
 						WILDCARD)  // TODO: すぐ後ろに文字が続くのを禁止 正確にはpunctuatorではない
 				.collect(Collectors.toMap(

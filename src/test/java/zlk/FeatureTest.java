@@ -11,14 +11,226 @@ import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import zlk.runtime.CustomType;
+import zlk.common.RecordField;
+import zlk.common.Type;
+import zlk.runtime.ZlkCustom;
+import zlk.runtime.ZlkRecord;
+import zlk.runtime.ZlkValue;
 import zlk.tester.DumpOnFailureWatcher;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.tester.ValueTester.VData;
+import zlk.util.collection.Seq;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class FeatureTest {
+	@Test
+	void emptyRecordLiteral() {
+		var module = new ModuleTester("empty = {}", CompileLevel.BYTECODE_GEN);
+		Object value = ((VData) module.getValue("empty")).value();
+
+		assertTrue(value instanceof ZlkRecord);
+		assertEquals("{}", value.toString());
+	}
+
+	@Test
+	void recordLiteralUsesCanonicalFieldOrder() {
+		var module = new ModuleTester(
+				"record = { y = True, x = 1 }",
+				CompileLevel.BYTECODE_GEN);
+		ZlkRecord value = (ZlkRecord) ((VData) module.getValue("record")).value();
+
+		assertEquals("{ x = 1, y = True }", value.toString());
+		assertEquals(1, value.get("x"));
+		assertEquals(true, value.get("y"));
+	}
+
+	@Test
+	void instantiatesNestedRecords() {
+		var module = new ModuleTester(
+				"nested = { z = { y = True, x = 1 }, a = 2 }",
+				CompileLevel.BYTECODE_GEN);
+		ZlkRecord outer = (ZlkRecord) ((VData) module.getValue("nested")).value();
+		ZlkRecord inner = (ZlkRecord) outer.get("z");
+
+		assertEquals("{ a = 2, z = { x = 1, y = True } }", outer.toString());
+		assertEquals(1, inner.get("x"));
+		assertEquals(true, inner.get("y"));
+	}
+
+	@Test
+	void infersNestedRecordsTogetherWithParametricPolymorphism() {
+		var module = new ModuleTester("""
+				wrap value = { payload = { value = value } }
+				wrappedInt = wrap 1
+				wrappedBool = wrap True
+				""", CompileLevel.BYTECODE_GEN);
+		Type.Var a = new Type.Var("a");
+		Type.Record genericInner = new Type.Record(Seq.of(new RecordField<>("value", a)));
+		Type.Record genericOuter = new Type.Record(Seq.of(new RecordField<>("payload", genericInner)));
+		Type.Record intOuter = new Type.Record(Seq.of(new RecordField<>("payload",
+				new Type.Record(Seq.of(new RecordField<>("value", Type.I32))))));
+		Type.Record boolOuter = new Type.Record(Seq.of(new RecordField<>("payload",
+				new Type.Record(Seq.of(new RecordField<>("value", Type.BOOL))))));
+
+		module.getType("wrap").is(new Type.Arrow(a, genericOuter));
+		module.getType("wrappedInt").is(intOuter);
+		module.getType("wrappedBool").is(boolOuter);
+		ZlkRecord intValue = (ZlkRecord) ((VData) module.getValue("wrappedInt")).value();
+		ZlkRecord boolValue = (ZlkRecord) ((VData) module.getValue("wrappedBool")).value();
+		assertEquals(1, ((ZlkRecord) intValue.get("payload")).get("value"));
+		assertEquals(true, ((ZlkRecord) boolValue.get("payload")).get("value"));
+	}
+
+	@Test
+	void matchesNestedRecordPatterns() {
+		var module = new ModuleTester("""
+				extract { outer = { flag = _, value = value }, tag = _ } = value
+				result = extract { tag = True, outer = { value = 42, flag = False } }
+				""", CompileLevel.BYTECODE_GEN);
+
+		Type.Var a = new Type.Var("a");
+		Type.Var b = new Type.Var("b");
+		Type.Var c = new Type.Var("c");
+		module.getType("extract").is(new Type.Arrow(
+				new Type.Record(Seq.of(
+						new RecordField<>("outer", new Type.Record(Seq.of(
+								new RecordField<>("flag", a),
+								new RecordField<>("value", b)))),
+						new RecordField<>("tag", c))),
+				b));
+		module.getType("result").is(Type.I32);
+		assertEquals(42, ((VData) module.getValue("result")).value());
+	}
+
+	@Test
+	void checksRefutablePatternsNestedInsideRecords() {
+		var module = new ModuleTester("""
+				type Option a = None | Some a
+				read record =
+				  case record of
+				    { outer = { value = None } } -> 0
+				    { outer = { value = Some value } } -> value
+				zero = read { outer = { value = None } }
+				one = read { outer = { value = Some 1 } }
+				""", CompileLevel.BYTECODE_GEN);
+
+		assertEquals(0, ((VData) module.getValue("zero")).value());
+		assertEquals(1, ((VData) module.getValue("one")).value());
+	}
+
+	@Test
+	void accessesNestedFieldsAndUpdatesImmutably() {
+		var module = new ModuleTester("""
+				base = { y = True, x = 1 }
+				updated = { base | x = 2 }
+				nested = { outer = updated }
+				selected = nested.outer.x
+				baseX = base.x
+				""", CompileLevel.BYTECODE_GEN);
+
+		module.getType("selected").is(Type.I32);
+		assertEquals(2, ((VData) module.getValue("selected")).value());
+		assertEquals(1, ((VData) module.getValue("baseX")).value());
+	}
+
+	@Test
+	void updatesMultipleRecordFieldsImmutably() {
+		var module = new ModuleTester("""
+				base = { z = 3, y = True, x = 1 }
+				updated = { base | x = 2, y = False }
+				baseX = base.x
+				baseY = base.y
+				updatedX = updated.x
+				updatedY = updated.y
+				updatedZ = updated.z
+				""", CompileLevel.BYTECODE_GEN);
+
+		assertEquals(1, ((VData) module.getValue("baseX")).value());
+		assertEquals(true, ((VData) module.getValue("baseY")).value());
+		assertEquals(2, ((VData) module.getValue("updatedX")).value());
+		assertEquals(false, ((VData) module.getValue("updatedY")).value());
+		assertEquals(3, ((VData) module.getValue("updatedZ")).value());
+	}
+
+	@Test
+	void acceptsNestedRecordTypeAnnotations() {
+		var module = new ModuleTester("""
+				getValue : { outer : { value : I32 } } -> I32
+				getValue record = record.outer.value
+				result = getValue { outer = { value = 7 } }
+				""", CompileLevel.BYTECODE_GEN);
+
+		Type.Record argument = new Type.Record(Seq.of(new RecordField<>("outer",
+				new Type.Record(Seq.of(new RecordField<>("value", Type.I32))))));
+		module.getType("getValue").is(new Type.Arrow(argument, Type.I32));
+		assertEquals(7, ((VData) module.getValue("result")).value());
+	}
+
+	@Test
+	void distinguishesEmptyRecordTypeFromUnit() {
+		var module = new ModuleTester("""
+				empty : {}
+				empty = {}
+				""", CompileLevel.BYTECODE_GEN);
+
+		module.getType("empty").is(new Type.Record(Seq.of()));
+		assertEquals("{}", ((VData) module.getValue("empty")).value().toString());
+	}
+
+	@Test
+	void emptyRecordPatternMatchesKnownNonEmptyRecord() {
+		var module = new ModuleTester("""
+				ignore : { x : I32 } -> I32
+				ignore {} = 1
+				result = ignore { x = 0 }
+				caseResult =
+				  case { x = 0 } of
+				    {} -> 2
+				""", CompileLevel.BYTECODE_GEN);
+
+		module.getType("result").is(Type.I32);
+		assertEquals(1, ((VData) module.getValue("result")).value());
+		assertEquals(2, ((VData) module.getValue("caseResult")).value());
+	}
+
+	@Test
+	void partialRecordPatternMatchesKnownWiderRecord() {
+		var module = new ModuleTester("""
+				pick : { x : I32, y : Bool } -> I32
+				pick { x } = x
+				result = pick { y = True, x = 3 }
+				""", CompileLevel.BYTECODE_GEN);
+
+		module.getType("result").is(Type.I32);
+		assertEquals(3, ((VData) module.getValue("result")).value());
+	}
+
+	@Test
+	void checksPartialRecordBranchesAgainstTheFullKnownShape() {
+		var module = new ModuleTester("""
+				type Option a = None | Some a
+				read : { x : Option I32, y : Bool } -> I32
+				read record =
+				  case record of
+				    { x = None } -> 0
+				    { x = Some value, y = _ } -> value
+				zero = read { y = True, x = None }
+				one = read { y = False, x = Some 1 }
+				""", CompileLevel.BYTECODE_GEN);
+
+		assertTrue(module.getPatternErrors().isEmpty());
+		assertEquals(0, ((VData) module.getValue("zero")).value());
+		assertEquals(1, ((VData) module.getValue("one")).value());
+	}
+
+	@Test
+	void preservesMemberAccessTargetPrecedenceWhenPrettyPrinting() {
+		var module = new ModuleTester("value = (f x).y", CompileLevel.PARSE);
+
+		assertTrue(module.getAst().buildString().contains("(f x).y"));
+	}
+
 	@Test
 	void adtIsSealedInterfaceAndRecords() throws ReflectiveOperationException {
 		String src = """
@@ -44,7 +256,7 @@ public class FeatureTest {
 
 		assertTrue(optionClass.isInterface());
 		assertTrue(optionClass.isSealed());
-		assertTrue(CustomType.class.isAssignableFrom(optionClass));
+		assertTrue(ZlkCustom.class.isAssignableFrom(optionClass));
 		assertArrayEquals(
 				new String[] { noneClass.getName(), someClass.getName() },
 				Arrays.stream(optionClass.getPermittedSubclasses()).map(Class::getName).sorted().toArray(String[]::new));
@@ -99,9 +311,9 @@ public class FeatureTest {
 	@Test
 	void runtimeValueStringAppenderDispatches() {
 		StringBuilder sb = new StringBuilder();
-		CustomType.appendStringTo(sb, Integer.valueOf(2));
-		CustomType.appendStringTo(sb.append(' '), Boolean.TRUE);
-		CustomType.appendStringTo(sb.append(' '), "java");
+		ZlkValue.appendStringTo(sb, Integer.valueOf(2));
+		ZlkValue.appendStringTo(sb.append(' '), Boolean.TRUE);
+		ZlkValue.appendStringTo(sb.append(' '), "java");
 		assertEquals("2 True java", sb.toString());
 	}
 

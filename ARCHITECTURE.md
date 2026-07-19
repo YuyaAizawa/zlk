@@ -13,9 +13,6 @@ flowchart TD
     AST --> NameEval["NameEvaluator"]
     NameEval --> IC(["idcalc"])
 
-    IC --> PatternCheck["PatternChecker"]
-    PatternCheck --> PcErrors(["Seq&lt;PcError&gt;"])
-
     IC --> Extract["ConstraintExtractor"]
     Extract --> Constraint(["Constraint"])
     Extract --> RcNodeTypes(["nodeTypes<br/>ExpOrPattern → RcType"])
@@ -24,6 +21,10 @@ flowchart TD
     Recon --> Types(["types<br/>IdMap&lt;Type&gt;"])
     RcNodeTypes --> ResolvedNodeTypes(["resolvedNodeTypes<br/>ExpOrPattern → Type"])
     Recon -. "RcType内の型変数を解決" .-> ResolvedNodeTypes
+
+    IC --> PatternCheck["PatternChecker"]
+    ResolvedNodeTypes --> PatternCheck
+    PatternCheck --> PcErrors(["Seq&lt;PcError&gt;"])
 
     IC --> Clconv["ClosureConverter"]
     Types --> Clconv
@@ -35,9 +36,9 @@ flowchart TD
     BytecodeGen --> Class(["JVM bytecode / .class"])
 ```
 
-`PatternChecker`は名前解決後の`IcModule`を検査する独立した経路であり，case式の冗長なパターンと網羅されていないパターンを`PcError`として報告する．
+`PatternChecker`は，名前解決後の`IcModule`と各式・パターンの解決済み`Type`を検査し，case式の冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とノードごとの型の解決後に実行する．
 
-`ConstraintExtractor.Result.nodeTypes`が保持する`RcType`は，制約と型変数を共有する．そのため，`TypeReconstructor`による制約解決後に`resolvedNodeTypes()`を呼び出すことで，各式およびパターンの解決済み`Type`を取得できる．
+`ConstraintExtractor.Result.nodeTypes`が保持する`RcType`は，制約と型変数を共有する．そのため，`TypeReconstructor`による制約解決後に`resolvedNodeTypes()`を呼び出すことで，各式およびパターンの解決済み`Type`を取得できる．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
 
 ### 主要な中間表現
 
@@ -62,6 +63,12 @@ flowchart TD
 #### `clcalc`
 
 `ClosureConverter`によるクロージャ変換後のIR．自由変数を明示的に扱い，JVMバイトコード生成の入力となる．
+
+### レコード型
+
+現在のレコード型は，フィールド名とフィールド型の集合が完全に一致するときだけ単一化できる，閉じた構造的レコード型である．フィールド名は文字列の自然順序で正規化する．
+
+行変数および行多相は未実装である．型が未確定の値に対する`record.x`は，対象を正確に`{ x : a }`型へ制約する．したがって，このように推論された関数へ`{ x : I32, y : Bool }`のような追加フィールドを持つ値を渡すことはできない．複数フィールドを扱う関数や特定の広いレコード形状を受け取る関数には，現在は完全なレコード型注釈を付ける．
 
 ### `Id`とクラスファイル中の名前
 

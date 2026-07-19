@@ -4,12 +4,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.FreshFlex;
 import zlk.recon.Variable;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
+import zlk.recon.constraint.RcType.RecordN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -18,10 +20,15 @@ import zlk.util.pp.PrettyPrinter;
 
 
 public sealed interface RcType extends PrettyPrintable
-permits VarN, AppN, FunN {
+permits VarN, AppN, FunN, RecordN {
 	record VarN(Variable var) implements RcType {}
 	record AppN(Id id, Seq<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
+	record RecordN(Seq<RecordField<RcType>> fields) implements RcType {
+		public RecordN {
+			fields = RecordField.canonicalize(fields);
+		}
+	}
 
 	public static final RcType BOOL = new AppN(Type.BOOL.id(), Seq.of());
 	public static final RcType I32  = new AppN(Type.I32.id() , Seq.of());
@@ -108,6 +115,9 @@ permits VarN, AppN, FunN {
 					new AppN(id, args.map(this));
 				case Type.Arrow(Type arg, Type ret) ->
 					new FunN(apply(arg), apply(ret));
+				case Type.Record(Seq<RecordField<Type>> fields) ->
+					new RecordN(fields.map(field ->
+							new RecordField<>(field.name(), apply(field.value()))));
 				};
 			}
 		};
@@ -140,6 +150,9 @@ permits VarN, AppN, FunN {
 			new Type.CtorApp(id, args.map(arg -> arg.toType()));
 		case FunN(RcType arg, RcType ret) ->
 			Type.arrow(Seq.of(arg.toType(), ret.toType()));
+		case RecordN(Seq<RecordField<RcType>> fields) ->
+			new Type.Record(fields.map(field ->
+					new RecordField<>(field.name(), field.value().toType())));
 		};
 	}
 
@@ -170,6 +183,15 @@ permits VarN, AppN, FunN {
 			}
 			pp.append(" -> ");
 			pp.append(ret);
+		}
+		case RecordN(Seq<RecordField<RcType>> fields) -> {
+			pp.append("{");
+			fields.forEachIndexed((i, field) -> {
+				pp.append(i == 0 ? " " : ", ");
+				pp.append(field.name()).append(" : ").append(field.value());
+			});
+			if(!fields.isEmpty()) pp.append(" ");
+			pp.append("}");
 		}
 		}
 	}
