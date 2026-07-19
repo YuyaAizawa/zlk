@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
+import zlk.common.Type.Record;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.util.collection.Seq;
@@ -22,7 +23,7 @@ import zlk.util.pp.PrettyPrinter;
  * </ul>
  */
 public sealed interface Type extends PrettyPrintable
-permits CtorApp, Arrow, Var {
+permits CtorApp, Arrow, Var, Record {
 
 	/**
 	 * 関数型以外の型
@@ -73,6 +74,17 @@ permits CtorApp, Arrow, Var {
 	 * @param name 変数名
 	 */
 	record Var(String name) implements Type {
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
+
+	record Record(Seq<RecordField<Type>> fields) implements Type {
+		public Record {
+			fields = RecordField.canonicalize(fields);
+		}
+
 		@Override
 		public final String toString() {
 			return buildString();
@@ -151,6 +163,7 @@ permits CtorApp, Arrow, Var {
 			case CtorApp _ -> throw tooManyApplies(this, cnt);
 			case Arrow(_, Type ret) -> ret;
 			case Var _ -> throw tooManyApplies(this, cnt);
+			case Record _ -> throw tooManyApplies(this, cnt);
 			};
 		}
 		return result;
@@ -173,6 +186,7 @@ permits CtorApp, Arrow, Var {
 		case CtorApp _ -> throw typeMissmatch(Arrow.class, CtorApp.class);
 		case Arrow(Type arg, _) -> arg;
 		case Var _ -> throw typeMissmatch(Arrow.class, Var.class);
+		case Record _ -> throw typeMissmatch(Arrow.class, Record.class);
 		};
 	}
 	private static IndexOutOfBoundsException typeMissmatch(Class<?> expected, Class<?> actual) {
@@ -226,6 +240,8 @@ permits CtorApp, Arrow, Var {
 				acc.add(name);
 			}
 		}
+		case Record(Seq<RecordField<Type>> fields) ->
+			fields.forEach(field -> field.value().getVarNamesHelp(acc));
 		}
 	}
 
@@ -247,6 +263,7 @@ permits CtorApp, Arrow, Var {
 			}
 		}
 		case Var _ -> throw invalidTypeApply(this, arg);
+		case Record _ -> throw invalidTypeApply(this, arg);
 		};
 	}
 	private static IllegalArgumentException invalidTypeApply(Type fun, Type arg) {
@@ -303,6 +320,22 @@ permits CtorApp, Arrow, Var {
 			throw new IllegalArgumentException(
 					String.format("Invalid type bind. this: %s, target: %s", this, target));
 		}
+		case Record(Seq<RecordField<Type>> fields) -> {
+			if(target instanceof Record(Seq<RecordField<Type>> targetFields)
+					&& fields.size() == targetFields.size()) {
+				for(int i = 0; i < fields.size(); i++) {
+					RecordField<Type> field = fields.at(i);
+					RecordField<Type> targetField = targetFields.at(i);
+					if(!field.name().equals(targetField.name())) {
+						throw new IllegalArgumentException("record label mismatch");
+					}
+					field.value().bind(targetField.value(), binds);
+				}
+				return;
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
 		}
 	}
 	default Type subst(BindList binds) {
@@ -317,6 +350,8 @@ permits CtorApp, Arrow, Var {
 		case Arrow(Type arg, Type ret) -> {
 			yield new Arrow(arg.subst(binds), ret.subst(binds));
 		}
+		case Record(Seq<RecordField<Type>> fields) ->
+			new Record(fields.map(field -> new RecordField<>(field.name(), field.value().subst(binds))));
 		};
 	}
 
@@ -344,6 +379,9 @@ permits CtorApp, Arrow, Var {
 		}
 		case Var(String name) -> {
 			pp.append(name);
+		}
+		case Record(Seq<RecordField<Type>> fields) -> {
+			RecordField.appendTo(pp, fields, " : ");
 		}
 		}
 	}

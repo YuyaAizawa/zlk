@@ -3,10 +3,12 @@ package zlk.recon.constraint;
 import java.util.Optional;
 import java.util.function.Function;
 
+import zlk.common.RecordField;
 import zlk.common.id.Id;
 import zlk.recon.FlatType;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
+import zlk.recon.FlatType.Record1;
 import zlk.recon.Variable;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;
@@ -45,6 +47,10 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 			}
 			case Fun1(Variable arg, Variable ret) -> {
 				return new Structure(new Fun1(f.apply(arg), f.apply(ret)));
+			}
+			case Record1(Seq<RecordField<Variable>> fields) -> {
+				return new Structure(new Record1(fields.map(field ->
+						new RecordField<>(field.name(), f.apply(field.value())))));
 			}
 			}
 		}

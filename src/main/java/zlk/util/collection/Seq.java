@@ -3,6 +3,7 @@ package zlk.util.collection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -197,6 +198,43 @@ public sealed interface Seq<E> extends Iterable<E> {
 			throw new NoSuchElementException();
 		}
 		return drop(1);
+	}
+
+	/**
+	 * 要素をソートしたSeqを返す．
+	 * @param comparator
+	 * @return
+	 */
+	default Seq<E> sorted(Comparator<E> comparator) {
+		int from, to;
+		Object[] orig;
+
+		switch(this) {
+		case EmptySeq<? extends E> _:
+			return this;
+		case SingletonSeq<? extends E> _:
+			return this;
+		case ArraySeq<? extends E> a:
+			from = 0;
+			to = a.size();
+			orig = a.data;
+			break;
+		case SliceSeq<? extends E> s:
+			from = s.from;
+			to = s.to;
+			orig = s.ref;
+			break;
+		case ReversedSeq<? extends E> r:
+			from = r.ref.from;
+			to = r.ref.to;
+			orig = r.ref.ref;
+			break;
+		}
+
+		@SuppressWarnings("unchecked")
+		E[] elements = (E[]) Arrays.copyOfRange(orig, from, to);
+		Arrays.sort(elements, comparator);
+		return new ArraySeq<>(elements);
 	}
 
 	/**
