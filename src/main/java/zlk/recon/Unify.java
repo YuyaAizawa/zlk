@@ -1,7 +1,9 @@
 package zlk.recon;
 
+import zlk.common.RecordField;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
+import zlk.recon.FlatType.Record1;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;
@@ -61,6 +63,21 @@ public final class Unify {
 					} else {
 						throw new Missmatch();
 					}
+				} else if(u_.flatType() instanceof Record1 u__ && v_.flatType() instanceof Record1 v__) {
+					Seq<RecordField<Variable>> fields = u__.fields();
+					Seq<RecordField<Variable>> otherFields = v__.fields();
+					if(fields.size() != otherFields.size()) {
+						throw new Missmatch();
+					}
+					for(int i = 0; i < fields.size(); i++) {
+						RecordField<Variable> field = fields.at(i);
+						RecordField<Variable> otherField = otherFields.at(i);
+						if(!field.name().equals(otherField.name())) {
+							throw new Missmatch();
+						}
+						unify(field.value(), otherField.value());
+					}
+					merge(u, uState, v, vState, vState.content);
 				} else if(u_.flatType() instanceof Fun1 u__ && v_.flatType() instanceof Fun1 v__) {
 					unify(u__.arg(), v__.arg());
 					unify(u__.ret(), v__.ret());

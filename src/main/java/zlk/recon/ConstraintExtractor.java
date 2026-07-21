@@ -5,6 +5,7 @@ import java.util.Map;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -191,6 +192,56 @@ public final class ConstraintExtractor {
 
 			yield new CExists(Seq.of(patVar, branchVar), cons.toSeq());
 		}
+
+		case IcExp.IcRecord(Seq<IcExp.IcRecordField> fields, Location _) -> {
+			SeqBuffer<Variable> vars = new SeqBuffer<>();
+			SeqBuffer<Constraint> cons = new SeqBuffer<>();
+			SeqBuffer<RecordField<RcType>> fieldTypes = new SeqBuffer<>();
+			for(IcExp.IcRecordField field : fields) {
+				Variable fieldVar = freshFlex.getVariable();
+				RcType fieldType = new VarN(fieldVar);
+				vars.add(fieldVar);
+				cons.add(extract(field.value(), fieldType));
+				fieldTypes.add(new RecordField<>(field.name(), fieldType));
+			}
+			cons.add(new CEqual(new RcType.RecordN(fieldTypes.toSeq()), expected));
+			yield new CExists(vars.toSeq(), cons.toSeq());
+		}
+
+		case IcExp.IcRecordAccess(IcExp target, String field, Location _) -> {
+			Variable targetVar = freshFlex.getVariable();
+			Variable fieldVar = freshFlex.getVariable();
+			RcType targetType = new VarN(targetVar);
+			RcType fieldType = new VarN(fieldVar);
+			yield new CExists(
+					Seq.of(targetVar, fieldVar),
+					Seq.of(
+							extract(target, targetType),
+							new Constraint.CHasField(targetType, field, fieldType),
+							new CEqual(fieldType, expected)));
+		}
+
+		case IcExp.IcRecordUpdate(
+				IcExp target,
+				Seq<IcExp.IcRecordField> fields,
+				Location _)
+		-> {
+			Variable targetVar = freshFlex.getVariable();
+			RcType targetType = new VarN(targetVar);
+			SeqBuffer<Variable> vars = new SeqBuffer<>();
+			SeqBuffer<Constraint> cons = new SeqBuffer<>();
+			vars.add(targetVar);
+			cons.add(extract(target, targetType));
+			for(IcExp.IcRecordField field : fields) {
+				Variable fieldVar = freshFlex.getVariable();
+				RcType fieldType = new VarN(fieldVar);
+				vars.add(fieldVar);
+				cons.add(extract(field.value(), fieldType));
+				cons.add(new Constraint.CHasField(targetType, field.name(), fieldType));
+			}
+			cons.add(new CEqual(targetType, expected));
+			yield new CExists(vars.toSeq(), cons.toSeq());
+		}
 		};
 	}
 
@@ -254,9 +305,9 @@ public final class ConstraintExtractor {
 			Args a = extractFromArgs(decl.args());
 
 			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
+			headerCons.add(new CEqual(a.funTy, anno.type()));
 			headerCons.addAll(a.binder.cons);
 			headerCons.add(extract(decl.body(), a.resultTy));
-			headerCons.add(new CEqual(a.funTy, anno.type()));
 
 			return new CLet(
 					anno.rigids(),

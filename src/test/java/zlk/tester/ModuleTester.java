@@ -116,7 +116,7 @@ public class ModuleTester {
 			return;
 		}
 
-		this.patternErrors = PatternChecker.check(module);
+		this.patternErrors = PatternChecker.check(module, callSiteTypes);
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
 		}
@@ -255,6 +255,14 @@ public class ModuleTester {
 		case Exp.Case(Exp scrutinee, Seq<zlk.ast.CaseBranch> branches, _) -> {
 			collectParseErrors(scrutinee, errors);
 			branches.forEach(branch -> collectParseErrors(branch.body(), errors));
+		}
+		case Exp.Record(Seq<Exp.RecordField> fields, _) ->
+			fields.forEach(field -> collectParseErrors(field.value(), errors));
+		case Exp.RecordAccess(Exp target, String _, _) ->
+			collectParseErrors(target, errors);
+		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, _) -> {
+			collectParseErrors(target, errors);
+			fields.forEach(field -> collectParseErrors(field.value(), errors));
 		}
 		}
 	}

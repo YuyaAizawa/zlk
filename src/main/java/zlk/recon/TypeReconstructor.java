@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
@@ -15,15 +16,18 @@ import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.Constraint.CExists;
 import zlk.recon.constraint.Constraint.CForeign;
+import zlk.recon.constraint.Constraint.CHasField;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Constraint.CPattern;
 import zlk.recon.constraint.Constraint.CPhase;
+import zlk.recon.constraint.Constraint.CRecordPattern;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.Structure;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
+import zlk.recon.constraint.RcType.RecordN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Result;
 import zlk.util.collection.Seq;
@@ -98,6 +102,51 @@ public class TypeReconstructor {
 			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
 			Variable expected = typeToVar(letRank, expection, IdMap.of());
 			Unify.unify(actual, expected);
+		}
+		case CHasField(RcType recordType, String field, RcType fieldType) -> {
+			Variable record = typeToVar(letRank, recordType, IdMap.of());
+			Variable expectedField = typeToVar(letRank, fieldType, IdMap.of());
+			switch(record.get().content) {
+			case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) -> {
+				RecordField<Variable> found = fields
+						.findFirst(candidate -> candidate.name().equals(field))
+						.orElseThrow(() -> new IllegalArgumentException(
+								"record has no field: " + field));
+				Unify.unify(found.value(), expectedField);
+			}
+			case Content.FlexVar _ -> {
+				Variable singleton = register(letRank, new Structure(new FlatType.Record1(
+						Seq.of(new RecordField<>(field, expectedField)))));
+				Unify.unify(record, singleton);
+			}
+			default -> throw new IllegalArgumentException("not a record: " + record);
+			}
+		}
+		case CRecordPattern(RcType recordType, Seq<RecordField<RcType>> patternFields) -> {
+			Variable record = typeToVar(letRank, recordType, IdMap.of());
+			Seq<RecordField<RcType>> canonical = RecordField.canonicalize(patternFields);
+			switch(record.get().content) {
+			case Structure(FlatType.Record1(Seq<RecordField<Variable>> actualFields)) -> {
+				for(RecordField<RcType> patternField : canonical) {
+					RecordField<Variable> actualField = actualFields
+							.findFirst(candidate -> candidate.name().equals(patternField.name()))
+							.orElseThrow(() -> new IllegalArgumentException(
+									"record has no field: " + patternField.name()));
+					Variable expectedField = typeToVar(
+							letRank, patternField.value(), IdMap.of());
+					Unify.unify(actualField.value(), expectedField);
+				}
+			}
+			case Content.FlexVar _ -> {
+				Seq<RecordField<Variable>> inferredFields = canonical.map(field ->
+						new RecordField<>(field.name(),
+								typeToVar(letRank, field.value(), IdMap.of())));
+				Variable inferred = register(
+						letRank, new Structure(new FlatType.Record1(inferredFields)));
+				Unify.unify(record, inferred);
+			}
+			default -> throw new IllegalArgumentException("not a record: " + record);
+			}
 		}
 		case CLet(
 				Seq<Variable> rigids,
@@ -182,6 +231,10 @@ public class TypeReconstructor {
 			Variable bVar = go.apply(ret);
 			return register(letRank, new Structure(new FlatType.Fun1(aVar, bVar)));
 		}
+		case RecordN(Seq<RecordField<RcType>> fields) -> {
+			return register(letRank, new Structure(new FlatType.Record1(
+					fields.map(field -> new RecordField<>(field.name(), go.apply(field.value()))))));
+		}
 		}
 	}
 
@@ -200,6 +253,10 @@ public class TypeReconstructor {
 		}
 		case Var(String name) -> {
 			return typeVars.get(name);
+		}
+		case Type.Record(Seq<RecordField<Type>> fields) -> {
+			return register(letRank, new Structure(new FlatType.Record1(
+					fields.map(field -> new RecordField<>(field.name(), go.apply(field.value()))))));
 		}
 		}
 	}
@@ -269,6 +326,8 @@ public class TypeReconstructor {
 			args.mapToInt(go).max().orElse(groupRank);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
+		case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) ->
+			fields.mapToInt(field -> go.applyAsInt(field.value())).max().orElse(groupRank);
 		case Content.Error() -> groupRank;
 		};
 	}
@@ -339,7 +398,8 @@ public class TypeReconstructor {
 				restore(arg);
 				restore(ret);
 			}
-			default -> throw new IllegalArgumentException("Unexpected value: " + term);
+			case FlatType.Record1(Seq<RecordField<Variable>> fields) ->
+				fields.forEach(field -> restore(field.value()));
 			}
 		}
 		case Content.Error() -> {}
