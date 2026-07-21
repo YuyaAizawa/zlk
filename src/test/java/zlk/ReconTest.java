@@ -15,6 +15,37 @@ import zlk.tester.ModuleTester.CompileLevel;
 
 public class ReconTest {
 	@Test
+	void fieldAccessInfersClosedSingleFieldRecord() {
+		var module = new ModuleTester(
+				"getX record = record.x",
+				CompileLevel.TYPE_RECON);
+
+		module.getType("getX").is("{ x : a } -> a");
+	}
+
+	@Test
+	void completeRecordAnnotationAllowsAccessToMultipleFields() {
+		String src = """
+				sum : { x : I32, y : I32 } -> I32
+				sum record = add record.x record.y
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+
+		module.getType("sum").is("{ x : I32, y : I32 } -> I32");
+	}
+
+	@Test
+	void inferredFieldAccessorDoesNotAcceptWiderRecordWithoutRowPolymorphism() {
+		String src = """
+				getX record = record.x
+				result = getX { x = 1, y = True }
+				""";
+
+		assertThrows(RuntimeException.class,
+				() -> new ModuleTester(src, CompileLevel.TYPE_RECON));
+	}
+
+	@Test
 	void typeAnnotationSpecializesInferredType() {
 		String src = """
 				id : I32 -> I32

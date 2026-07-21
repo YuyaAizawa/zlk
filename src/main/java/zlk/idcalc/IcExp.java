@@ -14,6 +14,9 @@ import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
 import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcRecord;
+import zlk.idcalc.IcExp.IcRecordAccess;
+import zlk.idcalc.IcExp.IcRecordUpdate;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
@@ -22,7 +25,8 @@ import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public sealed interface IcExp extends PrettyPrintable, LocationHolder, ExpOrPattern
-permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet, IcCase {
+permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet, IcCase,
+		IcRecord, IcRecordAccess, IcRecordUpdate {
 
 	record IcCnst(
 			ConstValue value,
@@ -73,6 +77,18 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			Seq<IcCaseBranch> branches,
 			Location loc) implements IcExp {}
 
+	record IcRecordField(String name, IcExp value, Location loc) implements LocationHolder {}
+
+	record IcRecord(
+			Seq<IcRecordField> fields,
+			Location loc) implements IcExp {}
+
+	record IcRecordAccess(IcExp target, String field, Location loc) implements IcExp {}
+	record IcRecordUpdate(
+			IcExp target,
+			Seq<IcRecordField> fields,
+			Location loc) implements IcExp {}
+
 	public default Optional<Id> getId() {
 		switch (this) {
 		case IcVarLocal(Id id, Location _) -> {
@@ -117,6 +133,13 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			target.walk(action);
 			branches.forEach(branch -> branch.body().walk(action));
 		}
+		case IcRecord(Seq<IcRecordField> fields, Location _) ->
+			fields.forEach(field -> field.value().walk(action));
+		case IcRecordAccess(IcExp target, String _, Location _) -> target.walk(action);
+		case IcRecordUpdate(IcExp target, Seq<IcRecordField> fields, Location _) -> {
+			target.walk(action);
+			fields.forEach(field -> field.value().walk(action));
+		}
 		}
 	}
 
@@ -150,7 +173,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 		}
 		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
 			switch(fun) {
-			case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcApp _ -> {
+			case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcApp _, IcRecord _,
+					IcRecordAccess _, IcRecordUpdate _ -> {
 				pp.append(fun);
 			}
 			case IcLamb _ -> {
@@ -165,7 +189,8 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			args.forEach(arg -> {
 				pp.append(" ");
 				switch(arg) {
-				case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _ -> {
+				case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcRecord _,
+						IcRecordAccess _, IcRecordUpdate _ -> {
 					pp.append(arg);
 				}
 				case IcLamb _, IcApp _ -> {
@@ -212,6 +237,36 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 					pp.endl().append(branch);
 				});
 			});
+		}
+		case IcRecord(Seq<IcRecordField> fields, Location _) -> {
+			if(fields.isEmpty()) {
+				pp.append("{}");
+			} else {
+				pp.append("{ ");
+				IcRecordField head = fields.head();
+				pp.append(head.name).append(" = ").append(head.value);
+				fields.tail().forEach(field -> {
+					pp.append(", ").append(field.name).append(" = ").append(field.value);
+				});
+				pp.append(" }");
+			}
+		}
+		case IcRecordAccess(IcExp target, String field, Location _) -> {
+			switch(target) {
+			case IcCnst _, IcVarLocal _, IcVarForeign _, IcVarCtor _, IcRecord _,
+					IcRecordAccess _, IcRecordUpdate _ -> pp.append(target);
+			case IcLamb _, IcApp _, IcIf _, IcLet _, IcCase _ ->
+				pp.append("(").append(target).append(")");
+			}
+			pp.append(".").append(field);
+		}
+		case IcRecordUpdate(IcExp target, Seq<IcRecordField> fields, Location _) -> {
+			pp.append("{ ").append(target).append(" | ");
+			fields.forEachIndexed((i, field) -> {
+				if(i > 0) pp.append(", ");
+				pp.append(field.name()).append(" = ").append(field.value());
+			});
+			pp.append(" }");
 		}
 		}
 	}

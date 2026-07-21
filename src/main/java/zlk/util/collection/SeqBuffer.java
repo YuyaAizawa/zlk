@@ -213,14 +213,14 @@ public final class SeqBuffer<E> implements Iterable<E> {
 			elements.forEach(this::add);
 			return;
 		}
-		int srcLength = elements.size();
+		int srcEnd = srcIndex + elements.size();
 
-		while(srcIndex < srcLength) {
+		while(srcIndex < srcEnd) {
 			if(tailSize == tailChunk.data.length) {
 				grow();
 			}
 
-			int copyLength = Math.min(srcLength - srcIndex, tailChunk.data.length - tailSize);
+			int copyLength = Math.min(srcEnd - srcIndex, tailChunk.data.length - tailSize);
 			System.arraycopy(data, srcIndex, tailChunk.data, tailSize, copyLength);
 			srcIndex += copyLength;
 			tailSize += copyLength;

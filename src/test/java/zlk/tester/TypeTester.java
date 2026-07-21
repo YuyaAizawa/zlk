@@ -3,6 +3,7 @@ package zlk.tester;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import zlk.ast.AnType;
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
@@ -43,6 +44,9 @@ public final class TypeTester {
 			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(simpleEval(arg), simpleEval(ret));
+		case AnType.Record(Seq<AnType.RecordField> fields, _) ->
+			new Type.Record(fields.map(field -> new RecordField<>(
+					field.name(), simpleEval(field.type()))));
 		};
 	}
 
@@ -59,6 +63,9 @@ public final class TypeTester {
 				yield new Arrow(importFromModule(arg), importFromModule(ret));
 			}
 			case Var _ -> { yield ty; }
+			case Type.Record(Seq<RecordField<Type>> fields) ->
+				new Type.Record(fields.map(field -> new RecordField<>(
+						field.name(), importFromModule(field.value()))));
 		};
 	}
 	private Id condidate(Id id) {
