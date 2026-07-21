@@ -17,6 +17,10 @@ import zlk.clcalc.CcExp.CcDirectApp;
 import zlk.clcalc.CcExp.CcIf;
 import zlk.clcalc.CcExp.CcLet;
 import zlk.clcalc.CcExp.CcMkCls;
+import zlk.clcalc.CcExp.CcRecord;
+import zlk.clcalc.CcExp.CcRecordAccess;
+import zlk.clcalc.CcExp.CcRecordField;
+import zlk.clcalc.CcExp.CcRecordUpdate;
 import zlk.clcalc.CcExp.CcVar;
 import zlk.clcalc.CcFunDecl;
 import zlk.clcalc.CcModule;
@@ -36,6 +40,10 @@ import zlk.idcalc.IcExp.IcCnst;
 import zlk.idcalc.IcExp.IcIf;
 import zlk.idcalc.IcExp.IcLamb;
 import zlk.idcalc.IcExp.IcLet;
+import zlk.idcalc.IcExp.IcRecord;
+import zlk.idcalc.IcExp.IcRecordAccess;
+import zlk.idcalc.IcExp.IcRecordField;
+import zlk.idcalc.IcExp.IcRecordUpdate;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcExp.IcVarForeign;
 import zlk.idcalc.IcExp.IcVarLocal;
@@ -240,6 +248,20 @@ public final class ClosureConverter {
 							go.apply(branch.body()),
 							branch.loc())),
 					loc);
+
+		case CcRecord(Seq<CcRecordField> fields, Location loc) ->
+			new CcRecord(
+					fields.map(field -> new CcRecordField(
+							field.name(), go.apply(field.value()), field.loc())),
+					loc);
+		case CcRecordAccess(CcExp recordTarget, String field, Location loc) ->
+			new CcRecordAccess(go.apply(recordTarget), field, loc);
+		case CcRecordUpdate(CcExp recordTarget, Seq<CcRecordField> fields, Location loc) ->
+			new CcRecordUpdate(
+					go.apply(recordTarget),
+					fields.map(field -> new CcRecordField(
+							field.name(), go.apply(field.value()), field.loc())),
+					loc);
 		};
 	}
 
@@ -352,6 +374,19 @@ public final class ClosureConverter {
 									branch.loc()));
 			yield new CcCase(ccTarget, nodeTypes.get(target), compiledBranches, loc);
 		}
+		case IcRecord(Seq<IcRecordField> fields, Location loc) ->
+			new CcRecord(
+					fields.map(field -> new CcRecordField(
+							field.name(), compile(field.value()), field.loc())),
+					loc);
+		case IcRecordAccess(IcExp target, String field, Location loc) ->
+			new CcRecordAccess(compile(target), field, loc);
+		case IcRecordUpdate(IcExp target, Seq<IcRecordField> fields, Location loc) ->
+			new CcRecordUpdate(
+					compile(target),
+					fields.map(field -> new CcRecordField(
+							field.name(), compile(field.value()), field.loc())),
+					loc);
 		};
 	}
 
@@ -404,6 +439,14 @@ public final class ClosureConverter {
 				branch.pattern().accumulateVars(bounded);
 				fv(branch.body(), bounded, free);
 			}
+		}
+		case CcRecord(Seq<CcRecordField> fields, Location _) ->
+			fields.forEach(field -> fv(field.value(), bounded, free));
+		case CcRecordAccess(CcExp target, String _, Location _) ->
+			fv(target, bounded, free);
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location _) -> {
+			fv(target, bounded, free);
+			fields.forEach(field -> fv(field.value(), bounded, free));
 		}
 		}
 	}

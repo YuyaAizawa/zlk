@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.constraint.Content;
@@ -62,6 +63,9 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 			new Type.CtorApp(id, args.map(arg -> arg.toType(namer)));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			Type.arrow(Seq.of(arg.toType(namer), ret.toType(namer)));
+		case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) ->
+			new Type.Record(fields.map(field ->
+					new RecordField<>(field.name(), field.value().toType(namer))));
 		case Content.Error _ ->
 			throw new RuntimeException("error type cannot convert");
 		};
@@ -86,6 +90,8 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 			args.anyMatch(arg -> arg.occursHelp(seen, foundCycle));
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			arg.occursHelp(seen, ret.occursHelp(new SeqBuffer<>(seen), foundCycle));
+		case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) ->
+			fields.anyMatch(field -> field.value().occursHelp(seen, foundCycle));
 		case Content.Error() -> foundCycle;
 		};
 	}
@@ -112,6 +118,8 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 			a.markAndWalk(mark, action);
 			b.markAndWalk(mark, action);
 		}
+		case Content.Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) ->
+			fields.forEach(field -> field.value().markAndWalk(mark, action));
 		default -> {}
 		}
 	}

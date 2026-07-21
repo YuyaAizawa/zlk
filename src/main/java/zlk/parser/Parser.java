@@ -206,16 +206,20 @@ public final class Parser {
 	static final Peg<Token> ARROW = kind(Kind.ARROW);
 	static final Peg<Token> BAR = kind(Kind.BAR);
 	static final Peg<Token> CASE = kind(Kind.CASE);
+	static final Peg<Token> COMMA = kind(Kind.COMMA);
 	static final Peg<Token> COLON = kind(Kind.COLON);
+	static final Peg<Token> DOT = kind(Kind.DOT);
 	static final Peg<Token> ELSE = kind(Kind.ELSE);
 	static final Peg<Token> EQUAL = kind(Kind.EQUAL);
 	static final Peg<Token> IF = kind(Kind.IF);
 	static final Peg<Token> IN = kind(Kind.IN);
 	static final Peg<Token> LAMBDA = kind(Kind.LAMBDA);
+	static final Peg<Token> LBRACE = kind(Kind.LBRACE);
 	static final Peg<Token> LET = kind(Kind.LET);
 	static final Peg<Token> LPAREN = kind(Kind.LPAREN);
 	static final Peg<Token> MODULE = kind(Kind.MODULE);
 	static final Peg<Token> OF = kind(Kind.OF);
+	static final Peg<Token> RBRACE = kind(Kind.RBRACE);
 	static final Peg<Token> RPAREN = kind(Kind.RPAREN);
 	static final Peg<Token> THEN = kind(Kind.THEN);
 	static final Peg<Token> TYPE = kind(Kind.TYPE);
@@ -263,9 +267,20 @@ public final class Parser {
 			LPAREN, lazy(() -> type()), RPAREN,
 			(s, ty, e) -> ty.updateLoc(locRange(s, e)));
 
+	static final Peg<AnType.RecordField> recordTypeField = sequence(
+			LCID, COLON, lazy(() -> type()),
+			(name, _, ty) -> new AnType.RecordField(name.str(), ty, locRange(name, ty)));
+
+	static final Peg<AnType.Record> recordType = sequence(
+			LBRACE,
+			optional(join(recordTypeField, COMMA)),
+			RBRACE,
+			(s, fields, e) -> new AnType.Record(fields.orElse(Seq.of()), locRange(s, e)));
+
 	static final Peg<AnType> ctorArg = choice(  // コンストラクタの引数部分に来れる要素
 			tyVar,
 			ctorHead.map(t -> new AnType.Type(t.str(), Seq.of(), t.loc())),
+			recordType,
 			parenType);
 
 	static final Peg<AnType.Type> ctorAnno = sequence(
@@ -275,6 +290,7 @@ public final class Parser {
 	static final Peg<AnType> funTyArg = choice(  // 関数型の引数部分に来れる要素
 			tyVar,
 			ctorAnno,
+			recordType,
 			parenType);
 
 	static final Peg<AnType> type = sequence(funTyArg, star(sequence(ARROW, funTyArg, (_, t) -> t)),
@@ -302,12 +318,26 @@ public final class Parser {
 	 * <pattern>    ::= <ctorHead> <aPattern>+
 	 *                | <aPattern>
 	 */
+	static final Peg<Pattern.RecordField> recordPatternField = choice(
+			sequence(LCID, EQUAL, lazy(() -> pattern()),
+					(name, _, pat) -> new Pattern.RecordField(
+							name.str(), pat, false, locRange(name, pat))),
+			LCID.map(name -> new Pattern.RecordField(
+					name.str(), new Pattern.Var(name.str(), name.loc()), true, name.loc())));
+
+	static final Peg<Pattern.Record> recordPattern = sequence(
+			LBRACE,
+			optional(join(recordPatternField, COMMA)),
+			RBRACE,
+			(s, fields, e) -> new Pattern.Record(fields.orElse(Seq.of()), locRange(s, e)));
+
 	static final Peg<Pattern> aPattern = choice(
 			WILDCARD.map(t -> new Pattern.Wildcard(t.loc())),
 			LCID.map(t -> new Pattern.Var(t.str(), t.loc())),
 			ctorHead.map(t -> new Pattern.Ctor(t.str(), Seq.of(), t.loc())),
 			sequence(LPAREN, lazy(() -> pattern()), RPAREN,
-					(s, pat, e) -> pat.updateLoc(locRange(s, e))));
+					(s, pat, e) -> pat.updateLoc(locRange(s, e))),
+			recordPattern);
 
 	static final Peg<Pattern> pattern = choice(
 			sequence(ctorHead, star(aPattern),
@@ -321,13 +351,21 @@ public final class Parser {
 	/* 式
 	 * <literal>        ::= <digits>
 	 *
+	 * <recordField>    ::= <lcid> = <exp>
+	 * <recordLiteral>  ::= { (<recordField> (, <recordField>)*)? }
+	 * <recordUpdate>   ::= { <lcid> | <recordField> (, <recordField>)* }
+	 * <recordExp>      ::= <recordUpdate>
+	 *                    | <recordLiteral>
+	 *
 	 * <aExp>           ::= <literal>
 	 *                    | <lcid>
 	 *                    | <ctorHead>
 	 *                    | ( <exp> )
+	 *                    | <recordExp>
 	 *                    | <panicAExp>
 	 *
-	 * <appExp>         ::= <aExp>+
+	 * <memberExp>      ::= <aExp> (. <lcid>)*
+	 * <appExp>         ::= <memberExp>+
 	 *
 	 * <lambdaExp>      ::= \ <pattern>+ -> <exp>
 	 *
@@ -358,6 +396,29 @@ public final class Parser {
 	static final Peg<Exp> panicAExp =  // TODO: 確実に落とせるのはILL位で他は個別の式構文ごとに対応
 			ILL.map(t -> new Exp.Err(t.loc()));
 
+	static final Peg<Exp.RecordField> recordField = sequence(
+			LCID,
+			EQUAL,
+			exp_,
+			(name, _, value) -> new Exp.RecordField(name.str(), value, locRange(name, value)));
+
+	static final Peg<Exp.Record> recordLiteral = sequence(
+			LBRACE,
+			optional(join(recordField, COMMA)),
+			RBRACE,
+			(s, fields, e) -> new Exp.Record(fields.orElse(Seq.of()), locRange(s, e)));
+
+	static final Peg<Exp.RecordUpdate> recordUpdate = sequence(
+			LBRACE,
+			LCID,
+			BAR,
+			join(recordField, COMMA),
+			RBRACE,
+			(s, target, _, fields, e) -> new Exp.RecordUpdate(
+					new Exp.Var(target.str(), target.loc()), fields, locRange(s, e)));
+
+	static final Peg<Exp> recordExp = choice(recordUpdate, recordLiteral);
+
 	static final Peg<Exp> aExp = choice(
 			literal,
 			LCID.map(t -> new Exp.Var(t.str(), t.loc())),
@@ -365,10 +426,22 @@ public final class Parser {
 			sequence(
 					LPAREN, exp_, RPAREN,
 					(s, exp, e) -> exp.updateLoc(locRange(s, e))),
+			recordExp,
 			panicAExp);
 
+	static final Peg<Token> memberSuffix = sequence(DOT, LCID, (_, field) -> field);
+
+	static final Peg<Exp> memberExp = sequence(aExp, star(memberSuffix),
+			(target, fields) -> {
+				Exp result = target;
+				for(Token field : fields) {
+					result = new Exp.RecordAccess(result, field.str(), locRange(result, field));
+				}
+				return result;
+			});
+
 	static final Peg<Exp> appExp =
-			plus(aExp).map(l -> l.size() == 1 ? l.head() : new Exp.App(l, locRange(l, l)));
+			plus(memberExp).map(l -> l.size() == 1 ? l.head() : new Exp.App(l, locRange(l, l)));
 
 	static final Peg<Exp.Lamb> lambdaExp = sequence(
 			LAMBDA, plus(pattern), ARROW, mayBlockExp(exp_),

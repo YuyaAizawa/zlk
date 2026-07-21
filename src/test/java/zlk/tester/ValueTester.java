@@ -8,7 +8,7 @@ import java.util.function.Function;
 
 import org.opentest4j.AssertionFailedError;
 
-import zlk.runtime.CustomType;
+import zlk.runtime.ZlkCustom;
 import zlk.tester.ValueTester.VData;
 import zlk.tester.ValueTester.VFunction;
 import zlk.tester.ValueTester.VMethod;
@@ -121,7 +121,7 @@ permits VMethod, VFunction, VData {
 
 	private static Object[] valueArgs(Object value) {
 		Class<?> cls = value.getClass();
-		if(!(value instanceof CustomType) || !cls.isRecord()) {
+		if(!(value instanceof ZlkCustom) || !cls.isRecord()) {
 			return null;
 		}
 

@@ -28,6 +28,8 @@ permits JavaType.Primitive, JavaType.Simple, JavaType.Variant {
 	 * 型消去された何かの関数 `==`で比較可能
 	 */
 	public static final Simple FUNCTION = new Simple("java/util/function/Function", true);
+	/** 全ZLK recordの公開JVM型． */
+	public static final Simple RECORD = new Simple("zlk/runtime/ZlkRecord");
 
 	enum Primitive implements JavaType {
 		VOID("V");

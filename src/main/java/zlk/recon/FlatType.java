@@ -2,10 +2,12 @@ package zlk.recon;
 
 import java.util.function.Function;
 
+import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
+import zlk.recon.FlatType.Record1;
 import zlk.recon.constraint.Content;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
@@ -15,14 +17,21 @@ import zlk.util.pp.PrettyPrinter;
  * 単一化後の型
  */
 public sealed interface FlatType extends PrettyPrintable
-permits CtorApp1, Fun1 {
+permits CtorApp1, Fun1, Record1 {
 	record CtorApp1(Id id, Seq<Variable> args) implements FlatType {} // TODO: App1?
 	record Fun1(Variable arg, Variable ret) implements FlatType {}
+	record Record1(Seq<RecordField<Variable>> fields) implements FlatType {
+		public Record1 {
+			fields = RecordField.canonicalize(fields);
+		}
+	}
 
 	default FlatType traverse(Function<Variable, Variable> f) {
 		return switch(this) {
 		case CtorApp1(Id id, Seq<Variable> args) -> new CtorApp1(id, args.map(f));
 		case Fun1(Variable arg, Variable ret) -> new Fun1(f.apply(arg), f.apply(ret));
+		case Record1(Seq<RecordField<Variable>> fields) ->
+			new Record1(fields.map(field -> new RecordField<>(field.name(), f.apply(field.value()))));
 		};
 	}
 
@@ -43,6 +52,9 @@ permits CtorApp1, Fun1 {
 		}
 		case Fun1(Variable arg, Variable ret) ->
 				new Type.Arrow(arg.toType(), ret.toType());
+		case Record1(Seq<RecordField<Variable>> fields) ->
+			new Type.Record(fields.map(field ->
+					new RecordField<>(field.name(), field.value().toType())));
 		};
 	}
 
@@ -65,6 +77,9 @@ permits CtorApp1, Fun1 {
 		}
 		case Fun1(Variable arg, Variable ret) -> {
 			pp.append(arg).append(" -> ").append(ret);
+		}
+		case Record1(Seq<RecordField<Variable>> fields) -> {
+			RecordField.appendTo(pp, fields, " : ");
 		}
 		}
 	}
