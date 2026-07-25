@@ -119,24 +119,24 @@ public final class PatternChecker {
 							arg.pattern(), nodeTypes.get(arg.pattern()))));
 		}
 		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
-			if(!(expected instanceof Type.Record(Seq<RecordField<Type>> shape))) {
+			if(!(expected instanceof Type.Record(Type.Row row))) {
 				throw new IllegalArgumentException("record pattern has non-record type: " + expected);
 			}
 			StringBuilder key = new StringBuilder("$record$");
-			shape.forEach(field -> key
+			row.fields().forEach(field -> key
 					.append(field.name().length()).append('$').append(field.name()));
 			Id productId = Id.intern(key.toString());
-			CtorInfo product = new CtorInfo(productId, productId, shape.size());
+			CtorInfo product = new CtorInfo(productId, productId, row.fields().size());
 			if(!unionInfos.containsKey(productId)) {
 				unionInfos.put(productId, new UnionInfo(productId, Seq.of(product)));
 			}
-			Seq<PcPattern> productArgs = shape.map(shapeField -> fields
+			Seq<PcPattern> productArgs = row.fields().map(shapeField -> fields
 					.findFirst(field -> field.name().equals(shapeField.name()))
 					.map(field -> toPcPattern(field.pattern(), shapeField.value()))
 					.orElse(PcPattern.Anything.SINGLETON));
-			if(productArgs.size() != shape.size()) {
+			if(productArgs.size() != row.fields().size()) {
 				throw new IllegalStateException(
-						"record product arity mismatch: " + shape.size() + " vs " + productArgs.size());
+						"record product arity mismatch: " + row.fields().size() + " vs " + productArgs.size());
 			}
 			yield new PcPattern.Ctor(productId, productId, productArgs);
 		}

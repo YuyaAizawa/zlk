@@ -5,7 +5,9 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import zlk.ast.AnType;
 import zlk.common.id.Id;
+import zlk.util.collection.Seq;
 import zlk.util.collection.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -112,26 +114,60 @@ record Scope(
 }
 
 final class TyEnv {
-	private final Map<String, Id> impl;
+	private final Map<String, TyEntry> impl;
+
+	/** nominal型宣言とalias宣言を区別するclosed variant．
+	 * 従来の {@code isAlias} booleanと名前keyの第二alias宣言mapを解消し，
+	 * alias宣言はこのentryから到達する． */
+	sealed interface TyEntry permits TyEntry.Nominal, TyEntry.Alias {
+		Id id();
+		int arity();
+
+		/** nominalなADT/組込み型のentry． */
+		record Nominal(Id id, int arity) implements TyEntry {}
+
+		/** alias宣言のentry．immutableな {@link AliasDecl} を所有する． */
+		record Alias(Id id, int arity, AliasDecl decl) implements TyEntry {}
+	}
+
+	/** alias宣言のimmutableな内容．params/bodyのみを持ち，idとstate/cacheは持たない．
+	 * idは所有する {@link TyEntry.Alias} 側に保持する． */
+	record AliasDecl(
+			Seq<AnType.Var> params,
+			AnType body) {}
 
 	TyEnv() {
 		impl = new HashMap<>();
 	}
 
-	Id register(String name, Id id) throws DuplicatedNameException {
-		Id old = impl.putIfAbsent(name, id);
+	TyEntry registerNominal(String name, Id id, int arity) throws DuplicatedNameException {
+		TyEntry entry = new TyEntry.Nominal(id, arity);
+		TyEntry old = impl.putIfAbsent(name, entry);
 		if(old != null) {
-			throw new DuplicatedNameException(old, id);
+			throw new DuplicatedNameException(old.id(), id);
 		}
-		return id;
+		return entry;
 	}
 
-	Id get(String name) {
-		Id result = impl.get(name);
+	TyEntry registerAlias(String name, Id id, int arity, AliasDecl decl) throws DuplicatedNameException {
+		TyEntry entry = new TyEntry.Alias(id, arity, decl);
+		TyEntry old = impl.putIfAbsent(name, entry);
+		if(old != null) {
+			throw new DuplicatedNameException(old.id(), id);
+		}
+		return entry;
+	}
+
+	TyEntry get(String name) {
+		TyEntry result = impl.get(name);
 		if(result == null) {
 			throw new NoSuchElementException(name);
 		}
 		return result;
+	}
+
+	TyEntry getOrNull(String name) {
+		return impl.get(name);
 	}
 }
 

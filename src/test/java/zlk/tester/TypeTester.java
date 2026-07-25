@@ -2,6 +2,8 @@ package zlk.tester;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.Optional;
+
 import zlk.ast.AnType;
 import zlk.common.RecordField;
 import zlk.common.Type;
@@ -44,9 +46,13 @@ public final class TypeTester {
 			yield new Type.CtorApp(ctor_, args_);
 		}
 		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(simpleEval(arg), simpleEval(ret));
-		case AnType.Record(Seq<AnType.RecordField> fields, _) ->
-			new Type.Record(fields.map(field -> new RecordField<>(
+		case AnType.Record(Optional<AnType.Var> extension, Seq<AnType.RecordField> fields, _) -> {
+			if(extension.isPresent()) {
+				throw new IllegalArgumentException("open record type is not supported in expected types yet");
+			}
+			yield new Type.Record(fields.map(field -> new RecordField<>(
 					field.name(), simpleEval(field.type()))));
+		}
 		};
 	}
 
@@ -63,9 +69,11 @@ public final class TypeTester {
 				yield new Arrow(importFromModule(arg), importFromModule(ret));
 			}
 			case Var _ -> { yield ty; }
-			case Type.Record(Seq<RecordField<Type>> fields) ->
-				new Type.Record(fields.map(field -> new RecordField<>(
-						field.name(), importFromModule(field.value()))));
+			case Type.Record(Type.Row row) ->
+				new Type.Record(
+						row.fields().map(field -> new RecordField<>(
+								field.name(), importFromModule(field.value()))),
+						row.extension());
 		};
 	}
 	private Id condidate(Id id) {
