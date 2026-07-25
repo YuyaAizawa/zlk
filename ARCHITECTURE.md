@@ -66,9 +66,21 @@ flowchart TD
 
 ### レコード型
 
-現在のレコード型は，フィールド名とフィールド型の集合が完全に一致するときだけ単一化できる，閉じた構造的レコード型である．フィールド名は文字列の自然順序で正規化する．
+ZLKのレコード型は，行多相を含む構造的レコード型である．
 
-行変数および行多相は未実装である．型が未確定の値に対する`record.x`は，対象を正確に`{ x : a }`型へ制約する．したがって，このように推論された関数へ`{ x : I32, y : Bool }`のような追加フィールドを持つ値を渡すことはできない．複数フィールドを扱う関数や特定の広いレコード形状を受け取る関数には，現在は完全なレコード型注釈を付ける．
+安定な`Type.Record`が`Type.Row`を包み，`Type.Row`はcanonicalize済みの`RecordField`列とoptionalの`Type.RowVar`拡張を持つ．`Type.RowVar`は`Type`を実装しない独立クラスであり，`Type.Row`の末尾拡張のみに現れる．closed rowはextensionが空，open rowはextensionが`RowVar`を持つ．
+
+型推論の制約IRでは，`RcType.RowN`が`RecordField<RcType>`列とoptionalの`Variable`拡張を持ち，`RcType.RecordN`が`RowN`を包む．flat化後は`FlatType.Row1`と`FlatType.Record1`が対応する．`Variable`はunion-find rootとしてTYPE kindとROW kindを区別し，同じrank，generalize，instantiate機構を共有する．ROW kind rootは`Row1` structureを保持する．
+
+row単一化は，canonical known fieldsの共通フィールドを再帰的に単一化した上で，label差分unificationを行う．両側にonlyフィールドがある場合はcurrent rankでfresh common tailを生成し，各tailへresidual rowを束縛する．片側のみresidualの場合は相手tailへ束縛する．lacks制約は`VariableState.forbiddenLabels`で管理し，field追加時の衝突を検査する．occurs checkはtail chain全体を走査する．closed rowとopen rowの単一化では，open側のtailをclosed empty rowへ束縛する．
+
+型エイリアスは`NameEvaluator`でorder-independentにDFS解決し，透明に展開して`Type`へ変換する．再帰エイリアスはVISITING状態で検出しrejectする．エイリアスの型パラメータはTYPE kindとROW kindを区別し，ROW kindパラメータはrow変数として展開先の`Type.Row`へflattenする．展開結果は`IcModule`やbackendへ残らず，backend productionコードは全レコードを`ZlkRecord`へ消去する．
+
+アクセス，更新，パターンマッチは`ConstraintExtractor`でopen rowを伴う`CEqual`制約へlowerし，型推論solverは特例処理を行わない．`record.x`は対象を`{ r | x : a }`型へ制約し，wider shapeの値を受け取れる．`{ record | field = value }`は対象と更新後の全体shapeを同一のtarget変数へ制約する．
+
+`PatternChecker`はレコードパターンを，解決済み`Type.Row`のknown fieldsだけを積型として扱い，unknown tailは暗黙のwildcardとする．tailをconstructorやarityへ追加せず，known prefix productで網羅性と冗長性を検査する．
+
+runtime ABIはopen/closedで分岐なく，全レコード値がpublic `ZlkRecord` interfaceへコンパイルされる．`ZlkRecord`はフィールド名の辞書順リストとフィールドアクセス，immutable updateを提供し，open/closedの区別を保持しない．
 
 ### `Id`とクラスファイル中の名前
 
