@@ -1,6 +1,7 @@
 package zlk.recon;
 
 import java.util.IdentityHashMap;
+import java.util.Optional;
 
 import zlk.common.RecordField;
 import zlk.common.id.Id;
@@ -50,6 +51,12 @@ final class PatternBinder {
 			}
 		}
 		case IcPattern.Record(Seq<IcPattern.RecordField> fields, _) -> {
+			// fresh TYPE fieldsとfresh ROW tail rを生成．
+			// expected = RecordN(RowN([fields..., tail r])) のCEqualを生成．
+			// 空patternもRecordN(RowN([], r))で任意recordを要求．
+			// tailをvarsへ含める．各subpattern bindはfield型へ．
+			Variable tailVar = freshFlex.getVariable(Variable.Kind.ROW);
+			vars.add(tailVar);
 			SeqBuffer<RecordField<RcType>> fieldTypes = new SeqBuffer<>(fields.size());
 			for(IcPattern.RecordField field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
@@ -58,7 +65,9 @@ final class PatternBinder {
 				bind(field.pattern(), fieldType, freshFlex);
 				fieldTypes.add(new RecordField<>(field.name(), fieldType));
 			}
-			cons.add(new Constraint.CRecordPattern(expected, fieldTypes.toSeq()));
+			RcType requiredRecord = new RcType.RecordN(
+					new RcType.RowN(fieldTypes.toSeq(), Optional.of(tailVar)));
+			cons.add(new CEqual(expected, requiredRecord));
 		}
 		}
 	}

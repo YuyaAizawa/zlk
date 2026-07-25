@@ -28,7 +28,7 @@ public record RecordField<T>(String name, T value) {
 
 		// 重複がないことを確認
 		for (int i = 1; i < sorted.size(); i++) {
-			if(sorted.at(i - 1).equals(sorted.at(i))) {
+			if(sorted.at(i - 1).name().equals(sorted.at(i).name())) {
 				throw new IllegalArgumentException(
 						"duplicate record field: " + sorted.at(i - 1).name());
 			}

@@ -1,6 +1,8 @@
 package zlk.common;
 
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Optional;
 
 import zlk.common.Type.Arrow;
 import zlk.common.Type.CtorApp;
@@ -20,7 +22,11 @@ import zlk.util.pp.PrettyPrinter;
  *   <li> {@link CtorApp} -- 関数型以外の型
  *   <li> {@link Arrow} -- 関数型
  *   <li> {@link Var} -- 型変数
+ *   <li> {@link Record} -- レコード型（{@link Row}を包む）
  * </ul>
+ *
+ * row変数（{@link RowVar}）はTypeを実装しない独立クラスであり，
+ * ArrowやCtorAppの位置には現れない構造を表す．Rowの末尾拡張のみで用いる．
  */
 public sealed interface Type extends PrettyPrintable
 permits CtorApp, Arrow, Var, Record {
@@ -80,9 +86,73 @@ permits CtorApp, Arrow, Var, Record {
 		}
 	}
 
-	record Record(Seq<RecordField<Type>> fields) implements Type {
-		public Record {
+	/**
+	 * row変数．{@link Row}の末尾拡張のみに現れ，{@link Type}とは独立した存在．
+	 *
+	 * @param name 変数名
+	 */
+	record RowVar(String name) {
+		public RowVar {
+			Objects.requireNonNull(name);
+		}
+
+		@Override
+		public final String toString() {
+			return name;
+		}
+	}
+
+	/**
+	 * レコードの列（row）．
+	 * {@link Record}が包んで使う．フィールドはcanonicalize済み．
+	 *
+	 * Row自体はTypeを実装しない．
+	 *
+	 * @param fields canonicalize済みのフィールド列
+	 * @param extension 末尾のrow変数．空ならclosed row
+	 */
+	record Row(Seq<RecordField<Type>> fields, Optional<RowVar> extension) {
+		public Row {
 			fields = RecordField.canonicalize(fields);
+			Objects.requireNonNull(extension);
+		}
+
+		public Row(Seq<RecordField<Type>> fields) {
+			this(fields, Optional.empty());
+		}
+
+		public boolean isOpen() {
+			return extension.isPresent();
+		}
+
+		@Override
+		public final String toString() {
+			return buildRowString(this);
+		}
+	}
+
+	/**
+	 * レコード型．{@link Row}を包む．
+	 * 既存call site互換のため Record(fields) / Record(fields, Optional<RowVar>) の各constructor，
+	 * fields() / extension() accessorを提供する．
+	 *
+	 * @param row 包むrow
+	 */
+	record Record(Row row) implements Type {
+		public Record(Seq<RecordField<Type>> fields) {
+			this(new Row(fields, Optional.empty()));
+		}
+
+		public Record(Seq<RecordField<Type>> fields, Optional<RowVar> extension) {
+			this(new Row(fields, extension));
+		}
+
+		public Seq<RecordField<Type>> fields() {
+			return row.fields();
+		}
+
+		public Optional<RowVar> extension() {
+			return row.extension();
 		}
 
 		@Override
@@ -240,8 +310,14 @@ permits CtorApp, Arrow, Var, Record {
 				acc.add(name);
 			}
 		}
-		case Record(Seq<RecordField<Type>> fields) ->
-			fields.forEach(field -> field.value().getVarNamesHelp(acc));
+		case Record(Row row) -> {
+			row.fields().forEach(field -> field.value().getVarNamesHelp(acc));
+			row.extension().ifPresent(ext -> {
+				if(!acc.contains(ext.name())) {
+					acc.add(ext.name());
+				}
+			});
+		}
 		}
 	}
 
@@ -320,16 +396,29 @@ permits CtorApp, Arrow, Var, Record {
 			throw new IllegalArgumentException(
 					String.format("Invalid type bind. this: %s, target: %s", this, target));
 		}
-		case Record(Seq<RecordField<Type>> fields) -> {
-			if(target instanceof Record(Seq<RecordField<Type>> targetFields)
-					&& fields.size() == targetFields.size()) {
-				for(int i = 0; i < fields.size(); i++) {
-					RecordField<Type> field = fields.at(i);
-					RecordField<Type> targetField = targetFields.at(i);
+		case Record(Row row) -> {
+			if(target instanceof Record(Row targetRow)
+					&& row.fields().size() == targetRow.fields().size()
+					&& row.extension().isPresent() == targetRow.extension().isPresent()) {
+				for(int i = 0; i < row.fields().size(); i++) {
+					RecordField<Type> field = row.fields().at(i);
+					RecordField<Type> targetField = targetRow.fields().at(i);
 					if(!field.name().equals(targetField.name())) {
 						throw new IllegalArgumentException("record label mismatch");
 					}
 					field.value().bind(targetField.value(), binds);
+				}
+				// row変数は型変数ではないためbind対象外．
+				// 既存closed挙動を壊さず，open tailの本格変換は推論kind対応後に行う．
+				if(row.extension().isPresent() && targetRow.extension().isPresent()) {
+					if(!row.extension().orElseThrow().name()
+							.equals(targetRow.extension().orElseThrow().name())) {
+						throw new IllegalArgumentException(
+								"row variable mismatch. this: "
+								+ row.extension().orElseThrow().name()
+								+ ", target: "
+								+ targetRow.extension().orElseThrow().name());
+					}
 				}
 				return;
 			}
@@ -350,8 +439,11 @@ permits CtorApp, Arrow, Var, Record {
 		case Arrow(Type arg, Type ret) -> {
 			yield new Arrow(arg.subst(binds), ret.subst(binds));
 		}
-		case Record(Seq<RecordField<Type>> fields) ->
-			new Record(fields.map(field -> new RecordField<>(field.name(), field.value().subst(binds))));
+		case Record(Row row) -> {
+			yield new Record(new Row(
+					row.fields().map(field -> new RecordField<>(field.name(), field.value().subst(binds))),
+					row.extension()));
+		}
 		};
 	}
 
@@ -380,9 +472,37 @@ permits CtorApp, Arrow, Var, Record {
 		case Var(String name) -> {
 			pp.append(name);
 		}
-		case Record(Seq<RecordField<Type>> fields) -> {
-			RecordField.appendTo(pp, fields, " : ");
+		case Record(Row row) -> {
+			appendRow(pp, row);
 		}
 		}
+	}
+
+	/**
+	 * Rowのpretty print．closedは `{ x : I32 }`，openは `{ row | x : I32 }`．
+	 */
+	static void appendRow(PrettyPrinter pp, Row row) {
+		pp.append(buildRowString(row));
+	}
+
+	/**
+	 * Rowのcanonical文字列表現を構築する．
+	 */
+	static String buildRowString(Row row) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("{ ");
+		if(row.extension().isPresent()) {
+			sb.append(row.extension().orElseThrow().name()).append(" | ");
+		}
+		Seq<RecordField<Type>> fields = row.fields();
+		for(int i = 0; i < fields.size(); i++) {
+			if(i > 0) {
+				sb.append(", ");
+			}
+			RecordField<Type> f = fields.at(i);
+			sb.append(f.name()).append(" : ").append(f.value().buildString());
+		}
+		sb.append(" }");
+		return sb.toString();
 	}
 }

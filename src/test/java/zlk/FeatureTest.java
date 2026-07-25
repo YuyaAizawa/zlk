@@ -3,19 +3,26 @@ package zlk;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import zlk.ast.AnType;
+import zlk.ast.Decl;
 import zlk.common.RecordField;
 import zlk.common.Type;
+import zlk.common.id.Id;
 import zlk.runtime.ZlkCustom;
 import zlk.runtime.ZlkRecord;
 import zlk.runtime.ZlkValue;
+import zlk.idcalc.IcModule;
 import zlk.tester.DumpOnFailureWatcher;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
@@ -24,6 +31,40 @@ import zlk.util.collection.Seq;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class FeatureTest {
+	@Test
+	void parsesTypeAliasWithOpenRecordBody() {
+		var module = new ModuleTester(
+				"type alias Foo a = { a | y : Bool, x : I32 }",
+				CompileLevel.PARSE);
+
+		Decl.TypeAlias alias = assertInstanceOf(Decl.TypeAlias.class, module.getAst().decls().head());
+		assertEquals("Foo", alias.name());
+		assertEquals(Seq.of("a"), alias.vars().map(AnType.Var::name));
+		AnType.Record body = assertInstanceOf(AnType.Record.class, alias.body());
+		assertEquals("a", body.extension().orElseThrow().name());
+		assertEquals(Seq.of("y", "x"), body.fields().map(AnType.RecordField::name));
+		assertEquals("type alias Foo a = { a | y : Bool, x : I32 }", alias.buildString());
+	}
+
+	@Test
+	void parsesClosedAndOpenRecordsAsTypeConstructorArguments() {
+		var module = new ModuleTester("""
+				type alias Foo a = { a | x : I32 }
+				closed : Foo {}
+				closed = { x = 1 }
+				wider : Foo { z : I32 }
+				wider = { x = 1, z = 2 }
+				""", CompileLevel.PARSE);
+
+		Decl.ValDecl closed = assertInstanceOf(Decl.ValDecl.class, module.getAst().decls().at(1));
+		Decl.ValDecl wider = assertInstanceOf(Decl.ValDecl.class, module.getAst().decls().at(2));
+		AnType.Type closedAnno = assertInstanceOf(AnType.Type.class, closed.anno().orElseThrow());
+		AnType.Type widerAnno = assertInstanceOf(AnType.Type.class, wider.anno().orElseThrow());
+		assertInstanceOf(AnType.Record.class, closedAnno.args().head());
+		assertInstanceOf(AnType.Record.class, widerAnno.args().head());
+		assertTrue(module.getParseErrors().isEmpty());
+	}
+
 	@Test
 	void emptyRecordLiteral() {
 		var module = new ModuleTester("empty = {}", CompileLevel.BYTECODE_GEN);
@@ -89,16 +130,22 @@ public class FeatureTest {
 				result = extract { tag = True, outer = { value = 42, flag = False } }
 				""", CompileLevel.BYTECODE_GEN);
 
-		Type.Var a = new Type.Var("a");
-		Type.Var b = new Type.Var("b");
-		Type.Var c = new Type.Var("c");
+		Type.Var flag = new Type.Var("a");
+		Type.Var value = new Type.Var("b");
+		Type.Var tag = new Type.Var("d");
+		Type.RowVar innerTail = new Type.RowVar("c");
+		Type.RowVar outerTail = new Type.RowVar("e");
 		module.getType("extract").is(new Type.Arrow(
-				new Type.Record(Seq.of(
-						new RecordField<>("outer", new Type.Record(Seq.of(
-								new RecordField<>("flag", a),
-								new RecordField<>("value", b)))),
-						new RecordField<>("tag", c))),
-				b));
+				new Type.Record(
+						Seq.of(
+								new RecordField<>("outer", new Type.Record(
+										Seq.of(
+												new RecordField<>("flag", flag),
+												new RecordField<>("value", value)),
+										Optional.of(innerTail))),
+								new RecordField<>("tag", tag)),
+						Optional.of(outerTail)),
+				value));
 		module.getType("result").is(Type.I32);
 		assertEquals(42, ((VData) module.getValue("result")).value());
 	}
@@ -620,6 +667,291 @@ public class FeatureTest {
 
 		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
 		module.getValue("rectest").isWrittenIn("Cons 1 (Cons 2 Nil)");
+	}
+
+	// ===== 透明型エイリアス探索テスト群 =====
+
+	@Test
+	void aliasExpandsEmptyRecordArgumentToClosedRow() {
+		// Foo a = { a | x : I32, y : Bool }
+		// Foo {} -> { x : I32, y : Bool } (tail close)
+		String src = """
+				type alias Foo a = { a | x : I32, y : Bool }
+				closed : Foo {}
+				closed = { x = 1, y = True }
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+
+		Type.Record expected = new Type.Record(Seq.of(
+				new RecordField<>("x", Type.I32),
+				new RecordField<>("y", Type.BOOL)));
+		module.getType("closed").is(expected);
+	}
+
+	@Test
+	void aliasExpandsWiderClosedRecordArgument() {
+		// Foo {} -> {x,y}; Foo { z : I32 } -> {x,y,z}
+		String src = """
+				type alias Foo a = { a | x : I32, y : Bool }
+				wider : Foo { z : I32 }
+				wider = { x = 1, y = True, z = 2 }
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+
+		Type.Record expected = new Type.Record(Seq.of(
+				new RecordField<>("x", Type.I32),
+				new RecordField<>("y", Type.BOOL),
+				new RecordField<>("z", Type.I32)));
+		module.getType("wider").is(expected);
+	}
+
+	@Test
+	void plainTypeAliasExpandsInValueAnnotation() {
+		// type alias Box a = { value : a } (TYPE alias)
+		String src = """
+				type alias Box a = { value : a }
+				box : Box I32
+				box = { value = 1 }
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+
+		Type.Record expected = new Type.Record(Seq.of(
+				new RecordField<>("value", Type.I32)));
+		module.getType("box").is(expected);
+	}
+
+	@Test
+	void aliasAllowsForwardReference() {
+		String src = """
+				type alias B = A I32
+				type A a = A0 a
+				zero : B
+				zero = A0 0
+				""";
+		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
+		module.getType("zero").is(new Type.CtorApp(Id.intern("Main.A"), Seq.of(Type.I32)));
+	}
+
+	@Test
+	void aliasNotPresentInIcModuleTypes() {
+		String src = """
+				type alias Box a = { value : a }
+				box : Box I32
+				box = { value = 1 }
+				type Real = Real I32
+				""";
+		var module = new ModuleTester(src, CompileLevel.NAME_EVAL);
+		IcModule ic = module.getIdcalcModule();
+		assertTrue(ic.types().anyMatch(d -> d.id().simpleName().equals("Real")));
+		assertFalse(ic.types().anyMatch(d -> d.id().simpleName().equals("Box")));
+	}
+
+	@Test
+	void selfRecursiveAliasIsRejected() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Bad a = Bad a
+				t : Bad I32
+				t = 0
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void mutuallyRecursiveAliasIsRejected() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias A a = B a
+				type alias B a = A a
+				t : A I32
+				t = 0
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void aliasArityMismatchIsRejected() {
+		// Boxはarity 1だが0引数適用
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Box a = { value : a }
+				bad : Box
+				bad = { value = 1 }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void aliasPreservesOpenRowArgument() {
+		var module = new ModuleTester("""
+				type alias Foo a = { a | x : I32 }
+				keep : Foo a -> Foo a
+				keep value = value
+				""", CompileLevel.NAME_EVAL);
+		Type.Record open = new Type.Record(
+				Seq.of(new RecordField<>("x", Type.I32)),
+				java.util.Optional.of(new Type.RowVar("a")));
+		Type annotation = module.getIdcalcModule().decls().head().anno().orElseThrow();
+		assertEquals(new Type.Arrow(open, open), annotation);
+	}
+
+	@Test
+	void aliasAllowsForwardReferenceToAnotherAlias() {
+		var module = new ModuleTester("""
+				type alias B a = A a
+				type alias A a = { value : a }
+				box : B I32
+				box = { value = 1 }
+				""", CompileLevel.TYPE_RECON);
+		module.getType("box").is(new Type.Record(
+				Seq.of(new RecordField<>("value", Type.I32))));
+	}
+
+	@Test
+	void adtConstructorArgumentCanUseAlias() {
+		var module = new ModuleTester("""
+				type alias Box a = { value : a }
+				type Wrapped a = Wrapped (Box a)
+				""", CompileLevel.NAME_EVAL);
+		Type ctorArg = module.getIdcalcModule().types().head().ctors().head().args().head();
+		assertEquals(new Type.Record(
+				Seq.of(new RecordField<>("value", new Type.Var("a")))), ctorArg);
+	}
+
+	@Test
+	void unknownTypeNameIsRejected() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				bad : Missing
+				bad = 0
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void rowAliasRejectsValueTypeArgument() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Foo a = { a | x : I32 }
+				bad : Foo I32
+				bad = { x = 0 }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void aliasParameterCannotHaveBothKinds() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Bad a = { a | value : a }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void annotationVariableCannotHaveBothKinds() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				bad : { a | value : a }
+				bad = { value = 0 }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void aliasExpansionRejectsDuplicateLabel() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Foo a = { a | x : I32 }
+				bad : Foo { x : Bool }
+				bad = { x = 0 }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void adtParameterCannotBeUsedAsRowParameter() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Open a = { a | x : I32 }
+				type Bad a = Bad (Open a)
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void duplicateAliasParameterIsRejected() {
+		// duplicate alias parameterをMap初期化で黙って上書きせず検出する．
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Bad a a = { x : a }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	// ===== alias/backend end-to-endテスト群 =====
+
+	@Test
+	void aliasEndToEndResolvesToClosedRecordAndGeneratesNoAliasClass() throws ReflectiveOperationException {
+		String src = """
+				type alias Foo a = { a | x : I32, y : Bool }
+				bar : Foo { z : I32 } -> I32
+				bar record = add record.x record.z
+				result = bar { x = 1, y = True, z = 2 }
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+
+		// bar resolved typeはclosed { x:I32, y:Bool, z:I32 } -> I32
+		Type.Record expectedArg = new Type.Record(Seq.of(
+				new RecordField<>("x", Type.I32),
+				new RecordField<>("y", Type.BOOL),
+				new RecordField<>("z", Type.I32)));
+		module.getType("bar").is(new Type.Arrow(expectedArg, Type.I32));
+
+		// result実行値3
+		assertEquals(3, ((VData) module.getValue("result")).value());
+
+		// alias用 Main$Foo classは生成されない
+		assertFalse(module.getGeneratedClassNames().contains("Main$Foo"));
+
+		// bar reflection parameter typeは zlk.runtime.ZlkRecord
+		java.lang.reflect.Method barMethod = module.getMainMethod("bar");
+		Class<?>[] paramTypes = barMethod.getParameterTypes();
+		assertEquals(1, paramTypes.length);
+		assertEquals(zlk.runtime.ZlkRecord.class, paramTypes[0]);
+	}
+
+	@Test
+	void inferredAccessorAcceptsWiderShapesAtBytecodeLevel() {
+		String src = """
+				getX record = record.x
+				intResult = getX { x = 1, y = True }
+				nestedResult = getX { x = 2, z = 3, w = False }
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+
+		// inferred accessorが異なるwider shapesでBYTECODE_GEN実行し値をassert
+		assertEquals(1, ((VData) module.getValue("intResult")).value());
+		assertEquals(2, ((VData) module.getValue("nestedResult")).value());
+	}
+
+	@Test
+	void polymorphicUpdatePreservesExtraFieldsInZlkRecord() {
+		String src = """
+				setX record value = { record | x = value }
+				base = { y = True, x = 1 }
+				updated = setX base 2
+				updatedX = updated.x
+				updatedY = updated.y
+				baseX = base.x
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+
+		ZlkRecord updatedValue = (ZlkRecord) ((VData) module.getValue("updated")).value();
+		assertEquals(2, updatedValue.get("x"));
+		assertEquals(true, updatedValue.get("y"));
+		assertEquals("{ x = 2, y = True }", updatedValue.toString());
+		assertEquals(2, ((VData) module.getValue("updatedX")).value());
+		assertEquals(true, ((VData) module.getValue("updatedY")).value());
+		assertEquals(1, ((VData) module.getValue("baseX")).value());
+	}
+
+	@Test
+	void annotatedRowPolymorphicAccessorRunsAtBytecodeLevel() {
+		String src = """
+				getX : { r | x : I32 } -> I32
+				getX record = record.x
+				intResult = getX { x = 1, y = True }
+				nestedResult = getX { x = 42, z = 3, w = False }
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+
+		assertEquals(1, ((VData) module.getValue("intResult")).value());
+		assertEquals(42, ((VData) module.getValue("nestedResult")).value());
 	}
 }
 
