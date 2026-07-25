@@ -2,6 +2,7 @@ package zlk.recon;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
@@ -209,15 +210,23 @@ public final class ConstraintExtractor {
 		}
 
 		case IcExp.IcRecordAccess(IcExp target, String field, Location _) -> {
-			Variable targetVar = freshFlex.getVariable();
+			// target = RecordN(RowN([field:fieldTy], rowTail))
+			// fieldTy = expected
+			// rowTailはopen rowのtail（ROW kind）
 			Variable fieldVar = freshFlex.getVariable();
-			RcType targetType = new VarN(targetVar);
+			Variable tailVar = freshFlex.getVariable(Variable.Kind.ROW);
 			RcType fieldType = new VarN(fieldVar);
+			Variable targetVar = freshFlex.getVariable();
+			RcType targetType = new VarN(targetVar);
+			Seq<RecordField<RcType>> rowFields = Seq.of(
+					new RecordField<>(field, fieldType));
+			RcType requiredRecord = new RcType.RecordN(
+					new RcType.RowN(rowFields, Optional.of(tailVar)));
 			yield new CExists(
-					Seq.of(targetVar, fieldVar),
+					Seq.of(targetVar, fieldVar, tailVar),
 					Seq.of(
 							extract(target, targetType),
-							new Constraint.CHasField(targetType, field, fieldType),
+							new CEqual(targetType, requiredRecord),
 							new CEqual(fieldType, expected)));
 		}
 
@@ -226,19 +235,29 @@ public final class ConstraintExtractor {
 				Seq<IcExp.IcRecordField> fields,
 				Location _)
 		-> {
+			// updated各fieldにfresh TYPE，shared fresh ROW tail rを1個生成．
+			// target = RecordN(RowN([updated fields..., tail r]))
+			// 各eを対応field型へ抽出．
+			// target = expectedも維持（全体shape保持）．
 			Variable targetVar = freshFlex.getVariable();
 			RcType targetType = new VarN(targetVar);
+			Variable sharedTail = freshFlex.getVariable(Variable.Kind.ROW);
 			SeqBuffer<Variable> vars = new SeqBuffer<>();
 			SeqBuffer<Constraint> cons = new SeqBuffer<>();
+			SeqBuffer<RecordField<RcType>> rowFields = new SeqBuffer<>();
 			vars.add(targetVar);
+			vars.add(sharedTail);
 			cons.add(extract(target, targetType));
 			for(IcExp.IcRecordField field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
 				RcType fieldType = new VarN(fieldVar);
 				vars.add(fieldVar);
 				cons.add(extract(field.value(), fieldType));
-				cons.add(new Constraint.CHasField(targetType, field.name(), fieldType));
+				rowFields.add(new RecordField<>(field.name(), fieldType));
 			}
+			RcType requiredRecord = new RcType.RecordN(
+					new RcType.RowN(rowFields.toSeq(), Optional.of(sharedTail)));
+			cons.add(new CEqual(targetType, requiredRecord));
 			cons.add(new CEqual(targetType, expected));
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}

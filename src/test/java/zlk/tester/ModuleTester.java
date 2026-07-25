@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.AccessFlag;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -74,6 +75,7 @@ public class ModuleTester {
 	private Seq<PcError> patternErrors = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
+	private List<String> generatedClassNames = Collections.emptyList();
 
 	public ModuleTester(String src, CompileLevel level) {
 		this.compileLevel = level;
@@ -130,6 +132,7 @@ public class ModuleTester {
 		record NameAndBytecode(String name, byte[] bytecode) {}
 		List<NameAndBytecode> classes = new ArrayList<>();
 		new BytecodeGenerator(clconv, types, Builtin.functions(), TARGET_FILE_NAME).compile((name, bytecode) -> classes.add(new NameAndBytecode(name, bytecode)));
+		this.generatedClassNames = classes.stream().map(c -> c.name).toList();
 		classes.forEach(clz -> {
 			DumpOnFailureWatcher.setLastClassDump(clz.name, clz.bytecode);  // TODO: 並列化のためにBeforeEachCallbackでStoreにする
 			defineClass(clz.name, clz.bytecode);
@@ -172,6 +175,38 @@ public class ModuleTester {
 
 	public Seq<PcError> getPatternErrors() {
 		return patternErrors;
+	}
+
+	/**
+	 * バイトコード生成で生成された全クラス名のimmutable viewを返す．
+	 * runtime動作に影響しない観測用API．
+	 */
+	public List<String> getGeneratedClassNames() {
+		return generatedClassNames;
+	}
+
+	/**
+	 * Mainクラスの指定名のpublic staticメソッドを返す．観測用helper．
+	 * 引数型が不要な場合は引数なしで検索し，見つからなければ全public staticメソッドから同名を探す．
+	 */
+	public Method getMainMethod(String name) {
+		try {
+			Class<?> cls = classLoader.loadClass(TARGET_MODULE_NAME);
+			try {
+				return cls.getDeclaredMethod(name);
+			} catch (NoSuchMethodException _) {
+				for (Method m : cls.getDeclaredMethods()) {
+					if (m.getName().equals(name)
+							&& m.accessFlags().contains(AccessFlag.PUBLIC)
+							&& m.accessFlags().contains(AccessFlag.STATIC)) {
+						return m;
+					}
+				}
+			}
+		} catch (ClassNotFoundException e) {
+			// fall through
+		}
+		throw new IllegalArgumentException("Method not found: " + name);
 	}
 
 	private TypeTester toTypeTester(Type ty) {
@@ -226,7 +261,7 @@ public class ModuleTester {
 			case Decl.ValDecl valDecl -> collectParseErrors(valDecl.body(), errors);
 			case Decl.ValErr err -> errors.add(err);
 			case Decl.TypeErr err -> errors.add(err);
-			case Decl.TypeDecl _ -> {}
+			case Decl.TypeDecl _, Decl.TypeAlias _ -> {}
 			}
 		}
 		return errors.toSeq();
