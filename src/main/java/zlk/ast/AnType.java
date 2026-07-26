@@ -1,5 +1,7 @@
 package zlk.ast;
 
+import java.util.Optional;
+
 import zlk.ast.AnType.Arrow;
 import zlk.ast.AnType.Record;
 import zlk.ast.AnType.Type;
@@ -23,7 +25,11 @@ permits Unit, Var, Type, Arrow, Record {
 			pp.append(name).append(" : ").append(type);
 		}
 	};
-	record Record(Seq<RecordField> fields, Location loc) implements AnType {};
+	record Record(Optional<Var> extension, Seq<RecordField> fields, Location loc) implements AnType {
+		public Record(Seq<RecordField> fields, Location loc) {
+			this(Optional.empty(), fields, loc);
+		}
+	};
 
 	default AnType updateLoc(Location loc) {
 		return switch(this) {
@@ -31,7 +37,8 @@ permits Unit, Var, Type, Arrow, Record {
 		case Var(String name, Location _) -> new Var(name, loc);
 		case Type(String ctor, Seq<AnType> args, Location _) -> new Type(ctor, args, loc);
 		case Arrow(AnType arg, AnType ret, Location _) -> new Arrow(arg, ret, loc);
-		case Record(Seq<RecordField> fields, Location _) -> new Record(fields, loc);
+		case Record(Optional<Var> extension, Seq<RecordField> fields, Location _) ->
+			new Record(extension, fields, loc);
 		};
 	}
 
@@ -63,11 +70,13 @@ permits Unit, Var, Type, Arrow, Record {
 			}
 			pp.append(" -> ").append(ret);
 		}
-		case Record(Seq<RecordField> fields, _) -> {
-			if(fields.isEmpty()) {
+		case Record(Optional<Var> extension, Seq<RecordField> fields, _) -> {
+			if(extension.isEmpty() && fields.isEmpty()) {
 				pp.append("{}");
 			} else {
-				pp.append("{ ").append(PrettyPrintable.join(fields, ", ")).append(" }");
+				pp.append("{ ");
+				extension.ifPresent(ext -> pp.append(ext).append(" | "));
+				pp.append(PrettyPrintable.join(fields, ", ")).append(" }");
 			}
 		}
 		}

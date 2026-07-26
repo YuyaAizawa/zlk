@@ -2,6 +2,8 @@ package zlk.recon.constraint;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 import zlk.common.RecordField;
@@ -24,10 +26,47 @@ permits VarN, AppN, FunN, RecordN {
 	record VarN(Variable var) implements RcType {}
 	record AppN(Id id, Seq<RcType> args) implements RcType {}
 	record FunN(RcType arg, RcType ret) implements RcType {}
-	record RecordN(Seq<RecordField<RcType>> fields) implements RcType {
-		public RecordN {
+
+	/**
+	 * レコードのrow．RcTypeではない独立record．RecordNが包む．
+	 *
+	 * @param fields canonicalize済みのフィールド列
+	 * @param extension 末尾のrow変数．空ならclosed row
+	 */
+	record RowN(Seq<RecordField<RcType>> fields, Optional<Variable> extension) {
+		public RowN {
 			fields = RecordField.canonicalize(fields);
+			Objects.requireNonNull(extension);
+			extension.ifPresent(var -> {
+				if(var.kind() != Variable.Kind.ROW) {
+					throw new IllegalArgumentException("row extension must have ROW kind");
+				}
+			});
 		}
+
+		/** closed rowの便利constructor． */
+		public RowN(Seq<RecordField<RcType>> fields) {
+			this(fields, Optional.empty());
+		}
+
+		public Seq<RecordField<RcType>> fields() { return fields; }
+		public Optional<Variable> extension() { return extension; }
+	}
+
+	/**
+	 * レコード型．{@link RowN}を包む．
+	 */
+	record RecordN(RowN row) implements RcType {
+		public RecordN(Seq<RecordField<RcType>> fields) {
+			this(new RowN(fields, Optional.empty()));
+		}
+
+		public RecordN(Seq<RecordField<RcType>> fields, Optional<Variable> extension) {
+			this(new RowN(fields, extension));
+		}
+
+		public Seq<RecordField<RcType>> fields() { return row.fields(); }
+		public Optional<Variable> extension() { return row.extension(); }
 	}
 
 	public static final RcType BOOL = new AppN(Type.BOOL.id(), Seq.of());
@@ -72,9 +111,14 @@ permits VarN, AppN, FunN, RecordN {
 	 */
 	public static Inst instantiate(Type ty, FreshFlex freshFlex) {
 		Map<String, Variable> typeVars = new HashMap<>();
+		Map<String, Variable> rowVars = new HashMap<>();
 		SeqBuffer<Variable> flexes = new SeqBuffer<>();
 		RcType type = convert(ty, name -> typeVars.computeIfAbsent(name, _ -> {
-			Variable flex = freshFlex.getVariable();
+			Variable flex = freshFlex.getVariable(name, 0, Variable.Kind.TYPE);
+			flexes.add(flex);
+			return flex;
+		}), rowName -> rowVars.computeIfAbsent(rowName, _ -> {
+			Variable flex = freshFlex.getVariable(rowName, 0, Variable.Kind.ROW);
 			flexes.add(flex);
 			return flex;
 		}));
@@ -90,9 +134,14 @@ permits VarN, AppN, FunN, RecordN {
 	 */
 	public static Anno fromAnnotation(Type ty, Map<String, Variable> outerTypeVars) {
 		Map<String, Variable> typeVars = new HashMap<>(outerTypeVars);
+		Map<String, Variable> rowVars = new HashMap<>();
 		SeqBuffer<Variable> rigids = new SeqBuffer<>();
 		RcType type = convert(ty, name -> typeVars.computeIfAbsent(name, _ -> {
 			Variable rigid = Variable.ofRigid(name);
+			rigids.add(rigid);
+			return rigid;
+		}), rowName -> rowVars.computeIfAbsent(rowName, _ -> {
+			Variable rigid = Variable.ofRigid(rowName, Variable.Kind.ROW);
 			rigids.add(rigid);
 			return rigid;
 		}));
@@ -104,20 +153,54 @@ permits VarN, AppN, FunN, RecordN {
 				type);
 	}
 
-	private static RcType convert(Type ty, Function<String, Variable> typeVar) {
+	/**
+	 * TypeからRcTypeへのkind-aware変換．
+	 * Type.VarはTYPE-kind，Type.RowVarはROW-kindのVariableへ変換する．
+	 * 同名をType.VarとRowVarの両方に使うとrejectする．
+	 * Type.Rowのextensionをsilentに捨てない．
+	 */
+	private static RcType convert(
+			Type ty,
+			Function<String, Variable> typeVar,
+			Function<String, Variable> rowVar) {
+		// 同名のType.VarとType.RowVarが混在するかの検査用
+		Map<String, Variable> seenType = new HashMap<>();
+		Map<String, Variable> seenRow = new HashMap<>();
+
 		Function<Type, RcType> conv = new Function<>() {
 			@Override
 			public RcType apply(Type t) {
 				return switch(t) {
-				case Type.Var(String name) ->
-					new VarN(typeVar.apply(name));
+				case Type.Var(String name) -> {
+					// 同名row変数が既に存在したらreject
+					if(seenRow.containsKey(name)) {
+						throw new IllegalArgumentException(
+								"name '" + name + "' used as both type variable and row variable");
+					}
+					Variable v = typeVar.apply(name);
+					seenType.put(name, v);
+					yield new VarN(v);
+				}
 				case Type.CtorApp(Id id, Seq<Type> args) ->
 					new AppN(id, args.map(this));
 				case Type.Arrow(Type arg, Type ret) ->
 					new FunN(apply(arg), apply(ret));
-				case Type.Record(Seq<RecordField<Type>> fields) ->
-					new RecordN(fields.map(field ->
-							new RecordField<>(field.name(), apply(field.value()))));
+				case Type.Record(Type.Row row) -> {
+					// rowのextensionを保持する
+					Optional<Variable> ext = row.extension().map(rv -> {
+						// 同名type変数が既に存在したらreject
+						if(seenType.containsKey(rv.name())) {
+							throw new IllegalArgumentException(
+									"name '" + rv.name() + "' used as both type variable and row variable");
+						}
+						Variable rowVariable = rowVar.apply(rv.name());
+						seenRow.put(rv.name(), rowVariable);
+						return rowVariable;
+					});
+					Seq<RecordField<RcType>> fields = row.fields().map(field ->
+							new RecordField<>(field.name(), apply(field.value())));
+					yield new RecordN(new RowN(fields, ext));
+				}
 				};
 			}
 		};
@@ -150,9 +233,17 @@ permits VarN, AppN, FunN, RecordN {
 			new Type.CtorApp(id, args.map(arg -> arg.toType()));
 		case FunN(RcType arg, RcType ret) ->
 			Type.arrow(Seq.of(arg.toType(), ret.toType()));
-		case RecordN(Seq<RecordField<RcType>> fields) ->
-			new Type.Record(fields.map(field ->
-					new RecordField<>(field.name(), field.value().toType())));
+		case RecordN(RowN row) -> {
+			// rowのextensionをType.Rowへ変換
+			Optional<Type.RowVar> ext = row.extension().map(v -> {
+				Optional<String> name = v.getPreferredName();
+				return new Type.RowVar(name.orElse("row"));
+			});
+			yield new Type.Record(new Type.Row(
+				row.fields().map(field ->
+					new RecordField<>(field.name(), field.value().toType())),
+				ext));
+		}
 		};
 	}
 
@@ -184,10 +275,14 @@ permits VarN, AppN, FunN, RecordN {
 			pp.append(" -> ");
 			pp.append(ret);
 		}
-		case RecordN(Seq<RecordField<RcType>> fields) -> {
-			pp.append("{");
+		case RecordN(RowN row) -> {
+			pp.append("{ ");
+			if(row.extension().isPresent()) {
+				pp.append(row.extension().get()).append(" | ");
+			}
+			Seq<RecordField<RcType>> fields = row.fields();
 			fields.forEachIndexed((i, field) -> {
-				pp.append(i == 0 ? " " : ", ");
+				pp.append(i == 0 ? "" : ", ");
 				pp.append(field.name()).append(" : ").append(field.value());
 			});
 			if(!fields.isEmpty()) pp.append(" ");
@@ -196,4 +291,3 @@ permits VarN, AppN, FunN, RecordN {
 		}
 	}
 }
-

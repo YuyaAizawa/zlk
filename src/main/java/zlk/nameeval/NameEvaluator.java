@@ -2,10 +2,9 @@ package zlk.nameeval;
 
 import java.util.Optional;
 
-import zlk.ast.AnType;
 import zlk.ast.CaseBranch;
-import zlk.ast.Constructor;
 import zlk.ast.Decl;
+import zlk.ast.Decl.TypeAlias;
 import zlk.ast.Decl.TypeDecl;
 import zlk.ast.Decl.TypeErr;
 import zlk.ast.Decl.ValDecl;
@@ -23,7 +22,6 @@ import zlk.ast.Module;
 import zlk.ast.Pattern;
 import zlk.common.ConstValue;
 import zlk.common.Location;
-import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -48,34 +46,39 @@ import zlk.idcalc.IcValDecl;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
+/**
+ * 名前評価器．値名前解決，AST expression／patternのidcalc化，module phase orchestrationを担う．
+ *
+ * <p>alias/kind-aware型解決は {@link TypeResolver} へ分離しており，本クラスは
+ * 次のphase順序だけを統括する．
+ * <ol>
+ *   <li>module value scope進入</li>
+ *   <li>全TypeDecl／TypeAliasの事前解決（TypeResolver API）</li>
+ *   <li>constructor／toplevel value登録</li>
+ *   <li>IcTypeDecl／IcValDecl生成</li>
+ * </ol>
+ * 入力ASTと出力IcModuleの意味論は不変．
+ */
 public final class NameEvaluator {
 
 	private final Module module;
 	private final Env env;
-	private final TyEnv typeEnv;
+	private final TypeResolver typeResolver;
 	private final IdMap<Builtin> builtins;
-	private final IdMap<Type> types;
-	private final IdMap<Type> ctors;
+	/** 暫定的な組込みconstructor signature表（Id → Type）． */
+	private final IdMap<Type> builtinCtors;
 
 	public NameEvaluator(Module module) {
 		this.module = module;
 		this.builtins = Builtin.functions().fold(IdMap.folder(b -> b.id(), b -> b));
-		this.types = new IdMap<>();
-		this.ctors = new IdMap<>();
+		this.builtinCtors = new IdMap<>();
 
 		// TODO: 組込みのBasic.Boolを作るまでの暫定対応
-		ctors.put(Id.intern("Basic.True"), Type.BOOL);
-		ctors.put(Id.intern("Basic.False"), Type.BOOL);
+		builtinCtors.put(Id.intern("Basic.True"), Type.BOOL);
+		builtinCtors.put(Id.intern("Basic.False"), Type.BOOL);
 
 		env = new Env();
-		typeEnv = new TyEnv();
-		Type.BUILTIN.forEach(ty -> {
-			try {
-				types.put(typeEnv.register(ty.id().simpleName(), ty.id()), ty);
-			} catch (DuplicatedNameException e) {
-				throw new Error("builtin type dupicated", e);
-			}
-		});
+		typeResolver = new TypeResolver();
 		builtins.forEach((_, b) -> {
 			try {
 				env.registerGlobal(b.id());
@@ -86,88 +89,60 @@ public final class NameEvaluator {
 	}
 
 	public IcModule eval() {
-		env.pushScope(module.name());
+		return env.withScope(module.name(), moduleOwner -> {
+			// 型名の登録，parameter kindの解決，aliasの解決を行う
+			typeResolver.resolveDeclarations(module.decls(), moduleOwner);
 
-		// resister types
-		module.decls().forEach(def -> {
-			switch(def) {
-			case TypeDecl(String name, Seq<AnType.Var> args, _, _) -> {
-				Id id = Id.intern(env.getScopeName(), name);
-				try {
-					typeEnv.register(name, id);
-				} catch (DuplicatedNameException e) {
-					// TODO コンパイルメッセージに追加
-					throw new RuntimeException(e);
+			// toplevelのvalueとconstructorを登録する
+			module.decls().forEach(def -> {
+				switch(def) {
+				case TypeDecl decl -> {
+					decl.ctors().forEach(ctor -> {
+						try {
+							Id ctorId = env.register(ctor.name(), Id.intern(typeResolver.getTypeId(decl.name()), ctor.name()));
+							typeResolver.registerConstructor(decl, ctor, ctorId);
+						} catch (DuplicatedNameException e) {
+							throw new RuntimeException(e);
+						}
+					});
 				}
-				Seq<Type> tyArgs = args.map(this::eval);
-				types.put(id, new Type.CtorApp(id, tyArgs));
-			}
-			default -> {}
-			}
-		});
-
-		// resister toplevels
-		module.decls().forEach(def -> {
-			switch(def) {
-			case TypeDecl(String name, _, Seq<Constructor> ctors, _) -> {
-				// 2 step registrations for mutual recursion types
-				Id typeId = typeEnv.get(name);
-				Type retTy = types.get(typeId);
-				ctors.forEach(ctor -> {
-					Id ctorId;
+				case ValDecl(String name, _, _, _, _) -> {
 					try {
-						ctorId = env.register(ctor.name(), Id.intern(typeId, ctor.name()));
+						env.register(name);
 					} catch (DuplicatedNameException e) {
-						// TODO コンパイルメッセージに追加
 						throw new RuntimeException(e);
 					}
-					// TODO: 型変数が宣言されたものか検査
-					Type type = Type.fromSeq(Seq.concat(
-							ctor.args().map(ty -> eval(ty)),
-							Seq.of(retTy)));
-					this.ctors.put(ctorId, type);
-				});
-			}
-			case ValDecl(String name, _, _, _, _) -> {
-				try {
-					env.register(name);
-				} catch (DuplicatedNameException e) {
-					// TODO コンパイルメッセージに追加
-					throw new RuntimeException(e);
 				}
-			}
-			case ValErr _, TypeErr _ -> {
-				throw new IllegalStateException();
-			}
-			}
+				case TypeAlias _ -> {}
+				case ValErr _, TypeErr _ -> {
+					throw new IllegalStateException();
+				}
+				}
+			});
+
+			SeqBuffer<IcTypeDecl> icTypes = new SeqBuffer<>();
+			SeqBuffer<IcValDecl> icDecls = new SeqBuffer<>();
+
+			module.decls().forEach(def -> {
+				switch(def) {
+				case TypeDecl ty -> icTypes.add(eval(ty));
+				case ValDecl fun -> icDecls.add(eval(fun));
+				case TypeAlias _, ValErr _, TypeErr _ -> {}
+				}
+			});
+
+			return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
 		});
-
-		SeqBuffer<IcTypeDecl> icTypes = new SeqBuffer<>();
-		SeqBuffer<IcValDecl> icDecls = new SeqBuffer<>();
-
-		module.decls().forEach(def -> {
-			switch(def) {
-			case TypeDecl ty -> icTypes.add(eval(ty));
-			case ValDecl fun -> icDecls.add(eval(fun));
-			case ValErr _, TypeErr _ -> {}
-			}
-		});
-
-		env.popScope();
-		if(env.scopes.size() != 0) {
-			throw new AssertionError();
-		}
-		return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {
-		Id id = typeEnv.get(union.name());
+		Id id = typeResolver.getTypeId(union.name());
 
-		Seq<Type> vars = union.vars().map(var -> eval(var));
+		Seq<Type> vars = typeResolver.getTypeParameters(id);
 
 		Seq<IcCtor> ctors = union.ctors().map(ctor -> {
 			Id ctorId = env.get(ctor.name());
-			Seq<Type> args = ctor.args().map(ty -> eval(ty));
+			Seq<Type> args = typeResolver.getConstructorArgs(ctorId);
 			return new IcCtor(ctorId, args, ctor.loc());
 		});
 
@@ -176,18 +151,16 @@ public final class NameEvaluator {
 
 	public IcValDecl eval(ValDecl decl) {
 		try {
-			String declName = decl.name();
-			env.pushScope(declName);
+			return env.withScope(decl.name(), _ -> {
+				String declName = decl.name();
+				Id id = env.get(declName);
+				Optional<Type> anno = decl.anno().map(a -> typeResolver.evalAnnotation(a));
+				Seq<IcPattern> args = decl.args().map(a -> eval(a));
+				IcExp body = eval(decl.body(), id);
 
-			Id id = env.get(declName);
-			Optional<Type> anno = decl.anno().map(a -> eval(a));
-			Seq<IcPattern> args = decl.args().map(a -> eval(a));
-			IcExp body = eval(decl.body(), id);
-
-			env.popScope();
-
-			return new IcValDecl(id, anno, args, body, decl.loc());
-		} catch(RuntimeException e) {
+				return new IcValDecl(id, anno, args, body, decl.loc());
+			});
+		} catch (RuntimeException e) {
 			throw new RuntimeException("in "+decl.name(), e);
 		}
 	}
@@ -205,7 +178,7 @@ public final class NameEvaluator {
 				yield new IcVarForeign(id, builtin.type(), loc);
 			}
 
-			Type ctor = ctors.getOrNull(id);
+			Type ctor = getConstructorTypeOrNull(id);
 			if(ctor != null) {
 				yield new IcVarCtor(id, ctor, loc);
 			}
@@ -214,14 +187,12 @@ public final class NameEvaluator {
 		}
 
 		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) -> {
-			env.pushScope();
-			IcExp result = new IcLamb(
-					env.getScopeName(),
-					patterns.map(a -> eval(a)),
-					eval(body, scope),
-					loc);
-			env.popScope();
-			yield result;
+			yield env.withLambdaScope(lambdaOwner ->
+					new IcLamb(
+						lambdaOwner,
+						patterns.map(a -> eval(a)),
+						eval(body, scope),
+						loc));
 		}
 
 		case App(Seq<Exp> exps, Location loc) ->
@@ -245,18 +216,21 @@ public final class NameEvaluator {
 				case ValDecl valDecl -> valDecl;
 				case ValErr _ -> throw new IllegalArgumentException();
 				});
-				for(ValDecl decl: validDecls) {
-					try {
-						env.register(decl.name());
-					} catch (DuplicatedNameException e) {
-						// TODO コンパイルメッセージに追加
-						throw new RuntimeException(e);
+				// let は親と同じ owner を共有する一時 binding frame を持ち，
+				// 宣言群と body をその frame 内で評価し，退出後に binding を破棄する．
+				yield env.withLetFrame(() -> {
+					for(ValDecl decl: validDecls) {
+						try {
+							env.register(decl.name());
+						} catch (DuplicatedNameException e) {
+							throw new RuntimeException(e);
+						}
 					}
-				}
-				yield new IcLet(
-						validDecls.map(decl -> eval(decl)),
-						eval(body, scope),
-						loc);
+					return new IcLet(
+							validDecls.map(decl -> eval(decl)),
+							eval(body, scope),
+							loc);
+				});
 			}
 		}
 
@@ -290,11 +264,11 @@ public final class NameEvaluator {
 	}
 
 	private IcCaseBranch eval(CaseBranch branch, int branchIdx, Id scope) {
-		env.pushScope("_" + branchIdx);
-		IcPattern pat = eval(branch.pattern());
-		IcExp body = eval(branch.body(), scope);
-		env.popScope();
-		return new IcCaseBranch(pat, body, branch.loc());
+		return env.withScope("_" + branchIdx, _ -> {
+			IcPattern pat = eval(branch.pattern());
+			IcExp body = eval(branch.body(), scope);
+			return new IcCaseBranch(pat, body, branch.loc());
+		});
 	}
 
 	private IcPattern eval(Pattern pat) {
@@ -307,16 +281,16 @@ public final class NameEvaluator {
 			try {
 				id = env.register(name);
 			} catch (DuplicatedNameException e) {
-				// TODO コンパイルメッセージに追加
 				throw new RuntimeException(e);
 			}
 			return new IcPattern.Var(id, loc);
 		}
 		case Pattern.Ctor(String name, Seq<Pattern> args, Location loc): {
 			Id ctor = env.get(name);
-			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctors.get(ctor), Location.noLocation());  // TODO location
-			Seq<Type> argTys = ctors.get(ctor).flatten();
-			Seq<Arg> dectorArgs = args.mapIndexed((i, arg) -> new IcPattern.Arg(eval(arg), argTys.at(i)));
+			Type ctorType = getConstructorType(ctor);
+			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctorType, Location.noLocation());
+			Seq<Arg> dectorArgs = Seq.zip(args, ctorType.flatten().take(args.size()))
+					.map((arg, argTy) -> new IcPattern.Arg(eval(arg), argTy));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
 		}
 		case Pattern.Record(Seq<Pattern.RecordField> fields, Location loc): {
@@ -331,15 +305,16 @@ public final class NameEvaluator {
 		}
 	}
 
-	private Type eval(AnType aTy) {
-		return switch (aTy) {
-		case AnType.Unit _ -> Type.UNIT;
-		case AnType.Var(String name, _) -> new Type.Var(name);
-		case AnType.Type(String ctor, Seq<AnType> args, _) ->
-			new Type.CtorApp(typeEnv.get(ctor), args.map(arg -> eval(arg)));
-		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(eval(arg), eval(ret));
-		case AnType.Record(Seq<AnType.RecordField> fields, _) ->
-			new Type.Record(fields.map(field -> new RecordField<>(field.name(), eval(field.type()))));
-		};
+	private Type getConstructorTypeOrNull(Id id) {
+		Type builtin = builtinCtors.getOrNull(id);
+		return builtin != null ? builtin : typeResolver.getConstructorTypeOrNull(id);
+	}
+
+	private Type getConstructorType(Id id) {
+		Type type = getConstructorTypeOrNull(id);
+		if (type == null) {
+			throw new IllegalArgumentException("not a constructor: " + id);
+		}
+		return type;
 	}
 }

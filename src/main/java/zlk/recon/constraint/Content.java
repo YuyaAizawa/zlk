@@ -8,6 +8,7 @@ import zlk.common.id.Id;
 import zlk.recon.FlatType;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
+import zlk.recon.FlatType.Row1;
 import zlk.recon.FlatType.Record1;
 import zlk.recon.Variable;
 import zlk.recon.constraint.Content.FlexVar;
@@ -41,18 +42,8 @@ permits FlexVar, RigidVar, Structure, Content.Error {
 	 */
 	record Structure(FlatType flatType) implements Content {
 		public Structure traverse(Function<Variable, Variable> f) {
-			switch(flatType) {
-			case CtorApp1(Id id, Seq<Variable> args) -> {
-				return new Structure(new CtorApp1(id, args.map(f)));
-			}
-			case Fun1(Variable arg, Variable ret) -> {
-				return new Structure(new Fun1(f.apply(arg), f.apply(ret)));
-			}
-			case Record1(Seq<RecordField<Variable>> fields) -> {
-				return new Structure(new Record1(fields.map(field ->
-						new RecordField<>(field.name(), f.apply(field.value())))));
-			}
-			}
+			// FlatType.traverseへ委譲
+			return new Structure(flatType.traverse(f));
 		}
 	}
 

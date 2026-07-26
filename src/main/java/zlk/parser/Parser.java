@@ -204,6 +204,7 @@ public final class Parser {
 	static final Peg<Token> SAMENT = kind(Kind.SAMENT);
 
 	static final Peg<Token> ARROW = kind(Kind.ARROW);
+	static final Peg<Token> ALIAS = kind(Kind.ALIAS);
 	static final Peg<Token> BAR = kind(Kind.BAR);
 	static final Peg<Token> CASE = kind(Kind.CASE);
 	static final Peg<Token> COMMA = kind(Kind.COMMA);
@@ -238,25 +239,31 @@ public final class Parser {
 	static final Peg<Token> WORD = kind(Kind::isWord);
 
 	/* 型注釈
-	 * <tyVar>      ::= <lcid>
+	 * <tyVar>           ::= <lcid>
 	 *
-	 * <ctorHead>   ::= <ucid>
+	 * <ctorHead>        ::= <ucid>
 	 *
-	 * <parenType>  ::= ( <type> )
+	 * <parenType>       ::= ( <type> )
 	 *
-	 * <ctorArg>    ::= ()
-	 *                | <tyVar>
-	 *                | <ctorHead>
-	 *                | <parenType>
+	 * <recordTypeField> ::= <lcid> = <type>
 	 *
-	 * <ctorAnno>   ::= <ctorHead> <ctorArg>*
+	 * <recordType>      ::= { (<tyVar> |)? <recordTypeField>+ }
 	 *
-	 * <funTyArg>   ::= ()
-	 *                | <tyVar>
-	 *                | <ctorAnno>
-	 *                | <parenType>
+	 * <ctorArg>         ::= ()
+	 *                     | <tyVar>
+	 *                     | <ctorHead>
+	 *                     | <recordType>
+	 *                     | <parenType>
 	 *
-	 * <type>       ::= <funTyArg> (-> <funTyArg>)*
+	 * <ctorAnno>        ::= <ctorHead> <ctorArg>*
+	 *
+	 * <funTyArg>        ::= ()
+	 *                     | <tyVar>
+	 *                     | <ctorAnno>
+	 *                     | <recordType>
+	 *                     | <parenType>
+	 *
+	 * <type>            ::= <funTyArg> (-> <funTyArg>)*
 	 */
 	static final Peg<AnType.Var> tyVar =
 			LCID.map(token -> new AnType.Var(token.str(), token.loc()));
@@ -271,11 +278,21 @@ public final class Parser {
 			LCID, COLON, lazy(() -> type()),
 			(name, _, ty) -> new AnType.RecordField(name.str(), ty, locRange(name, ty)));
 
+	private record RecordTypeBody(Optional<AnType.Var> extension, Seq<AnType.RecordField> fields) {}
+
+	static final Peg<RecordTypeBody> openRecordTypeBody = sequence(
+			tyVar, BAR, join(recordTypeField, COMMA),
+			(extension, _, fields) -> new RecordTypeBody(Optional.of(extension), fields));
+
+	static final Peg<RecordTypeBody> closedRecordTypeBody =
+			optional(join(recordTypeField, COMMA))
+			.map(fields -> new RecordTypeBody(Optional.empty(), fields.orElse(Seq.of())));
+
 	static final Peg<AnType.Record> recordType = sequence(
 			LBRACE,
-			optional(join(recordTypeField, COMMA)),
+			choice(openRecordTypeBody, closedRecordTypeBody),
 			RBRACE,
-			(s, fields, e) -> new AnType.Record(fields.orElse(Seq.of()), locRange(s, e)));
+			(s, body, e) -> new AnType.Record(body.extension(), body.fields(), locRange(s, e)));
 
 	static final Peg<AnType> ctorArg = choice(  // コンストラクタの引数部分に来れる要素
 			tyVar,
@@ -533,6 +550,11 @@ public final class Parser {
 			TYPE, UCID, star(tyVar), EQUAL, variants,
 			(s, name, vars, _, ctors) -> new TypeDecl(name.str(), vars, ctors, locRange(s, ctors)));
 
+	static final Peg<Decl> typeAliasDecl = sequence(
+			TYPE, ALIAS, UCID, star(tyVar), EQUAL, type,
+			(s, _, name, vars, _, body) -> new Decl.TypeAlias(
+					name.str(), vars, body, locRange(s, body)));
+
 	private record NameAndTyAnno(String name, AnType ty, Location loc) implements LocationHolder {};
 
 	static final Peg<NameAndTyAnno> tyAnno = sequence(
@@ -583,6 +605,7 @@ public final class Parser {
 	static final Peg<String> headLine = sequence(SAMENT, MODULE, UCID, (_, _, name) -> name.str());
 
 	static final Peg<Decl> topDecl = choice(
+			typeAliasDecl,
 			tyDecl,
 			valDecl,
 			panicTyDecl,
