@@ -377,11 +377,8 @@ permits CtorApp, Arrow, Var, Record {
 		case CtorApp(Id ctor, Seq<Type> args) -> {
 			if(target instanceof CtorApp(Id targetCtor, Seq<Type> targetArgs)) {
 				if(ctor.equals(targetCtor)) {
-					if(args.size() != targetArgs.size()) {
-						throw new IllegalArgumentException(
-								String.format("Invalid type bind. this: %s, target: %s", this, target));
-					}
-					args.forEachIndexed((i, arg) -> arg.bind(targetArgs.at(i), binds));
+					Seq.zip(args, targetArgs).forEach(
+							(arg, targetArg) -> arg.bind(targetArg, binds));
 					return;
 				}
 			}
@@ -399,18 +396,17 @@ permits CtorApp, Arrow, Var, Record {
 		}
 		case Record(Row row) -> {
 			if(target instanceof Record(Row targetRow)
-					&& row.fields().size() == targetRow.fields().size()
 					&& row.extension().isPresent() == targetRow.extension().isPresent()) {
-				for(int i = 0; i < row.fields().size(); i++) {
-					RecordField<Type> field = row.fields().at(i);
-					RecordField<Type> targetField = targetRow.fields().at(i);
+
+				Seq.zip(row.fields(), targetRow.fields()).forEach((field, targetField) -> {
 					if(!field.name().equals(targetField.name())) {
 						throw new IllegalArgumentException("record label mismatch");
 					}
 					field.value().bind(targetField.value(), binds);
-				}
+				});
+
 				// row変数は型変数ではないためbind対象外．
-				// 既存closed挙動を壊さず，open tailの本格変換は推論kind対応後に行う．
+				// 既存closed挙動を壊さず，open tailの変換はkind対応後に行う．
 				if(row.extension().isPresent() && targetRow.extension().isPresent()) {
 					if(!row.extension().orElseThrow().name()
 							.equals(targetRow.extension().orElseThrow().name())) {

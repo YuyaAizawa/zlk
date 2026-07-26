@@ -46,9 +46,8 @@ final class PatternBinder {
 			}
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 
-			for (int i = 0; i < args.size(); i++) {
-				bind(args.at(i).pattern(), ctorInfo.argTys().at(i), freshFlex);  // TODO: Arg型にtype (for cache)とかあるけどそれを使うべきか？
-			}
+			Seq.zip(args, ctorInfo.argTys()).forEach(
+					(arg, argTy) -> bind(arg.pattern(), argTy, freshFlex));
 		}
 		case IcPattern.Record(Seq<IcPattern.RecordField> fields, _) -> {
 			// fresh TYPE fieldsとfresh ROW tail rを生成．

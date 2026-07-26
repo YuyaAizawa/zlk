@@ -361,15 +361,10 @@ final class TypeResolver {
 	}
 
 	private Seq<Type> evalNominalArguments(TyDeclInfo info, Seq<AnType> args, TypeVarContext ctx) {
-		SeqBuffer<Type> result = new SeqBuffer<>();
-		Seq<Kind> kinds = kindsOf(info.id());
-		for (int i = 0; i < args.size(); i++) {
-			AnType arg = args.at(i);
-			result.add(kinds.at(i) == Kind.ROW
-					? new Type.Record(evalAsRow(arg, ctx))
-					: evalAsType(arg, ctx));
-		}
-		return result.toSeq();
+		return Seq.zip(args, kindsOf(info.id())).map(
+				(arg, kind) -> kind == Kind.ROW
+						? new Type.Record(evalAsRow(arg, ctx))
+						: evalAsType(arg, ctx));
 	}
 
 	private Seq<Kind> kindsOf(Id id) {
@@ -377,9 +372,10 @@ final class TypeResolver {
 	}
 
 	private static Seq<Type> parameterTypes(Seq<AnType.Var> params, Seq<Kind> kinds) {
-		return params.mapIndexed((i, param) -> kinds.at(i) == Kind.ROW
-				? new Type.Record(new Row(Seq.of(), Optional.of(new RowVar(param.name()))))
-				: new Type.Var(param.name()));
+		return Seq.zip(params, kinds).map(
+				(param, kind) -> kind == Kind.ROW
+						? new Type.Record(new Row(Seq.of(), Optional.of(new RowVar(param.name()))))
+						: new Type.Var(param.name()));
 	}
 
 	private void constrainAsType(AnType type, KindScope scope) {
@@ -583,13 +579,12 @@ final class TypeResolver {
 		/** ADTとaliasでは宣言済みparameterを確定済みkindで使用する． */
 		private static final class Declared extends TypeVarContext {
 			Declared(Seq<AnType.Var> vars, Seq<Kind> declaredKinds) {
-				for (int i = 0; i < vars.size(); i++) {
-					AnType.Var var = vars.at(i);
-					if (kinds.putIfAbsent(var.name(), declaredKinds.at(i)) != null) {
+				Seq.zip(vars, declaredKinds).forEach((var, kind) -> {
+					if (kinds.putIfAbsent(var.name(), kind) != null) {
 						throw new IllegalArgumentException(
 								"duplicated type parameter: " + var.name());
 					}
-				}
+				});
 			}
 
 			@Override

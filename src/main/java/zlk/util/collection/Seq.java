@@ -11,12 +11,14 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
+import zlk.util.BiConsumerIndexed;
 import zlk.util.BiFunctionIndexed;
 import zlk.util.ConsumerIndexed;
 import zlk.util.FunctionIndexed;
@@ -132,6 +134,19 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return new ArraySeq<>(result);
 	}
 
+	/**
+	 * 大きさの等しい2つのSeqの同一のインデックスの要素に対する操作を提供する．
+	 * @param <E>
+	 * @param <F>
+	 * @param left
+	 * @param right
+	 * @return 操作可能なオブジェクト
+	 * @throws IllegalArgumentException 2つのSeqの大きさが異なる場合
+	 */
+	public static <E, F> Zip<E, F> zip(Seq<E> left, Seq<F> right) {
+		return new Zip<>(left, right);
+	}
+
 	int size();
 
 	default boolean isEmpty() {
@@ -159,11 +174,12 @@ public sealed interface Seq<E> extends Iterable<E> {
 	 */
 	Seq<E> slice(int from, int to);
 
-
-	/// 先頭から指定した要素数のSeqを返す．
-	/// 足りなければあるだけを返す．
-	/// @param num 先頭の要素数
-	/// @return
+	/**
+	 * 先頭から指定した要素数のSeqを返す．
+	 * 足りなければあるだけを返す．
+	 * @param num 先頭の要素数
+	 * @return
+	 */
 	default Seq<E> take(int num) {
 		if(num < 0) {
 			throw new IllegalArgumentException();
@@ -180,10 +196,12 @@ public sealed interface Seq<E> extends Iterable<E> {
 		return take(size() - 1);
 	}
 
-	/// 先頭から指定した要素数を除いたSeqを返す．
-	/// 足りなければ空のリストを返す．
-	/// @param num
-	/// @return
+	/**
+	 * 先頭から指定した要素数を除いたSeqを返す．
+	 * 足りなければ空のリストを返す．
+	 * @param num
+	 * @return
+	 */
 	default Seq<E> drop(int num) {
 		if(num < 0) {
 			throw new IllegalArgumentException();
@@ -405,6 +423,61 @@ public sealed interface Seq<E> extends Iterable<E> {
 				return Function.identity();
 			}
 		});
+	}
+
+	public static final class Zip<E, F> {
+		private final Seq<E> left;
+		private final Seq<F> right;
+
+		private Zip(Seq<E> left, Seq<F> right) {
+			if(left.size() != right.size()) {
+				throw new IllegalArgumentException(String.format(
+						"size unmatch, left: %d, right: %d", left.size(), right.size()));
+			}
+			this.left = left;
+			this.right = right;
+		}
+
+		public <R> Seq<R> map(BiFunction<? super E, ? super F, ? extends R> mapper) {
+			int size = left.size();
+			switch(size) {
+			case 0:
+				return Seq.of();
+			case 1:
+				return Seq.of(mapper.apply(left.head(), right.head()));
+			}
+			SeqBuffer<R> result = new SeqBuffer<>(size);
+			Iterator<E> li = left.iterator();
+			Iterator<F> ri = right.iterator();
+			while(li.hasNext()) {
+				result.add(mapper.apply(li.next(), ri.next()));
+			}
+			return result.toSeq();
+		}
+
+		public void forEachIndexed(BiConsumerIndexed<? super E, ? super F> action) {
+			int size = left.size();
+			switch(size) {
+			case 0:
+				return;
+			case 1:
+				action.accept(0, left.head(), right.head());
+				return;
+			}
+			Iterator<E> li = left.iterator();
+			Iterator<F> ri = right.iterator();
+			for(int idx = 0; idx < size; idx++) {
+				action.accept(idx, li.next(), ri.next());
+			}
+		}
+
+		public void forEach(BiConsumer<? super E, ? super F> action) {
+			Iterator<E> li = left.iterator();
+			Iterator<F> ri = right.iterator();
+			while(li.hasNext()) {
+				action.accept(li.next(), ri.next());
+			}
+		}
 	}
 }
 
