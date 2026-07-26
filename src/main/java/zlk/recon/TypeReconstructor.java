@@ -1,6 +1,7 @@
 package zlk.recon;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
@@ -16,18 +17,17 @@ import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.Constraint.CExists;
 import zlk.recon.constraint.Constraint.CForeign;
-import zlk.recon.constraint.Constraint.CHasField;
 import zlk.recon.constraint.Constraint.CLet;
 import zlk.recon.constraint.Constraint.CLocal;
 import zlk.recon.constraint.Constraint.CPattern;
 import zlk.recon.constraint.Constraint.CPhase;
-import zlk.recon.constraint.Constraint.CRecordPattern;
 import zlk.recon.constraint.Content;
 import zlk.recon.constraint.Content.Structure;
 import zlk.recon.constraint.RcType;
 import zlk.recon.constraint.RcType.AppN;
 import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.RecordN;
+import zlk.recon.constraint.RcType.RowN;
 import zlk.recon.constraint.RcType.VarN;
 import zlk.util.Result;
 import zlk.util.collection.Seq;
@@ -80,73 +80,24 @@ public class TypeReconstructor {
 		case CEqual(RcType type, RcType expectation) -> {
 			Variable actual = typeToVar(letRank, type, IdMap.of());
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected);
+			Unify.unify(actual, expected, freshFlex, letRank);
 		}
 		case CLocal(Id id, RcType expectation) -> {
 			Variable actual = instantiateIfGeneralized(letRank, env.get(id));
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected);
+			Unify.unify(actual, expected, freshFlex, letRank);
 		}
 		case CForeign(Id _, Type type, RcType expectation) -> {
-			Map<String, Variable> typeVars = type.getVarNames()
-					.toMap(
-							name -> name,
-							name -> freshFlex.getVariable(name, letRank)
-					);
-
-			Variable actual = annoTypeToVar(letRank, typeVars, type);
+			RcType.Inst inst = RcType.instantiate(type, freshFlex);
+			introduce(inst.flexes(), letRank);
+			Variable actual = typeToVar(letRank, inst.type(), IdMap.of());
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected);
+			Unify.unify(actual, expected, freshFlex, letRank);
 		}
 		case CPattern(Id _, RcType ctorTy, RcType expection) -> {
 			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
 			Variable expected = typeToVar(letRank, expection, IdMap.of());
-			Unify.unify(actual, expected);
-		}
-		case CHasField(RcType recordType, String field, RcType fieldType) -> {
-			Variable record = typeToVar(letRank, recordType, IdMap.of());
-			Variable expectedField = typeToVar(letRank, fieldType, IdMap.of());
-			switch(record.get().content) {
-			case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) -> {
-				RecordField<Variable> found = fields
-						.findFirst(candidate -> candidate.name().equals(field))
-						.orElseThrow(() -> new IllegalArgumentException(
-								"record has no field: " + field));
-				Unify.unify(found.value(), expectedField);
-			}
-			case Content.FlexVar _ -> {
-				Variable singleton = register(letRank, new Structure(new FlatType.Record1(
-						Seq.of(new RecordField<>(field, expectedField)))));
-				Unify.unify(record, singleton);
-			}
-			default -> throw new IllegalArgumentException("not a record: " + record);
-			}
-		}
-		case CRecordPattern(RcType recordType, Seq<RecordField<RcType>> patternFields) -> {
-			Variable record = typeToVar(letRank, recordType, IdMap.of());
-			Seq<RecordField<RcType>> canonical = RecordField.canonicalize(patternFields);
-			switch(record.get().content) {
-			case Structure(FlatType.Record1(Seq<RecordField<Variable>> actualFields)) -> {
-				for(RecordField<RcType> patternField : canonical) {
-					RecordField<Variable> actualField = actualFields
-							.findFirst(candidate -> candidate.name().equals(patternField.name()))
-							.orElseThrow(() -> new IllegalArgumentException(
-									"record has no field: " + patternField.name()));
-					Variable expectedField = typeToVar(
-							letRank, patternField.value(), IdMap.of());
-					Unify.unify(actualField.value(), expectedField);
-				}
-			}
-			case Content.FlexVar _ -> {
-				Seq<RecordField<Variable>> inferredFields = canonical.map(field ->
-						new RecordField<>(field.name(),
-								typeToVar(letRank, field.value(), IdMap.of())));
-				Variable inferred = register(
-						letRank, new Structure(new FlatType.Record1(inferredFields)));
-				Unify.unify(record, inferred);
-			}
-			default -> throw new IllegalArgumentException("not a record: " + record);
-			}
+			Unify.unify(actual, expected, freshFlex, letRank);
 		}
 		case CLet(
 				Seq<Variable> rigids,
@@ -231,38 +182,37 @@ public class TypeReconstructor {
 			Variable bVar = go.apply(ret);
 			return register(letRank, new Structure(new FlatType.Fun1(aVar, bVar)));
 		}
-		case RecordN(Seq<RecordField<RcType>> fields) -> {
-			return register(letRank, new Structure(new FlatType.Record1(
-					fields.map(field -> new RecordField<>(field.name(), go.apply(field.value()))))));
-		}
+		case RecordN(RowN row) -> {
+					return buildRecordVar(freshFlex, letRank,
+						row.fields().map(field ->
+							new RecordField<>(field.name(), go.apply(field.value()))),
+						row.extension());
+				}
 		}
 	}
 
-	private Variable annoTypeToVar(int letRank, Map<String, Variable> typeVars, Type type) {
-		Function<Type, Variable> go = t -> annoTypeToVar(letRank, typeVars, t);
-
-		switch(type) {
-		case CtorApp(Id id, Seq<Type> typeArguments) -> {
-			Seq<Variable> argVars = typeArguments.map(go);
-			return register(letRank, new Structure(new FlatType.CtorApp1(id, argVars)));
-		}
-		case Arrow(Type arg, Type ret) -> {
-			Variable argVar = go.apply(arg);
-			Variable retVar = go.apply(ret);
-			return register(letRank, new Structure(new FlatType.Fun1(argVar, retVar)));
-		}
-		case Var(String name) -> {
-			return typeVars.get(name);
-		}
-		case Type.Record(Seq<RecordField<Type>> fields) -> {
-			return register(letRank, new Structure(new FlatType.Record1(
-					fields.map(field -> new RecordField<>(field.name(), go.apply(field.value()))))));
-		}
-		}
+	static Variable buildRecordVar(
+			FreshFlex freshFlex,
+			int letRank,
+			Seq<RecordField<Variable>> fields,
+			Optional<Variable> extension) {
+		Variable row = new Variable(
+				new Structure(new FlatType.Row1(fields, extension)),
+				letRank,
+				Variable.Kind.ROW);
+		return new Variable(
+				new Structure(new FlatType.Record1(row)),
+				letRank,
+				Variable.Kind.TYPE);
 	}
 
 	private Variable register(int letRank, Content content) {
 		Variable var = new Variable(content, letRank);
+		return var;
+	}
+
+	private Variable register(int letRank, Content content, Variable.Kind kind) {
+		Variable var = new Variable(content, letRank, kind);
 		return var;
 	}
 
@@ -326,8 +276,12 @@ public class TypeReconstructor {
 			args.mapToInt(go).max().orElse(groupRank);
 		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
 			Math.max(go.applyAsInt(arg), go.applyAsInt(ret));
-		case Structure(FlatType.Record1(Seq<RecordField<Variable>> fields)) ->
-			fields.mapToInt(field -> go.applyAsInt(field.value())).max().orElse(groupRank);
+		case Structure(FlatType.Record1(Variable row)) ->
+			go.applyAsInt(row);
+		case Structure(FlatType.Row1(Seq<RecordField<Variable>> fields, Optional<Variable> extension)) ->
+			Math.max(
+				fields.mapToInt(field -> go.applyAsInt(field.value())).max().orElse(groupRank),
+				extension.map(go::applyAsInt).orElse(groupRank));
 		case Content.Error() -> groupRank;
 		};
 	}
@@ -353,22 +307,25 @@ public class TypeReconstructor {
 			return v;
 		}
 
-		// キャッシュの用意
-		Variable copy = new Variable(s.content, s.rank);  // contentは仮
+		// キャッシュの用意（元kindを維持）
+		Variable copy = new Variable(new VariableState(
+				new Content.Error(), s.rank, s.kind, s.forbiddenLabels));  // contentは仮
 		s.cacheOnCopy = copy;
 
 		// 具体化
 		switch(s.content) {
 		case Content.RigidVar(String name) -> {
-			copy.set(new VariableState(freshFlex.getContent(name), letRank));
+			copy.set(new VariableState(
+					freshFlex.getContent(name), letRank, s.kind, s.forbiddenLabels));
 		}
 		case Content.Structure cture -> {
 			// 再帰的にコピー
 			Content.Structure cture_ = cture.traverse(v_ -> instanciateIfNeedHelp(letRank, v_));
-			copy.set(new VariableState(cture_, letRank));
+			copy.set(new VariableState(cture_, letRank, s.kind, s.forbiddenLabels));
 		}
 		case Content.FlexVar _ -> {
-			copy.set(new VariableState(freshFlex.getContent(), letRank));
+			copy.set(new VariableState(
+					freshFlex.getContent(), letRank, s.kind, s.forbiddenLabels));
 		}
 		case Content.Error _ -> { throw new RuntimeException(); }
 		};
@@ -398,8 +355,13 @@ public class TypeReconstructor {
 				restore(arg);
 				restore(ret);
 			}
-			case FlatType.Record1(Seq<RecordField<Variable>> fields) ->
+			case FlatType.Record1(Variable row) ->
+				// 内包するrow変数をrestore
+				restore(row);
+			case FlatType.Row1(Seq<RecordField<Variable>> fields, Optional<Variable> extension) -> {
 				fields.forEach(field -> restore(field.value()));
+				extension.ifPresent(ext -> restore(ext));
+			}
 			}
 		}
 		case Content.Error() -> {}

@@ -133,6 +133,20 @@ public class ParseErrorTest {
 	}
 
 	@Test
+	void badTypeAliasDeclarationRecoversAtNextTopLevelDeclaration() {
+		String src = """
+		type alias Foo a =
+		after =
+		  1
+		""";
+
+		var module = new ModuleTester(src, CompileLevel.PARSE);
+
+		assertEquals(1, module.getParseErrors().size());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
 	void badLetValueDeclarationHeaderRecoversAtNextLocalDeclaration() {
 		String src = """
 		test =
