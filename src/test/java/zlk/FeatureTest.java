@@ -22,7 +22,9 @@ import zlk.common.id.Id;
 import zlk.runtime.ZlkCustom;
 import zlk.runtime.ZlkRecord;
 import zlk.runtime.ZlkValue;
+import zlk.idcalc.IcExp;
 import zlk.idcalc.IcModule;
+import zlk.idcalc.IcCtor;
 import zlk.tester.DumpOnFailureWatcher;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
@@ -869,6 +871,43 @@ public class FeatureTest {
 				""", CompileLevel.NAME_EVAL));
 	}
 
+	@Test
+	void adtConstructorRejectsUndeclaredTypeParameter() {
+		// type Bad a = Bad b — bはADT parameterとして宣言されていないため，
+		// ADT constructor引数文脈では未宣言変数を暗黙導入せず拒否する．
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type Bad a = Bad b
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void adtConstructorRejectsDuplicateTypeParameter() {
+		// type Bad a a = Bad a — ADT parameterの重複宣言を拒否する．
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type Bad a a = Bad a
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void aliasBodyRejectsUndeclaredTypeParameter() {
+		// type alias Bad a = b — alias body文脈では未宣言変数 b を拒否する．
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type alias Bad a = b
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void valueAnnotationImplicitlyIntroducesTypeParameter() {
+		// value annotation文脈では未宣言変数を暗黙導入する．
+		// id : a -> a の a はTYPEとして導入される．
+		var module = new ModuleTester("""
+				id : a -> a
+				id x = x
+				""", CompileLevel.NAME_EVAL);
+		Type annoId = module.getIdcalcModule().decls().head().anno().orElseThrow();
+		assertEquals(new Type.Arrow(new Type.Var("a"), new Type.Var("a")), annoId);
+	}
+
 	// ===== alias/backend end-to-endテスト群 =====
 
 	@Test
@@ -953,5 +992,49 @@ public class FeatureTest {
 		assertEquals(1, ((VData) module.getValue("intResult")).value());
 		assertEquals(42, ((VData) module.getValue("nestedResult")).value());
 	}
-}
 
+	@Test
+	void letInThenBranchDoesNotLeakToElseBranch() {
+		// then 側の let で宣言した名前が else 側から見えてはならない．
+		// 退出後に binding を破棄する一時 frame の検証．
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				f n =
+				  if isZero n then
+				    let
+				      one = 1
+				    in
+				      one
+				  else
+				    one
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void ctorSignatureAndIcCtorArgsShareResolvedArguments() {
+		// 改善G characterization: ADT constructor引数型は一度だけ解決され，
+		// value constructor signature (IcVarCtor.type) と IcCtor.args が
+		// 同じ解決結果から供給される．aliasをconstructor引数に持つADTで，
+		// IcCtor.args と IcVarCtor.type().flatten() の引数部分が同一の
+		// semantic Type であることを確認する．
+		var module = new ModuleTester("""
+				type alias Box a = { value : a }
+				type Wrapped a = Wrapped (Box a)
+				wrapped = Wrapped { value = 1 }
+				""", CompileLevel.NAME_EVAL);
+
+		IcModule ic = module.getIdcalcModule();
+		IcCtor ctor = ic.types().head().ctors().head();
+		// IcCtor.args: [Box a展開後のRecord]
+		Seq<Type> ctorArgs = ctor.args();
+
+		// value宣言 wrapped の body は IcApp(IcVarCtor(Wrapped), [record])．
+		// IcVarCtor.type は constructor signature = fromSeq(args ++ [retTy])．
+		IcExp body = ic.decls().head().body();
+		IcExp.IcApp app = assertInstanceOf(IcExp.IcApp.class, body);
+		IcExp.IcVarCtor varCtor = assertInstanceOf(IcExp.IcVarCtor.class, app.fun());
+		// flatten() は [arg1, ..., retTy]．dropLast で引数部分を得る．
+		Seq<Type> sigArgs = varCtor.type().flatten().dropLast();
+
+		assertEquals(ctorArgs, sigArgs);
+	}
+}
