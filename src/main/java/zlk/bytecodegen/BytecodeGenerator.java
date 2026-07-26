@@ -321,7 +321,8 @@ public final class BytecodeGenerator {
 
 			getDecl(funId, descriptor -> {
 				// 全ての引数をstackに載せる
-				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
+				Seq.zip(args, flattenTys.take(args.size())).forEach(
+						(arg, ty) -> compile(arg, toJavaType(ty)));
 
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
@@ -334,7 +335,8 @@ public final class BytecodeGenerator {
 				checkcastIfNeed(stackTopTy, ubTy);
 			}, builtin -> {
 				// 全ての引数をstackに載せる
-				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
+				Seq.zip(args, flattenTys.take(args.size())).forEach(
+						(arg, ty) -> compile(arg, toJavaType(ty)));
 				builtin.accept(mv);
 			}, ctor -> {
 				// <init>を呼ぶ
@@ -343,7 +345,8 @@ public final class BytecodeGenerator {
 				mv.visitInsn(Opcodes.DUP);  // 値を返さないのでポインタを複製しておく
 
 				// 全ての引数をstackに載せる
-				args.forEachIndexed((i, arg) -> compile(arg, toJavaType(flattenTys.at(i))));  // TODO: zipがあると簡潔
+				Seq.zip(args, flattenTys.take(args.size())).forEach(
+						(arg, ty) -> compile(arg, toJavaType(ty)));
 				mv.visitMethodInsn(
 						Opcodes.INVOKESPECIAL,
 						subclass.toClassName(),
@@ -582,15 +585,15 @@ public final class BytecodeGenerator {
 			int ctorLocal = locals.size();
 			locals.add(LOCAL_DUMMY_ID);
 			mv.visitVarInsn(Opcodes.ASTORE, ctorLocal);
-			for(int i = 0; i < args.size(); i++) {
+			Seq.zip(args, ctorDecl.args()).forEachIndexed((idx, arg, ctorArg) -> {
 				mv.visitVarInsn(Opcodes.ALOAD, ctorLocal);
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						subClassName,
-						"val"+i,
-						toDesc(ctorDecl.args().at(i)));
-				checkMatchAndStoreLocals(args.at(i).pattern(), ctorDecl.args().at(i), next);
-			}
+						"val"+idx,
+						toDesc(ctorArg));
+				checkMatchAndStoreLocals(arg.pattern(), ctorArg, next);
+			});
 		}
 		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
@@ -826,15 +829,6 @@ public final class BytecodeGenerator {
 		Seq<Type> argTys = funTy.flatten().take(arity);
 		Type retTy = funTy.dropArgs(arity);
 		return toMethodDesc(argTys, retTy);
-	}
-
-	/**
-	 * 指定した型に対応するクラス名を返す
-	 * @param ty
-	 * @return
-	 */
-	private String toClassName(Type ty) {
-		return toJavaType(ty).toClassName();
 	}
 
 	/**
