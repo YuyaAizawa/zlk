@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import zlk.common.id.Id;
@@ -40,28 +41,32 @@ final class Env {
 		this.global = new HashMap<>();
 	}
 
-	/** 指定ownerのscope内でbodyを評価する． */
-	<T> T withScope(String simpleName, Supplier<T> body) {
+	/**
+	 * 現在のscopeに{@code simpleName}を名前とするlexical scopeを作り，
+	 * そのscope内で{@code body}を評価する．
+	 * 作成したscopeのIdは{@code body}の引数として渡す．
+	 */
+	<T> T withScope(String simpleName, Function<Id, T> body) {
 		Id ownerId = frames.isEmpty()
 				? Id.intern(simpleName)
-				: Id.intern(currentOwner(), simpleName);
+				: Id.intern(frames.peek().owner().id(), simpleName);
 		Frame frame = new Frame(new Owner(ownerId), new HashMap<>());
-		return withFrame(frame, body);
+		return withFrame(frame, () -> body.apply(ownerId));
 	}
 
-	/** lambda用anonymous ownerのscope内でbodyを評価する． */
-	<T> T withLambdaScope(Supplier<T> body) {
+	/**
+	 * 現在のscopeにlambda用scopeを作り，そのscope内で{@code body}を評価する．
+	 * 作成したscopeのIdは{@code body}の引数として渡す．
+	 */
+	<T> T withLambdaScope(Function<Id, T> body) {
 		Frame parent = frames.peek();
 		String synthetic = "_lambda" + parent.owner().nextLambdaIndex();
 		return withScope(synthetic, body);
 	}
 
 	/**
-	 * let 用の一時 binding frame を開く．
-	 * 親と同一 owner を共有し，親の lambda counter も共有することで，
-	 * 同一 owner 寿命中の単純名（lambda 含む）再利用を防ぐ．
-	 * 宣言群と body をこの frame 内で評価し，退出後に binding を破棄する．
-	 * synthetic let segment は追加しない．
+	 * let用のbinding frameを作り，そのscope内で{@code body}を評価する．
+	 * scopeは作らない．
 	 */
 	<T> T withLetFrame(Supplier<T> body) {
 		Frame parent = frames.peek();
@@ -74,16 +79,8 @@ final class Env {
 		try {
 			return body.get();
 		} finally {
-			if (frames.peek() != frame) {
-				throw new IllegalStateException("binding frames must close in LIFO order");
-			}
 			frames.pop();
 		}
-	}
-
-	/** 現在の owner 名（最内 binding frame の owner）を返す． */
-	Id currentOwner() {
-		return frames.peek().owner().id();
 	}
 
 	/** 現在の binding frame に名前を登録する．owner は現在の frame と同一． */
@@ -130,13 +127,6 @@ final class Env {
 			throw new NoSuchElementException(name);
 		}
 		return id;
-	}
-
-	/** 全 binding frame を退出済みであることの表明． */
-	void assertAtRoot() {
-		if (!frames.isEmpty()) {
-			throw new AssertionError("expected root, but " + frames.size() + " frame(s) remain");
-		}
 	}
 }
 

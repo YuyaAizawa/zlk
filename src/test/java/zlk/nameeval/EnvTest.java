@@ -1,6 +1,5 @@
 package zlk.nameeval;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -20,47 +19,43 @@ class EnvTest {
 	@Test
 	void withScopeClosesOnNormalExit() {
 		Env env = new Env();
-		env.withScope("Main", () -> {
+		env.withScope("Main", owner -> {
+			assertEquals(Id.intern("Main"), owner);
 			register(env, "x");
 			assertNotNull(env.getOrNull("x"));
 			return null;
 		});
 		assertNull(env.getOrNull("x"));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void withScopeClosesOnException() {
 		Env env = new Env();
-		assertThrows(RuntimeException.class, () -> env.withScope("Main", () -> {
+		assertThrows(RuntimeException.class, () -> env.withScope("Main", _ -> {
 			register(env, "x");
 			throw new RuntimeException("boom");
 		}));
 		assertNull(env.getOrNull("x"));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void withLetFrameSharesOwnerWithParent() {
 		Env env = new Env();
-		env.withScope("Main", () -> env.withScope("f", () -> {
-			Id ownerBefore = env.currentOwner();
+		env.withScope("Main", _ -> env.withScope("f", owner -> {
 			env.withLetFrame(() -> {
-				assertEquals(ownerBefore, env.currentOwner());
 				assertEquals("Main.f.g", register(env, "g").toString());
 				return null;
 			});
 			assertNull(env.getOrNull("g"));
-			assertEquals(ownerBefore, env.currentOwner());
+			assertEquals(Id.intern("Main.f"), owner);
 			return null;
 		}));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void withLetFrameClosesOnException() {
 		Env env = new Env();
-		env.withScope("Main", () -> env.withScope("f", () -> {
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
 			assertThrows(RuntimeException.class, () -> env.withLetFrame(() -> {
 				register(env, "g");
 				throw new RuntimeException("boom");
@@ -68,28 +63,26 @@ class EnvTest {
 			assertNull(env.getOrNull("g"));
 			return null;
 		}));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void withLambdaScopeProducesDistinctOwner() {
 		Env env = new Env();
-		env.withScope("Main", () -> env.withScope("f", () -> {
-			Id lambda1 = env.withLambdaScope(env::currentOwner);
-			Id lambda2 = env.withLambdaScope(env::currentOwner);
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
+			Id lambda1 = env.withLambdaScope(owner -> owner);
+			Id lambda2 = env.withLambdaScope(owner -> owner);
 
 			assertTrue(lambda1.toString().startsWith("Main.f._lambda"));
 			assertTrue(lambda2.toString().startsWith("Main.f._lambda"));
 			assertTrue(!lambda1.equals(lambda2));
 			return null;
 		}));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void nestedLetFramesDoNotLeak() {
 		Env env = new Env();
-		env.withScope("Main", () -> env.withScope("f", () -> {
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
 			env.withLetFrame(() -> {
 				register(env, "a");
 				env.withLetFrame(() -> {
@@ -106,13 +99,12 @@ class EnvTest {
 			assertNull(env.getOrNull("b"));
 			return null;
 		}));
-		env.assertAtRoot();
 	}
 
 	@Test
 	void sameOwnerDoesNotReuseNameAfterLetFrameCloses() {
 		Env env = new Env();
-		env.withScope("Main", () -> env.withScope("f", () -> {
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
 			env.withLetFrame(() -> {
 				register(env, "local");
 				return null;
@@ -128,7 +120,7 @@ class EnvTest {
 	@Test
 	void duplicateReportsPreviouslyAssignedId() {
 		Env env = new Env();
-		env.withScope("Main", () -> {
+		env.withScope("Main", _ -> {
 			Id ctorId = Id.intern("Main.Type.Ctor");
 			register(env, "Ctor", ctorId);
 
@@ -144,26 +136,18 @@ class EnvTest {
 	@Test
 	void nestedScopeRestoresParentOwner() {
 		Env env = new Env();
-		env.withScope("Main", () -> {
-			Id owner = env.currentOwner();
-			env.withScope("f", () -> {
-				assertEquals(Id.intern("Main.f"), env.currentOwner());
+		env.withScope("Main", owner -> {
+			env.withScope("f", nestedOwner -> {
+				assertEquals(Id.intern("Main.f"), nestedOwner);
 				return null;
 			});
-			assertEquals(owner, env.currentOwner());
+			assertEquals(Id.intern("Main"), owner);
+			env.withScope("g", restoredOwner -> {
+				assertEquals(Id.intern("Main.g"), restoredOwner);
+				return null;
+			});
 			return null;
 		});
-		env.assertAtRoot();
-	}
-
-	@Test
-	void assertAtRootThrowsInsideScope() {
-		Env env = new Env();
-		env.withScope("Main", () -> {
-			assertThrows(AssertionError.class, env::assertAtRoot);
-			return null;
-		});
-		assertDoesNotThrow(env::assertAtRoot);
 	}
 
 	private static Id register(Env env, String name) {

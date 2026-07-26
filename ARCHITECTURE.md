@@ -38,7 +38,7 @@ flowchart TD
 
 `PatternChecker`は，名前解決後の`IcModule`と各式・パターンの解決済み`Type`を検査し，case式の冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とノードごとの型の解決後に実行する．
 
-`NameEvaluator`フェーズは，値名前解決と型解決を分業する．値名前解決，AST expression／patternの`Id`化，module scopeとphase順序のorchestrationは`NameEvaluator`が担う．alias/kind-aware型解決，型名先行登録，alias DFS解決，value annotation型評価，ADT constructor引数型評価は`TypeResolver`が担う．`NameEvaluator`は`TypeResolver`の公開API経由で型解決を依頼し，alias DFS／substitution／ROW評価などの型解決内部処理へ直接アクセスしない．入力ASTと出力`IcModule`の意味論は変わらない．
+`NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
 
 `ConstraintExtractor.Result.nodeTypes`が保持する`RcType`は，制約と型変数を共有する．そのため，`TypeReconstructor`による制約解決後に`resolvedNodeTypes()`を呼び出すことで，各式およびパターンの解決済み`Type`を取得できる．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
 
@@ -76,7 +76,7 @@ ZLKのレコード型は，行多相を含む構造的レコード型である�
 
 row単一化は，canonical known fieldsの共通フィールドを再帰的に単一化した上で，label差分unificationを行う．両側にonlyフィールドがある場合はcurrent rankでfresh common tailを生成し，各tailへresidual rowを束縛する．片側のみresidualの場合は相手tailへ束縛する．lacks制約は`VariableState.forbiddenLabels`で管理し，field追加時の衝突を検査する．occurs checkはtail chain全体を走査する．closed rowとopen rowの単一化では，open側のtailをclosed empty rowへ束縛する．
 
-型エイリアスは`NameEvaluator`フェーズ内の`TypeResolver`でorder-independentにDFS解決し，透明に展開して`Type`へ変換する．再帰エイリアスはVISITING状態で検出しrejectする．エイリアスの型パラメータはTYPE kindとROW kindを区別し，ROW kindパラメータはrow変数として展開先の`Type.Row`へflattenする．展開結果は`IcModule`やbackendへ残らず，backend productionコードは全レコードを`ZlkRecord`へ消去する．
+型宣言のparameter kindは，`NameEvaluator`フェーズ内の`TypeResolver`が全型名とkind slotを先行登録した後，alias本体と全ADT constructor引数から宣言横断で解決する．slot間制約により，前方参照と相互再帰nominal型を介したTYPE／ROW kindの伝播をsource orderに依存せず扱う．未使用parameterはTYPEへ既定化する．kind確定後，型エイリアスはorder-independentにDFS解決し，透明に展開して`Type`へ変換する．再帰エイリアスはVISITING状態で検出しrejectする．ROW kindのalias parameterはrow変数として展開先の`Type.Row`へflattenする．ROW kindのnominal argumentは`Type.Record`で包んで`Type.CtorApp.args`へ保持し，独立した`Type.Row`をTYPE位置へ置かない．展開結果とkind情報はbackendへ残らず，backend productionコードはopen／closedを問わず全レコードを`ZlkRecord`へ消去する．
 
 アクセス，更新，パターンマッチは`ConstraintExtractor`でopen rowを伴う`CEqual`制約へlowerし，型推論solverは特例処理を行わない．`record.x`は対象を`{ r | x : a }`型へ制約し，wider shapeの値を受け取れる．`{ record | field = value }`は対象と更新後の全体shapeを同一のtarget変数へ制約する．
 
