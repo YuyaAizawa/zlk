@@ -289,8 +289,8 @@ public final class NameEvaluator {
 			Id ctor = env.get(name);
 			Type ctorType = getConstructorType(ctor);
 			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctorType, Location.noLocation());
-			Seq<Type> argTys = ctorType.flatten();
-			Seq<Arg> dectorArgs = args.mapIndexed((i, arg) -> new IcPattern.Arg(eval(arg), argTys.at(i)));
+			Seq<Arg> dectorArgs = Seq.zip(args, ctorType.flatten().take(args.size()))
+					.map((arg, argTy) -> new IcPattern.Arg(eval(arg), argTy));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
 		}
 		case Pattern.Record(Seq<Pattern.RecordField> fields, Location loc): {

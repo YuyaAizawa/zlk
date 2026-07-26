@@ -103,14 +103,13 @@ public final class Unify {
 			case Structure v_ -> {
 				if(u_.flatType() instanceof CtorApp1 u__ && v_.flatType() instanceof CtorApp1 v__) {
 					if(u__.id().equals(v__.id())) {
-						Seq<Variable> args = u__.args();
-						Seq<Variable> otherArgs = v__.args();
-						if(args.size() != otherArgs.size()) {
+						Seq<Variable> uArgs = u__.args();
+						Seq<Variable> vArgs = v__.args();
+						if(uArgs.size() != vArgs.size()) {
 							throw new Missmatch();
 						}
-						for(int i = 0;i < args.size();i++) {
-							unify(args.at(i), otherArgs.at(i), freshFlex, letRank);
-						}
+						Seq.zip(uArgs, vArgs).forEach(
+								(uArg, vArg) -> unify(uArg, vArg, freshFlex, letRank));
 					} else {
 						throw new Missmatch();
 					}
@@ -283,7 +282,7 @@ public final class Unify {
 		Seq<RecordField<Variable>> leftOnlySeq = leftOnly.toSeq();
 		Seq<RecordField<Variable>> rightOnlySeq = rightOnly.toSeq();
 
-		// residualのtail要件を先に検査（部分的mutation前）．
+		// residualのtail要件を先に検査（部分的mutation前）
 		boolean hasLeftResidual = !leftOnlySeq.isEmpty();
 		boolean hasRightResidual = !rightOnlySeq.isEmpty();
 		if(hasLeftResidual && vTail.isEmpty()) {
@@ -293,13 +292,12 @@ public final class Unify {
 			throw new Missmatch();
 		}
 
-		// tailの有無だけで判定できるmismatchを除外してからshared fieldを単一化する．
-		for(int i = 0; i < sharedUSeq.size(); i++) {
-			unify(sharedUSeq.at(i).value(), sharedVSeq.at(i).value(), freshFlex, letRank);
-		}
+		// tailの有無だけで判定できるmismatchを除外してからshared fieldを単一化する
+		Seq.zip(sharedUSeq, sharedVSeq).forEach(
+				(ue, ve) -> unify(ue.value(), ve.value(), freshFlex, letRank));
 
 		// 2. residualのtail処理
-		// shared fieldsの寄与は除いたresidual rowを構築してtailへunifyする．
+		// shared fieldsの寄与は除いたresidual rowを構築してtailへunifyする
 		if(!hasLeftResidual && !hasRightResidual) {
 			// residualなし
 			// 両tailあり→tail同士unify
