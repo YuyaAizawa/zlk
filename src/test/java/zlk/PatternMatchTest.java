@@ -176,6 +176,86 @@ public class PatternMatchTest {
 		assertCtor(just.args().head(), "Bool", "Basic.False", 0);
 	}
 
+	// ===== open rowパターンマッチ回帰テスト群 =====
+
+	@Test
+	void openRecordBoolFieldCaseIsExhaustive() {
+		String src = """
+			classify record =
+			  case record of
+			    { flag = False } -> 0
+			    { flag = True } -> 1
+			""";
+
+		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
+		Seq<PcError> errors = module.getPatternErrors();
+
+		assertNoErrors(errors);
+	}
+
+	@Test
+	void emptyRecordPatternOnOpenRowIsIrrefutableAndMakesLaterRecordBranchRedundant() {
+		String src = """
+			classify record =
+			  case record of
+			    {} -> 0
+			    { flag = True } -> 1
+			""";
+
+		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
+		Seq<PcError> errors = module.getPatternErrors();
+
+		assertEquals(1, errors.size());
+		assertTrue(errors.head() instanceof PcError.Redundant);
+	}
+
+	@Test
+	void openRecordWithNestedMaybeBoolCaseIsExhaustive() {
+		String src = """
+			type Maybe a =
+			  | Nothing
+			  | Just a
+
+			classify record =
+			  case record of
+			    { value = Nothing } -> 0
+			    { value = Just False } -> 1
+			    { value = Just True } -> 2
+			""";
+
+		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
+		Seq<PcError> errors = module.getPatternErrors();
+
+		assertNoErrors(errors);
+	}
+
+	@Test
+	void openRecordWithNestedMaybeBoolReportsMissingJustFalse() {
+		String src = """
+			type Maybe a =
+			  | Nothing
+			  | Just a
+
+			classify record =
+			  case record of
+			    { value = Nothing } -> 0
+			    { value = Just True } -> 1
+			""";
+
+		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
+		Seq<PcError> errors = module.getPatternErrors();
+
+		assertEquals(1, errors.size());
+		PcError.Incomplete incomplete = (Incomplete) errors.head();
+
+		Seq<PcPattern> witness = incomplete.examples();
+		assertEquals(1, witness.size());
+
+		PcPattern.Ctor product = assertCtor(witness.head(), "$record$5$value", "$record$5$value", 1);
+		PcPattern.Ctor just = assertCtor(product.args().head(), "Main.Maybe", "Main.Maybe.Just", 1);
+		assertCtor(just.args().head(), "Bool", "Basic.False", 0);
+	}
+
 	private static void assertNoErrors(Seq<PcError> errors) {
 		assertEquals(0, errors.size(), () -> errors.join(System.lineSeparator()));
 	}

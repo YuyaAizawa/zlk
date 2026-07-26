@@ -38,6 +38,8 @@ flowchart TD
 
 `PatternChecker`は，名前解決後の`IcModule`と各式・パターンの解決済み`Type`を検査し，case式の冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とノードごとの型の解決後に実行する．
 
+`NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
+
 `ConstraintExtractor.Result.nodeTypes`が保持する`RcType`は，制約と型変数を共有する．そのため，`TypeReconstructor`による制約解決後に`resolvedNodeTypes()`を呼び出すことで，各式およびパターンの解決済み`Type`を取得できる．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
 
 ### 主要な中間表現
@@ -66,9 +68,21 @@ flowchart TD
 
 ### レコード型
 
-現在のレコード型は，フィールド名とフィールド型の集合が完全に一致するときだけ単一化できる，閉じた構造的レコード型である．フィールド名は文字列の自然順序で正規化する．
+ZLKのレコード型は，行多相を含む構造的レコード型である．
 
-行変数および行多相は未実装である．型が未確定の値に対する`record.x`は，対象を正確に`{ x : a }`型へ制約する．したがって，このように推論された関数へ`{ x : I32, y : Bool }`のような追加フィールドを持つ値を渡すことはできない．複数フィールドを扱う関数や特定の広いレコード形状を受け取る関数には，現在は完全なレコード型注釈を付ける．
+安定な`Type.Record`が`Type.Row`を包み，`Type.Row`はcanonicalize済みの`RecordField`列とoptionalの`Type.RowVar`拡張を持つ．`Type.RowVar`は`Type`を実装しない独立クラスであり，`Type.Row`の末尾拡張のみに現れる．closed rowはextensionが空，open rowはextensionが`RowVar`を持つ．
+
+型推論の制約IRでは，`RcType.RowN`が`RecordField<RcType>`列とoptionalの`Variable`拡張を持ち，`RcType.RecordN`が`RowN`を包む．flat化後は`FlatType.Row1`と`FlatType.Record1`が対応する．`Variable`はunion-find rootとしてTYPE kindとROW kindを区別し，同じrank，generalize，instantiate機構を共有する．ROW kind rootは`Row1` structureを保持する．
+
+row単一化は，canonical known fieldsの共通フィールドを再帰的に単一化した上で，label差分unificationを行う．両側にonlyフィールドがある場合はcurrent rankでfresh common tailを生成し，各tailへresidual rowを束縛する．片側のみresidualの場合は相手tailへ束縛する．lacks制約は`VariableState.forbiddenLabels`で管理し，field追加時の衝突を検査する．occurs checkはtail chain全体を走査する．closed rowとopen rowの単一化では，open側のtailをclosed empty rowへ束縛する．
+
+型宣言のparameter kindは，`NameEvaluator`フェーズ内の`TypeResolver`が全型名とkind slotを先行登録した後，alias本体と全ADT constructor引数から宣言横断で解決する．slot間制約により，前方参照と相互再帰nominal型を介したTYPE／ROW kindの伝播をsource orderに依存せず扱う．未使用parameterはTYPEへ既定化する．kind確定後，型エイリアスはorder-independentにDFS解決し，透明に展開して`Type`へ変換する．再帰エイリアスはVISITING状態で検出しrejectする．ROW kindのalias parameterはrow変数として展開先の`Type.Row`へflattenする．ROW kindのnominal argumentは`Type.Record`で包んで`Type.CtorApp.args`へ保持し，独立した`Type.Row`をTYPE位置へ置かない．展開結果とkind情報はbackendへ残らず，backend productionコードはopen／closedを問わず全レコードを`ZlkRecord`へ消去する．
+
+アクセス，更新，パターンマッチは`ConstraintExtractor`でopen rowを伴う`CEqual`制約へlowerし，型推論solverは特例処理を行わない．`record.x`は対象を`{ r | x : a }`型へ制約し，wider shapeの値を受け取れる．`{ record | field = value }`は対象と更新後の全体shapeを同一のtarget変数へ制約する．
+
+`PatternChecker`はレコードパターンを，解決済み`Type.Row`のknown fieldsだけを積型として扱い，unknown tailは暗黙のwildcardとする．tailをconstructorやarityへ追加せず，known prefix productで網羅性と冗長性を検査する．
+
+runtime ABIはopen/closedで分岐なく，全レコード値がpublic `ZlkRecord` interfaceへコンパイルされる．`ZlkRecord`はフィールド名の辞書順リストとフィールドアクセス，immutable updateを提供し，open/closedの区別を保持しない．
 
 ### `Id`とクラスファイル中の名前
 

@@ -11,11 +11,12 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface Decl extends PrettyPrintable, LocationHolder
 permits Decl.Value, Decl.Type {
 	public sealed interface Value extends Decl permits ValDecl, ValErr {}
-	public sealed interface Type extends Decl permits TypeDecl, TypeErr {}
+	public sealed interface Type extends Decl permits TypeDecl, TypeAlias, TypeErr {}
 
 	record ValDecl(String name, Optional<AnType> anno, Seq<Pattern> args, Exp body, Location loc) implements Value {}
 	record ValErr(Location loc) implements Value {}
 	record TypeDecl(String name, Seq<AnType.Var> vars, Seq<Constructor> ctors, Location loc) implements Type {}
+	record TypeAlias(String name, Seq<AnType.Var> vars, AnType body, Location loc) implements Type {}
 	record TypeErr(Location loc) implements Type {}
 
 	@Override
@@ -46,6 +47,11 @@ permits Decl.Value, Decl.Type {
 					ctors.forEach(ctor -> pp.endl().append("| ").append(ctor));
 				});
 			}
+		}
+		case TypeAlias(String name, Seq<AnType.Var> tyArgs, AnType body, _) -> {
+			pp.append("type alias ").append(name);
+			tyArgs.forEach(arg -> pp.append(" ").append(arg));
+			pp.append(" = ").append(body);
 		}
 		case TypeErr(Location loc) -> {
 			pp.append("<parse-error ").append(loc).append(">");
