@@ -1,7 +1,6 @@
 package zlk.util.pp;
 
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 
 @FunctionalInterface
@@ -42,29 +41,33 @@ public interface PrettyPrintable {
 	}
 
 	// TODO: tailCommaとoneLineはprinter側のNoBreakで切り替えるように
-	public static PrettyPrintable oneLine(List<? extends PrettyPrintable> list) {
-		if(list.isEmpty()) {
-			return pp -> pp.append("[]");
-		}
-
-
+	public static PrettyPrintable oneLine(Iterable<? extends PrettyPrintable> iterable) {
 		return pp -> {
-			pp.withoutLineBreak(pp_ -> {
-				pp_.append("[").append(join(list, ", ")).append("]");
-			});
+			Iterator<? extends PrettyPrintable> itr = iterable.iterator();
+			if(!itr.hasNext()) {
+				pp.append("[]");
+				return;
+			}
+			pp.append("[").append(itr.next());
+			while(itr.hasNext()) {
+				pp.append(", ").append(itr.next());
+			}
+			pp.append("]");
 		};
 	}
 
-	public static PrettyPrintable tailComma(List<? extends PrettyPrintable> list) {
-		if(list.isEmpty()) {
-			return pp -> pp.append("[]");
-		}
-
+	public static PrettyPrintable tailComma(Iterable<? extends PrettyPrintable> iterable) {
 		return pp -> {
+			Iterator<? extends PrettyPrintable> itr = iterable.iterator();
+			if(!itr.hasNext()) {
+				pp.append("[]");
+				return;
+			}
 			pp.append("[").endl();
 			pp.indent(() -> {
-				pp.append(join(list, pp_ -> pp_.append(",").endl()));
-				pp.append(",").endl();
+				do {
+					pp.append(itr.next()).append(",").endl();
+				} while(itr.hasNext());
 			});
 			pp.append("]");
 		};
