@@ -110,7 +110,9 @@ public class ModuleTester {
 		Builtin.functions().forEach(fun -> types.put(fun.id(), fun.type()));
 		module.types().forEach(union ->
 				union.ctors().forEach(ctor ->
-					types.put(ctor.id(), Type.fromSeq(Seq.concat(ctor.args(), Seq.of(new Type.CtorApp(union.id())))))));
+					types.put(ctor.id(), Type.fromSeq(Seq.concat(
+							ctor.args(),
+							Seq.of(new Type.CtorApp(union.id(), union.vars())))))));
 		Result<Seq<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
 		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
 		callSiteTypes = result.resolvedNodeTypes();

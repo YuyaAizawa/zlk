@@ -34,7 +34,8 @@ permits CtorApp, Arrow, Var, Record {
 	/**
 	 * 関数型以外の型
 	 * @param id 型構築子
-	 * @param args 型パラメータ
+	 * @param args 型パラメータ．独立したRowは直接保持せず，
+	 *             {@link Record}で包んだ型として保持する
 	 */
 	record CtorApp(Id id, Seq<Type> args) implements Type {
 		public CtorApp(Id id) {
