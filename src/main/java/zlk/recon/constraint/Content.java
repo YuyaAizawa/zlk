@@ -3,13 +3,10 @@ package zlk.recon.constraint;
 import java.util.Optional;
 import java.util.function.Function;
 
-import zlk.common.RecordField;
 import zlk.common.id.Id;
 import zlk.recon.FlatType;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
-import zlk.recon.FlatType.Row1;
-import zlk.recon.FlatType.Record1;
 import zlk.recon.Variable;
 import zlk.recon.constraint.Content.FlexVar;
 import zlk.recon.constraint.Content.RigidVar;

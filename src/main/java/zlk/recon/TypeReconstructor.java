@@ -1,15 +1,11 @@
 package zlk.recon;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
 import zlk.common.RecordField;
 import zlk.common.Type;
-import zlk.common.Type.Arrow;
-import zlk.common.Type.CtorApp;
-import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.recon.TypeError.InfinitType;
@@ -208,11 +204,6 @@ public class TypeReconstructor {
 
 	private Variable register(int letRank, Content content) {
 		Variable var = new Variable(content, letRank);
-		return var;
-	}
-
-	private Variable register(int letRank, Content content, Variable.Kind kind) {
-		Variable var = new Variable(content, letRank, kind);
 		return var;
 	}
 

@@ -5,12 +5,11 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import zlk.common.RecordField;
-import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.recon.FlatType.CtorApp1;
 import zlk.recon.FlatType.Fun1;
-import zlk.recon.FlatType.Row1;
 import zlk.recon.FlatType.Record1;
+import zlk.recon.FlatType.Row1;
 import zlk.recon.constraint.Content;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
