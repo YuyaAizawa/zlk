@@ -4,170 +4,171 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
-import zlk.ast.AnType;
 import zlk.common.id.Id;
-import zlk.util.collection.Seq;
 import zlk.util.collection.Stack;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
+/**
+ * 名前評価環境．
+ *
+ * <p>lexical bindingの可視期間とId ownerを分離する．
+ * <ul>
+ *   <li>owner: 名前を割り当てた {@link Id} の親となるスコープ名．
+ *       module，value declaration，lambda，case branchがそれぞれ一つの owner を持つ．
+ *       let は親と同じ owner を共有し，synthetic let segmentを追加しない．</li>
+ *   <li>binding frame: 単純名→Id の map．
+ *       let は親と同じ owner を持ちつつ一時 binding frame を push し，
+ *       宣言群と body をその frame 内で評価し，退出後に binding を破棄する．</li>
+ * </ul>
+ *
+ * <p>同一 owner で割り当てた単純名は owner 寿命中に再利用しない．
+ * 新仕様の shadowing／同名再利用は導入しない．必要なら owner 側に割当済み名前を保持する．
+ *
+ * <p>scope lifetimeはcallback APIで構造化し，正常・例外を問わず必ず退出する．
+ * frameのpush／popはこのクラスの内部だけで行う．
+ */
 final class Env {
-	Map<String, Id> global;
-	Stack<Scope> scopes;
+	/** 現在有効な binding frame の stack（内側が top）． */
+	private final Stack<Frame> frames;
+	private final Map<String, Id> global;
 
-	public Env() {
-		global = new HashMap<>();
-		scopes = new Stack<>();
+	Env() {
+		this.frames = new Stack<>();
+		this.global = new HashMap<>();
 	}
 
-	public void pushScope(String scopeSimpleName) {
-		Id scopeName = scopes.isEmpty()
-				? Id.intern(scopeSimpleName)
-				: Id.intern(scopes.peek().name(), scopeSimpleName);
-		scopes.push(new Scope(scopeName));
-	}
-	public void pushScope() { // lambda式用
-		pushScope("_lambda"+(scopes.peek().lambdaCounter().getAndIncrement()));
-	}
-
-	public void popScope() {
-		scopes.pop();
+	/** 指定ownerのscope内でbodyを評価する． */
+	<T> T withScope(String simpleName, Supplier<T> body) {
+		Id ownerId = frames.isEmpty()
+				? Id.intern(simpleName)
+				: Id.intern(currentOwner(), simpleName);
+		Frame frame = new Frame(new Owner(ownerId), new HashMap<>());
+		return withFrame(frame, body);
 	}
 
-	public Id getOrNull(String name) {
-		for(var scope : scopes) {
-			Id id = scope.ids().get(name);
-			if(id != null) {
+	/** lambda用anonymous ownerのscope内でbodyを評価する． */
+	<T> T withLambdaScope(Supplier<T> body) {
+		Frame parent = frames.peek();
+		String synthetic = "_lambda" + parent.owner().nextLambdaIndex();
+		return withScope(synthetic, body);
+	}
+
+	/**
+	 * let 用の一時 binding frame を開く．
+	 * 親と同一 owner を共有し，親の lambda counter も共有することで，
+	 * 同一 owner 寿命中の単純名（lambda 含む）再利用を防ぐ．
+	 * 宣言群と body をこの frame 内で評価し，退出後に binding を破棄する．
+	 * synthetic let segment は追加しない．
+	 */
+	<T> T withLetFrame(Supplier<T> body) {
+		Frame parent = frames.peek();
+		Frame frame = new Frame(parent.owner(), new HashMap<>());
+		return withFrame(frame, body);
+	}
+
+	private <T> T withFrame(Frame frame, Supplier<T> body) {
+		frames.push(frame);
+		try {
+			return body.get();
+		} finally {
+			if (frames.peek() != frame) {
+				throw new IllegalStateException("binding frames must close in LIFO order");
+			}
+			frames.pop();
+		}
+	}
+
+	/** 現在の owner 名（最内 binding frame の owner）を返す． */
+	Id currentOwner() {
+		return frames.peek().owner().id();
+	}
+
+	/** 現在の binding frame に名前を登録する．owner は現在の frame と同一． */
+	Id register(String name) throws DuplicatedNameException {
+		Frame top = frames.peek();
+		Id id = Id.intern(top.owner().id(), name);
+		return register(name, id);
+	}
+
+	/** 指定 Id で名前を登録する．owner は現在の frame と同一とみなす． */
+	Id register(String name, Id id) throws DuplicatedNameException {
+		Frame top = frames.peek();
+		Id oldId = top.owner().assign(name, id);
+		if (oldId != null) {
+			throw new DuplicatedNameException(oldId, id);
+		}
+		top.ids().put(name, id);
+		return id;
+	}
+
+	/** 大域に Id をその simpleName で登録する． */
+	Id registerGlobal(Id id) throws DuplicatedNameException {
+		String name = id.simpleName();
+		Id orig = global.putIfAbsent(name, id);
+		if (orig != null) {
+			throw new DuplicatedNameException(orig, id);
+		}
+		return id;
+	}
+
+	Id getOrNull(String name) {
+		for (Frame frame : frames) {
+			Id id = frame.ids().get(name);
+			if (id != null) {
 				return id;
 			}
 		}
 		return global.get(name);
 	}
 
-	public Id get(String name) {
+	Id get(String name) {
 		Id id = getOrNull(name);
-		if(id == null) {
+		if (id == null) {
 			throw new NoSuchElementException(name);
 		}
 		return id;
 	}
 
-	public Id getScopeName() {
-		return scopes.peek().name();
-	}
-
-	/**
-	 * この環境に現在のスコープを基準に名前を登録し，生成した{@link Id}を返す.
-	 *
-	 * @param name
-	 * @return 生成したID
-	 * @throws DuplicatedNameException
-	 */
-	public Id register(String name) throws DuplicatedNameException {
-		Scope topScope = scopes.peek();
-		Id id = Id.intern(topScope.name(), name);
-		return register(name, id);
-	}
-
-	public Id register(String name, Id id) throws DuplicatedNameException {
-		Scope topScope = scopes.peek();
-		Id orig = topScope.ids().putIfAbsent(name, id);
-
-		if(orig != null) {
-			throw new DuplicatedNameException(orig, id);
+	/** 全 binding frame を退出済みであることの表明． */
+	void assertAtRoot() {
+		if (!frames.isEmpty()) {
+			throw new AssertionError("expected root, but " + frames.size() + " frame(s) remain");
 		}
-		return id;
-	}
-
-	/**
-	 * この環境の大域に指定した{@link Id}をその{@link Id#simpleName()}}で登録し，Idを返す.
-	 *
-	 * @param name
-	 * @return 生成したID
-	 * @throws DuplicatedNameException
-	 */
-	public Id registerGlobal(Id id) throws DuplicatedNameException {
-		String name = id.simpleName();
-		Id orig = global.putIfAbsent(name, id);
-		if(orig != null) {
-			throw new DuplicatedNameException(orig, id);
-		}
-		return id;
 	}
 }
 
-record Scope(
-		Id name,
-		Map<String, Id> ids,
-		AtomicInteger lambdaCounter
-) implements PrettyPrintable {
+/** Id namespaceの寿命全体で共有する状態． */
+final class Owner {
+	private final Id id;
+	private final Map<String, Id> assignedIds = new HashMap<>();
+	private final AtomicInteger lambdaCounter = new AtomicInteger(1);
 
-	Scope(Id id) {
-		this(id, new HashMap<>(), new AtomicInteger(1));
+	Owner(Id id) {
+		this.id = id;
 	}
+
+	Id id() {
+		return id;
+	}
+
+	Id assign(String name, Id id) {
+		return assignedIds.putIfAbsent(name, id);
+	}
+
+	int nextLambdaIndex() {
+		return lambdaCounter.getAndIncrement();
+	}
+}
+
+/** 一時binding frame．owner状態はlet frameと親frameで共有する． */
+record Frame(Owner owner, Map<String, Id> ids) implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {
-		pp.append(name).append(": ").append(PrettyPrintable.oneLine(ids));
-	}
-}
-
-final class TyEnv {
-	private final Map<String, TyEntry> impl;
-
-	/** nominal型宣言とalias宣言を区別するclosed variant．
-	 * 従来の {@code isAlias} booleanと名前keyの第二alias宣言mapを解消し，
-	 * alias宣言はこのentryから到達する． */
-	sealed interface TyEntry permits TyEntry.Nominal, TyEntry.Alias {
-		Id id();
-		int arity();
-
-		/** nominalなADT/組込み型のentry． */
-		record Nominal(Id id, int arity) implements TyEntry {}
-
-		/** alias宣言のentry．immutableな {@link AliasDecl} を所有する． */
-		record Alias(Id id, int arity, AliasDecl decl) implements TyEntry {}
-	}
-
-	/** alias宣言のimmutableな内容．params/bodyのみを持ち，idとstate/cacheは持たない．
-	 * idは所有する {@link TyEntry.Alias} 側に保持する． */
-	record AliasDecl(
-			Seq<AnType.Var> params,
-			AnType body) {}
-
-	TyEnv() {
-		impl = new HashMap<>();
-	}
-
-	TyEntry registerNominal(String name, Id id, int arity) throws DuplicatedNameException {
-		TyEntry entry = new TyEntry.Nominal(id, arity);
-		TyEntry old = impl.putIfAbsent(name, entry);
-		if(old != null) {
-			throw new DuplicatedNameException(old.id(), id);
-		}
-		return entry;
-	}
-
-	TyEntry registerAlias(String name, Id id, int arity, AliasDecl decl) throws DuplicatedNameException {
-		TyEntry entry = new TyEntry.Alias(id, arity, decl);
-		TyEntry old = impl.putIfAbsent(name, entry);
-		if(old != null) {
-			throw new DuplicatedNameException(old.id(), id);
-		}
-		return entry;
-	}
-
-	TyEntry get(String name) {
-		TyEntry result = impl.get(name);
-		if(result == null) {
-			throw new NoSuchElementException(name);
-		}
-		return result;
-	}
-
-	TyEntry getOrNull(String name) {
-		return impl.get(name);
+		pp.append(owner.id()).append(": ").append(PrettyPrintable.oneLine(ids));
 	}
 }
 
