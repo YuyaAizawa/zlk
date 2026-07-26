@@ -4,7 +4,6 @@ import java.util.IdentityHashMap;
 import java.util.Optional;
 
 import zlk.common.Location;
-import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
