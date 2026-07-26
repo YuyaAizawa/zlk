@@ -1,9 +1,6 @@
 package zlk.nameeval;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,26 +23,27 @@ import zlk.util.collection.SeqBuffer;
  *
  * <p>{@link NameEvaluator}は，次の順序でこのresolverを使用する．
  * <ol>
- *   <li>全{@link TypeDecl}／{@link TypeAlias}の名前を{@link #register(Seq, Id)}で登録する．
- *       宣言本体より先に全型名を登録することで，型宣言間の前方参照を可能にする．</li>
- *   <li>{@link #resolveAliases()}で全alias本体を解決する．
- *       aliasはDFSで展開し，循環を拒否するとともに，展開後のtemplateと各parameterのkindをcacheする．</li>
+ *   <li>{@link #resolveDeclarations(Seq, Id)}で全型名の登録，parameter kind制約の解決，
+ *       alias本体のDFS解決を行う．宣言本体より先に全型名を登録することで，
+ *       型宣言間の前方参照を可能にする．</li>
  *   <li>値名前環境がconstructorの{@link Id}を割り当てた後，
- *       {@link #resolveConstructor(TypeDecl, Constructor, Id)}でconstructor引数を一度だけ解決する．
- *       その結果を値としてのconstructor signatureと{@code IcCtor}の引数型で共有する．</li>
+ *       {@link #registerConstructor(TypeDecl, Constructor, Id)}で引数型と戻り値型を解決してcacheし，
+ *       値としてのconstructor signatureと{@code IcCtor}の引数型で共有する．</li>
  *   <li>値注釈は{@link #evalAnnotation(AnType)}で解決する．</li>
  * </ol>
  *
- * <p>型名から{@link Id}への対応，Id基準の宣言情報，nominal型，alias解決cache，
- * constructor解決結果はそれぞれ別の表で保持する．型変数は評価箇所に応じて，
- * 暗黙導入を許す値注釈，宣言済みparameterだけを許すADT，TYPE／ROW kindを
- * 本体から決定するaliasのいずれかの文脈で検査する．alias Idは全型名の登録を通して収集・保持する．
+ * <p>型名から{@link Id}への対応，Id基準の宣言情報，nominal型，parameter kind制約，
+ * alias解決cache，constructor解決結果はそれぞれ別の表で保持する．
+ * 宣言parameterのkindはsemantic型評価前に確定し，評価中は値注釈の暗黙変数または
+ * 宣言済みparameterの確定kindだけを検査する．型宣言Idとalias Idは全型名の登録を通して収集・保持する．
  */
 final class TypeResolver {
 	private final TypeEnv typeEnv;
 	private final IdMap<TyDeclInfo> declInfos = new IdMap<>();
 	private final IdMap<Type> nominalTypes = new IdMap<>();
+	private final IdMap<ParameterKinds> parameterKinds = new IdMap<>();
 	private final IdMap<AliasState> aliasStates = new IdMap<>();
+	private Seq<Id> declarationIds = null;
 	private Seq<Id> aliasIds = null;
 	private final IdMap<ResolvedConstructor> resolvedConstructors = new IdMap<>();
 
@@ -54,7 +52,10 @@ final class TypeResolver {
 		Type.BUILTIN.forEach(ty -> {
 			try {
 				typeEnv.register(ty.id().simpleName(), ty.id());
-				declInfos.put(ty.id(), new TyDeclInfo.Nominal(ty.id(), 0));
+				declInfos.put(ty.id(), new TyDeclInfo.Nominal(ty.id(), Seq.of(), Seq.of()));
+				ParameterKinds kinds = new ParameterKinds(Seq.of(), ty.id().simpleName());
+				kinds.resolve();
+				parameterKinds.put(ty.id(), kinds);
 				nominalTypes.put(ty.id(), ty);
 			} catch (DuplicatedNameException e) {
 				throw new Error("builtin type dupicated", e);
@@ -62,42 +63,54 @@ final class TypeResolver {
 		});
 	}
 
-	/** 全型名を登録し，alias Idを宣言順のimmutableな列として保持する． */
-	void register(Seq<Decl> decls, Id owner) {
+	/** 型宣言の登録，parameter kind解決，alias解決を順に実行する． */
+	void resolveDeclarations(Seq<Decl> decls, Id owner) {
+		register(decls, owner);
+		resolveParameterKinds();
+		resolveAliases();
+	}
+
+	/** 全型名を登録し，型宣言Idとalias Idを宣言順のimmutableな列として保持する． */
+	private void register(Seq<Decl> decls, Id owner) {
 		if (aliasIds != null) {
 			throw new IllegalStateException("type names are already registered");
 		}
 
+		SeqBuffer<Id> declarations = new SeqBuffer<>();
 		SeqBuffer<Id> aliases = new SeqBuffer<>();
 		decls.forEach(decl -> {
 			switch (decl) {
-			case TypeDecl typeDecl -> register(typeDecl, owner);
-			case TypeAlias alias -> aliases.add(register(alias, owner));
+			case TypeDecl typeDecl -> declarations.add(register(typeDecl, owner));
+			case TypeAlias alias -> {
+				Id id = register(alias, owner);
+				declarations.add(id);
+				aliases.add(id);
+			}
 			default -> {}
 			}
 		});
+		declarationIds = declarations.toSeq();
 		aliasIds = aliases.toSeq();
 	}
 
-	private void register(TypeDecl decl, Id owner) {
+	private Id register(TypeDecl decl, Id owner) {
 		Id id = Id.intern(owner, decl.name());
 		try {
 			typeEnv.register(decl.name(), id);
-			declInfos.put(id, new TyDeclInfo.Nominal(id, decl.vars().size()));
+			declInfos.put(id, new TyDeclInfo.Nominal(id, decl.vars(), decl.ctors()));
+			parameterKinds.put(id, new ParameterKinds(decl.vars(), decl.name()));
 		} catch (DuplicatedNameException e) {
 			throw new RuntimeException(e);
 		}
-		Seq<Type> tyArgs = decl.vars().map(v -> (Type) new Type.Var(v.name()));
-		nominalTypes.put(id, new Type.CtorApp(id, tyArgs));
+		return id;
 	}
 
 	private Id register(TypeAlias decl, Id owner) {
 		Id id = Id.intern(owner, decl.name());
-		validateUniqueParameters(decl);
-		AliasDecl aliasDecl = new AliasDecl(decl.vars(), decl.body());
 		try {
 			typeEnv.register(decl.name(), id);
-			declInfos.put(id, new TyDeclInfo.Alias(id, decl.vars().size(), aliasDecl));
+			declInfos.put(id, new TyDeclInfo.Alias(id, decl.vars(), decl.body()));
+			parameterKinds.put(id, new ParameterKinds(decl.vars(), decl.name()));
 			aliasStates.put(id, new AliasState());
 		} catch (DuplicatedNameException e) {
 			throw new RuntimeException(e);
@@ -105,10 +118,44 @@ final class TypeResolver {
 		return id;
 	}
 
+	/** 全型宣言からparameter kind制約を収集し，宣言順に確定する． */
+	private void resolveParameterKinds() {
+		if (declarationIds == null) {
+			throw new IllegalStateException("type names are not registered");
+		}
+
+		for (Id id : declarationIds) {
+			TyDeclInfo info = declInfos.get(id);
+			KindScope scope = new KindScope(parameterKinds.get(id));
+			switch (info) {
+			case TyDeclInfo.Nominal nominal -> nominal.ctors().forEach(ctor ->
+					ctor.args().forEach(arg -> constrainAsType(arg, scope)));
+			case TyDeclInfo.Alias alias -> constrainAsType(alias.body(), scope);
+			}
+		}
+
+		for (Id id : declarationIds) {
+			parameterKinds.get(id).resolve();
+		}
+		for (Id id : declarationIds) {
+			TyDeclInfo info = declInfos.get(id);
+			if (info instanceof TyDeclInfo.Nominal nominal) {
+				nominalTypes.put(id, new Type.CtorApp(
+						id,
+						parameterTypes(nominal.params(), kindsOf(id))));
+			}
+		}
+	}
+
 	/** 全aliasをDFSで解決する． */
-	void resolveAliases() {
+	private void resolveAliases() {
 		if (aliasIds == null) {
 			throw new IllegalStateException("type names are not registered");
+		}
+		for (Id id : declarationIds) {
+			if (!parameterKinds.get(id).isResolved()) {
+				throw new IllegalStateException("type parameter kinds are not resolved");
+			}
 		}
 		for (Id aliasId : aliasIds) {
 			AliasState state = aliasStates.get(aliasId);
@@ -124,21 +171,28 @@ final class TypeResolver {
 		return typeEnv.get(name);
 	}
 
-	/** constructor引数型と値としてのsignatureを一度だけ解決する． */
-	ResolvedConstructor resolveConstructor(TypeDecl decl, Constructor ctor, Id ctorId) {
-		TypeVarContext ctx = new TypeVarContext.Declared(decl.vars());
-		Seq<Type> args = ctor.args().map(ty -> evalAsType(ty, ctx));
+	/** constructorの引数型と戻り値型を解決し，Idに対応付ける． */
+	void registerConstructor(TypeDecl decl, Constructor ctor, Id ctorId) {
 		Id typeId = typeEnv.get(decl.name());
-		Type retTy = nominalTypes.get(typeId);
-		Type signature = Type.fromSeq(Seq.concat(args, Seq.of(retTy)));
-		ResolvedConstructor resolved = new ResolvedConstructor(ctorId, args, signature);
-		resolvedConstructors.put(ctorId, resolved);
-		return resolved;
+		TypeVarContext ctx = new TypeVarContext.Declared(decl.vars(), kindsOf(typeId));
+		Seq<Type> args = ctor.args().map(ty -> evalAsType(ty, ctx));
+		resolvedConstructors.put(
+				ctorId,
+				new ResolvedConstructor(args, nominalTypes.get(typeId)));
 	}
 
-	/** 解決済みconstructorをctor Idから取得する．eval(TypeDecl)でIcCtor生成に使う． */
-	ResolvedConstructor getResolvedConstructor(Id ctorId) {
-		return resolvedConstructors.get(ctorId);
+	/** constructor Idなら値としての型を返し，それ以外ならnullを返す． */
+	Type getConstructorTypeOrNull(Id ctorId) {
+		ResolvedConstructor resolved = resolvedConstructors.getOrNull(ctorId);
+		if (resolved == null) {
+			return null;
+		}
+		return Type.fromSeq(Seq.concat(resolved.args(), Seq.of(resolved.ret())));
+	}
+
+	/** IcCtor生成に使う解決済みconstructor引数型を返す． */
+	Seq<Type> getConstructorArgs(Id ctorId) {
+		return resolvedConstructors.get(ctorId).args();
 	}
 
 	/** value annotation型を評価する．未宣言変数は暗黙導入する． */
@@ -151,15 +205,10 @@ final class TypeResolver {
 		return nominalTypes.get(id);
 	}
 
-	private static void validateUniqueParameters(TypeAlias decl) {
-		HashSet<String> seen = new HashSet<>();
-		for (AnType.Var var : decl.vars()) {
-			if (!seen.add(var.name())) {
-				throw new IllegalArgumentException(
-						"duplicated type alias parameter: " + var.name()
-								+ " in alias " + decl.name());
-			}
-		}
+	/** nominal宣言parameterをsemantic type argumentとして返す． */
+	Seq<Type> getTypeParameters(Id id) {
+		TyDeclInfo info = declInfos.get(id);
+		return parameterTypes(info.params(), kindsOf(id));
 	}
 
 	/** alias本体をDFS解決し，循環検出用stateと解決結果をcacheする． */
@@ -169,19 +218,16 @@ final class TypeResolver {
 		case RESOLVED -> { return; }
 		case VISITING -> { throw new IllegalStateException("recursive type alias: " + alias.id().simpleName()); }
 		case UNVISITED -> {
-			AliasDecl decl = alias.decl();
 			state.status = AliasState.Status.VISITING;
 			try {
-				TypeVarContext.AliasParams ctx = new TypeVarContext.AliasParams(decl.params());
-				Type template = evalAsType(decl.body(), ctx);
-				state.template = template;
-				state.paramKinds = ctx.finalizeKinds();
+				TypeVarContext.Declared ctx = new TypeVarContext.Declared(
+						alias.params(), kindsOf(alias.id()));
+				state.template = evalAsType(alias.body(), ctx);
 				state.status = AliasState.Status.RESOLVED;
 			} catch (RuntimeException | Error e) {
 				// 各DFS frameが自分のstateとcacheを復旧する．
 				state.status = AliasState.Status.UNVISITED;
 				state.template = null;
-				state.paramKinds = null;
 				throw e;
 			}
 		}
@@ -190,23 +236,21 @@ final class TypeResolver {
 
 	private Type applyAlias(TyDeclInfo.Alias alias, Seq<AnType> args, TypeVarContext ctx) {
 		resolveAlias(alias);
-		AliasDecl decl = alias.decl();
 		AliasState state = aliasStates.get(alias.id());
 
-		if (decl.params().size() != args.size()) {
+		if (alias.params().size() != args.size()) {
 			throw new IllegalArgumentException(
 					"arity mismatch for type alias " + alias.id().simpleName()
-					+ ": expected " + decl.params().size() + ", got " + args.size());
+					+ ": expected " + alias.params().size() + ", got " + args.size());
 		}
 
 		Map<String, Type> typeBinds = new HashMap<>();
 		Map<String, Row> rowBinds = new HashMap<>();
 
-		// 解決済みparamKindsは宣言順に整列したSeq<Kind>であり，
-		// index iでparamKinds.at(i)を参照する．
-		for (int i = 0; i < decl.params().size(); i++) {
-			String paramName = decl.params().at(i).name();
-			Kind paramKind = state.paramKinds.at(i);
+		Seq<Kind> paramKinds = kindsOf(alias.id());
+		for (int i = 0; i < alias.params().size(); i++) {
+			String paramName = alias.params().at(i).name();
+			Kind paramKind = paramKinds.at(i);
 			AnType arg = args.at(i);
 
 			if (paramKind == Kind.ROW) {
@@ -273,7 +317,7 @@ final class TypeResolver {
 			if (info instanceof TyDeclInfo.Alias alias) {
 				yield applyAlias(alias, args, ctx);
 			} else {
-				Seq<Type> argTypes = args.map(a -> evalAsType(a, ctx));
+				Seq<Type> argTypes = evalNominalArguments(info, args, ctx);
 				yield new Type.CtorApp(id, argTypes);
 			}
 		}
@@ -316,19 +360,81 @@ final class TypeResolver {
 		}
 	}
 
+	private Seq<Type> evalNominalArguments(TyDeclInfo info, Seq<AnType> args, TypeVarContext ctx) {
+		SeqBuffer<Type> result = new SeqBuffer<>();
+		Seq<Kind> kinds = kindsOf(info.id());
+		for (int i = 0; i < args.size(); i++) {
+			AnType arg = args.at(i);
+			result.add(kinds.at(i) == Kind.ROW
+					? new Type.Record(evalAsRow(arg, ctx))
+					: evalAsType(arg, ctx));
+		}
+		return result.toSeq();
+	}
+
+	private Seq<Kind> kindsOf(Id id) {
+		return parameterKinds.get(id).resolved();
+	}
+
+	private static Seq<Type> parameterTypes(Seq<AnType.Var> params, Seq<Kind> kinds) {
+		return params.mapIndexed((i, param) -> kinds.at(i) == Kind.ROW
+				? new Type.Record(new Row(Seq.of(), Optional.of(new RowVar(param.name()))))
+				: new Type.Var(param.name()));
+	}
+
+	private void constrainAsType(AnType type, KindScope scope) {
+		switch (type) {
+		case AnType.Unit _ -> {}
+		case AnType.Var(String name, _) -> scope.require(name, Kind.TYPE);
+		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
+			Id id = typeEnv.getOrNull(ctor);
+			if (id == null) {
+				throw new IllegalArgumentException("unknown type: " + ctor);
+			}
+			TyDeclInfo info = declInfos.get(id);
+			if (info.arity() != args.size()) {
+				throw new IllegalArgumentException(
+						"arity mismatch for " + ctor
+						+ ": expected " + info.arity() + ", got " + args.size());
+			}
+			ParameterKinds target = parameterKinds.get(id);
+			for (int i = 0; i < args.size(); i++) {
+				constrainArgument(args.at(i), target.slotAt(i), scope);
+			}
+		}
+		case AnType.Arrow(AnType arg, AnType ret, _) -> {
+			constrainAsType(arg, scope);
+			constrainAsType(ret, scope);
+		}
+		case AnType.Record(Optional<AnType.Var> extension, Seq<AnType.RecordField> fields, _) -> {
+			extension.ifPresent(var -> scope.require(var.name(), Kind.ROW));
+			fields.forEach(field -> constrainAsType(field.type(), scope));
+		}
+		}
+	}
+
+	private void constrainArgument(AnType arg, KindSlot expected, KindScope scope) {
+		switch (arg) {
+		case AnType.Var(String name, _) -> scope.link(name, expected);
+		case AnType.Unit _, AnType.Arrow _ -> {
+			expected.require(Kind.TYPE);
+			constrainAsType(arg, scope);
+		}
+		case AnType.Type _, AnType.Record _ -> constrainAsType(arg, scope);
+		}
+	}
+
 	/** Idをkeyとする型宣言の意味情報． */
 	private sealed interface TyDeclInfo permits TyDeclInfo.Nominal, TyDeclInfo.Alias {
 		Id id();
-		int arity();
+		Seq<AnType.Var> params();
+		default int arity() { return params().size(); }
 
-		record Nominal(Id id, int arity) implements TyDeclInfo {}
-		record Alias(Id id, int arity, AliasDecl decl) implements TyDeclInfo {}
+		record Nominal(Id id, Seq<AnType.Var> params, Seq<Constructor> ctors) implements TyDeclInfo {}
+		record Alias(Id id, Seq<AnType.Var> params, AnType body) implements TyDeclInfo {}
 	}
 
-	/** DFS stateやcacheを含まないalias宣言． */
-	private record AliasDecl(
-			Seq<AnType.Var> params,
-			AnType body) {}
+	private record ResolvedConstructor(Seq<Type> args, Type ret) {}
 
 	/** alias宣言とは分離して保持するmutableなDFS stateとcache． */
 	private static final class AliasState {
@@ -336,24 +442,129 @@ final class TypeResolver {
 
 		private Status status = Status.UNVISITED;
 		private Type template;
-		private Seq<Kind> paramKinds;
 	}
 
 	private enum Kind { TYPE, ROW }
+	private enum KindStatus { UNKNOWN, TYPE, ROW }
 
-	/**
-	 * 評価箇所ごとの型変数宣言規則とkind整合性を検査する文脈．
-	 * 型構文を評価している場所に応じて，型変数の宣言可否とTYPE／ROW kindを検査し，
-	 * aliasの場合は適用時に必要なkind情報も確定する
-	 */
+	/** 宣言parameterのkind制約を宣言横断で共有するslot． */
+	private static final class KindSlot {
+		private KindSlot parent = this;
+		private KindStatus status = KindStatus.UNKNOWN;
+
+		private KindSlot root() {
+			if (parent != this) {
+				parent = parent.root();
+			}
+			return parent;
+		}
+
+		private void require(Kind kind) {
+			KindSlot root = root();
+			KindStatus required = kind == Kind.ROW ? KindStatus.ROW : KindStatus.TYPE;
+			if (root.status != KindStatus.UNKNOWN && root.status != required) {
+				throw new IllegalArgumentException(
+						"kind conflict: " + root.status + " vs " + required);
+			}
+			root.status = required;
+		}
+
+		private void link(KindSlot other) {
+			KindSlot left = root();
+			KindSlot right = other.root();
+			if (left == right) {
+				return;
+			}
+			if (left.status != KindStatus.UNKNOWN
+					&& right.status != KindStatus.UNKNOWN
+					&& left.status != right.status) {
+				throw new IllegalArgumentException(
+						"kind conflict: " + left.status + " vs " + right.status);
+			}
+			right.parent = left;
+			if (left.status == KindStatus.UNKNOWN) {
+				left.status = right.status;
+			}
+		}
+
+		private Kind resolve() {
+			KindSlot root = root();
+			if (root.status == KindStatus.UNKNOWN) {
+				root.status = KindStatus.TYPE;
+			}
+			return root.status == KindStatus.ROW ? Kind.ROW : Kind.TYPE;
+		}
+	}
+
+	private static final class ParameterKinds {
+		private final Seq<KindSlot> slots;
+		private final Map<String, KindSlot> byName = new HashMap<>();
+		private Seq<Kind> resolved;
+
+		private ParameterKinds(Seq<AnType.Var> params, String declarationName) {
+			SeqBuffer<KindSlot> slots = new SeqBuffer<>();
+			for (AnType.Var param : params) {
+				KindSlot slot = new KindSlot();
+				if (byName.putIfAbsent(param.name(), slot) != null) {
+					throw new IllegalArgumentException(
+							"duplicated type parameter: " + param.name()
+							+ " in " + declarationName);
+				}
+				slots.add(slot);
+			}
+			this.slots = slots.toSeq();
+		}
+
+		private KindSlot slot(String name) {
+			KindSlot slot = byName.get(name);
+			if (slot == null) {
+				throw new IllegalArgumentException("undeclared type variable: " + name);
+			}
+			return slot;
+		}
+
+		private KindSlot slotAt(int index) {
+			return slots.at(index);
+		}
+
+		private void resolve() {
+			if (resolved == null) {
+				resolved = slots.map(KindSlot::resolve);
+			}
+		}
+
+		private boolean isResolved() {
+			return resolved != null;
+		}
+
+		private Seq<Kind> resolved() {
+			if (resolved == null) {
+				throw new IllegalStateException("type parameter kinds are not resolved");
+			}
+			return resolved;
+		}
+	}
+
+	private static final class KindScope {
+		private final ParameterKinds params;
+
+		private KindScope(ParameterKinds params) {
+			this.params = params;
+		}
+
+		private void require(String name, Kind kind) {
+			params.slot(name).require(kind);
+		}
+
+		private void link(String name, KindSlot target) {
+			params.slot(name).link(target);
+		}
+	}
+
+	/** semantic型評価時の変数導入規則と確定済みkindを検査する文脈． */
 	static sealed abstract class TypeVarContext {
 		final Map<String, Kind> kinds = new HashMap<>();
-		/**
-		 * 指定した名前が指定した文脈で利用されることを記録する．
-		 * @param name 識別子の名前
-		 * @param kind 出現した文脈
-		 * @throws IllegalArgumentException 整合しない文脈で利用される場合
-		 */
+
 		abstract void use(String name, Kind kind);
 
 		/** 値注釈では型変数を暗黙導入する． */
@@ -369,12 +580,12 @@ final class TypeResolver {
 			}
 		}
 
-		/** ADTでは宣言済みparameterだけをTYPEとして使用できる． */
+		/** ADTとaliasでは宣言済みparameterを確定済みkindで使用する． */
 		private static final class Declared extends TypeVarContext {
-			Declared(Seq<AnType.Var> vars) {
-				super();
-				for (AnType.Var var : vars) {
-					if (kinds.putIfAbsent(var.name(), Kind.TYPE) != null) {
+			Declared(Seq<AnType.Var> vars, Seq<Kind> declaredKinds) {
+				for (int i = 0; i < vars.size(); i++) {
+					AnType.Var var = vars.at(i);
+					if (kinds.putIfAbsent(var.name(), declaredKinds.at(i)) != null) {
 						throw new IllegalArgumentException(
 								"duplicated type parameter: " + var.name());
 					}
@@ -385,8 +596,7 @@ final class TypeResolver {
 			public void use(String name, Kind kind) {
 				Kind existing = kinds.get(name);
 				if (existing == null) {
-					throw new IllegalArgumentException(
-							"undeclared type variable in ADT constructor: " + name);
+					throw new IllegalArgumentException("undeclared type variable: " + name);
 				}
 				if (existing != kind) {
 					throw new IllegalArgumentException(
@@ -394,58 +604,5 @@ final class TypeResolver {
 				}
 			}
 		}
-
-		/** alias parameterのkindを本体での使用から決定する． */
-		private static final class AliasParams extends TypeVarContext {
-			private enum Status { UNKNOWN, TYPE, ROW }
-
-			private final List<Entry> entries = new ArrayList<>();
-			private final Map<String, Entry> byName = new HashMap<>();
-
-			private AliasParams(Seq<AnType.Var> params) {
-				for (AnType.Var var : params) {
-					Entry entry = new Entry();
-					entries.add(entry);
-					byName.put(var.name(), entry);
-				}
-			}
-
-			@Override
-			public void use(String name, Kind kind) {
-				Entry entry = byName.get(name);
-				if (entry == null) {
-					throw new IllegalArgumentException(
-							"undeclared type variable in alias body: " + name);
-				}
-				Status expected = kind == Kind.ROW ? Status.ROW : Status.TYPE;
-				if (entry.status != Status.UNKNOWN && entry.status != expected) {
-					throw new IllegalArgumentException(
-							"kind conflict for variable " + name + ": " + entry.status + " vs " + expected);
-				}
-				entry.status = expected;
-			}
-
-			private Seq<Kind> finalizeKinds() {
-				SeqBuffer<Kind> kinds = new SeqBuffer<>();
-				for (Entry entry : entries) {
-					kinds.add(entry.status == Status.ROW ? Kind.ROW : Kind.TYPE);
-				}
-				return kinds.toSeq();
-			}
-
-			private static final class Entry {
-				private Status status = Status.UNKNOWN;
-			}
-		}
 	}
 }
-
-/**
- * 一度だけ解決したADT constructorの意味情報．値としてのsignatureと
- * {@code IcCtor}の引数型は，同じインスタンスの結果を使用する．
- * {@link Constructor#loc()}はASTから取得できるため保持しない．
- */
-record ResolvedConstructor(
-		Id ctorId,
-		Seq<Type> args,
-		Type signature) {}

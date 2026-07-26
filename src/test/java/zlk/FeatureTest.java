@@ -856,10 +856,60 @@ public class FeatureTest {
 	}
 
 	@Test
-	void adtParameterCannotBeUsedAsRowParameter() {
+	void adtParameterCanBeUsedAsRowParameter() {
+		var module = new ModuleTester("""
+				type Foo a = Foo { a | bar : I32 }
+				""", CompileLevel.NAME_EVAL);
+
+		var foo = module.getIdcalcModule().types().head();
+		Type rowParameter = new Type.Record(
+				Seq.of(), Optional.of(new Type.RowVar("a")));
+		assertEquals(Seq.of(rowParameter), foo.vars());
+
+		Type ctorArg = foo.ctors().head().args().head();
+		assertEquals(new Type.Record(
+				Seq.of(new RecordField<>("bar", Type.I32)),
+				Optional.of(new Type.RowVar("a"))), ctorArg);
+	}
+
+	@Test
+	void adtRowParameterKindPropagatesAcrossMutuallyRecursiveNominalReferences() {
+		var module = new ModuleTester("""
+				type A r = A (B r)
+				type B r = B (A r) | BEnd { r | value : I32 }
+				""", CompileLevel.NAME_EVAL);
+
+		Type rowParameter = new Type.Record(
+				Seq.of(), Optional.of(new Type.RowVar("r")));
+		module.getIdcalcModule().types().forEach(type ->
+				assertEquals(Seq.of(rowParameter), type.vars()));
+	}
+
+	@Test
+	void adtRowParameterKindPropagatesThroughAlias() {
+		var module = new ModuleTester("""
+				type alias Open r = { r | value : I32 }
+				type Box r = Box (Open r)
+				""", CompileLevel.NAME_EVAL);
+
+		Type rowParameter = new Type.Record(
+				Seq.of(), Optional.of(new Type.RowVar("r")));
+		assertEquals(Seq.of(rowParameter), module.getIdcalcModule().types().head().vars());
+	}
+
+	@Test
+	void adtParameterCannotHaveDifferentKindsAcrossConstructors() {
 		assertThrows(RuntimeException.class, () -> new ModuleTester("""
-				type alias Open a = { a | x : I32 }
-				type Bad a = Bad (Open a)
+				type Bad a = AsType a | AsRow { a | value : I32 }
+				""", CompileLevel.NAME_EVAL));
+	}
+
+	@Test
+	void adtRowParameterRejectsValueTypeArgument() {
+		assertThrows(RuntimeException.class, () -> new ModuleTester("""
+				type Foo r = Foo { r | value : I32 }
+				bad : Foo I32
+				bad = Foo { value = 0 }
 				""", CompileLevel.NAME_EVAL));
 	}
 
@@ -909,6 +959,27 @@ public class FeatureTest {
 	}
 
 	// ===== alias/backend end-to-endテスト群 =====
+
+	@Test
+	void rowParameterizedAdtRunsAtBytecodeLevel() {
+		var module = new ModuleTester("""
+				type Foo r = Foo { r | bar : I32 }
+				makeFoo = Foo
+				foo = makeFoo { bar = 1, baz = True }
+				other = Foo { bar = 2, qux = 3 }
+				getBaz wrapped =
+				  case wrapped of
+				    Foo record -> record.baz
+				getQux wrapped =
+				  case wrapped of
+				    Foo record -> record.qux
+				boolResult = getBaz foo
+				intResult = getQux other
+				""", CompileLevel.BYTECODE_GEN);
+
+		assertEquals(true, ((VData) module.getValue("boolResult")).value());
+		assertEquals(3, ((VData) module.getValue("intResult")).value());
+	}
 
 	@Test
 	void aliasEndToEndResolvesToClosedRecordAndGeneratesNoAliasClass() throws ReflectiveOperationException {
