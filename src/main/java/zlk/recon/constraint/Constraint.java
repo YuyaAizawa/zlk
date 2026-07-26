@@ -98,8 +98,8 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 		public void mkString(PrettyPrinter pp) {
 			pp.append("Phase:").endl();
 			pp.indent(() -> {
-				pp.append("cons: ").append(PrettyPrintable.tailComma(cons.toList())).endl();
-				pp.append("genTargets: ").append(PrettyPrintable.oneLine(genTargets.toList()));
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons)).endl();
+				pp.append("genTargets: ").append(PrettyPrintable.oneLine(genTargets));
 			});
 		}
 	}
@@ -143,15 +143,15 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 				pp.append("rigids: ").append("[").append(PrettyPrintable.join(rigids, ", ")).append("]").endl();
 				pp.append("flexes: ").append("[").append(PrettyPrintable.join(flexes, ", ")).append("]").endl();
 				pp.append("header: ").append(header).endl();
-				pp.append("headerCons: ").append(PrettyPrintable.tailComma(headerCons.toList())).endl();
-				pp.append("bodyCons:").append(PrettyPrintable.tailComma(bodyCons.toList()));
+				pp.append("headerCons: ").append(PrettyPrintable.tailComma(headerCons)).endl();
+				pp.append("bodyCons:").append(PrettyPrintable.tailComma(bodyCons));
 			});
 		}
 		case CExists(Seq<Variable> vars, Seq<Constraint> cons) -> {
 			pp.append("Exists:").endl();
 			pp.indent(() -> {
 				pp.append("vars: ").append("[").append(PrettyPrintable.join(vars, ", ")).append("]").endl();
-				pp.append("cons: ").append(PrettyPrintable.tailComma(cons.toList()));
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons));
 			});
 		}
 		}

@@ -1,12 +1,10 @@
 package zlk.util.collection;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -389,17 +387,6 @@ public sealed interface Seq<E> extends Iterable<E> {
 
 	default boolean allMatch(Predicate<? super E> predicate) {
 		return findFirst(predicate.negate()).isEmpty();
-	}
-
-	/**
-	 * 移行のために用意した
-	 * @return
-	 */
-	@Deprecated
-	default List<E> toList() {
-		List<E> result = new ArrayList<>(size());
-		forEach(result::add);
-		return result;
 	}
 
 	default <K, V> Map<K, V> toMap(
