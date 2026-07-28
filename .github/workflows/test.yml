@@ -19,6 +19,8 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '23'
+        cache: 'maven'
+        cache-dependency-path: 'pom.xml'
 
     - name: Build and run tests with Maven Wrapper
       run: ./mvnw test
