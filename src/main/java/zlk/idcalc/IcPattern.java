@@ -15,7 +15,7 @@ import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcPattern extends PrettyPrintable, LocationHolder, ExpOrPattern
+public sealed interface IcPattern extends PrettyPrintable, LocationHolder
 permits Wildcard, Var, Dector, Record {
 
 	record Wildcard(Location loc) implements IcPattern {}

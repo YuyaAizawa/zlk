@@ -7,7 +7,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,7 +25,6 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Tokenized;
@@ -34,10 +32,8 @@ import zlk.patterncheck.PatternChecker;
 import zlk.patterncheck.PcError;
 import zlk.recon.ConstraintExtractor;
 import zlk.recon.FreshFlex;
-import zlk.recon.TypeError;
 import zlk.recon.TypeReconstructor;
 import zlk.recon.constraint.Constraint;
-import zlk.util.Result;
 import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -70,7 +66,6 @@ public class ModuleTester {
 	private Seq<LocationHolder> parseErrors = null;
 	private IcModule module = null;
 	private Constraint cint = null;
-	private IdentityHashMap<ExpOrPattern, Type> callSiteTypes = null;
 	private IdMap<Type> types = null;
 	private Seq<PcError> patternErrors = null;
 	private CcModule clconv = null;
@@ -113,20 +108,19 @@ public class ModuleTester {
 					types.put(ctor.id(), Type.fromSeq(Seq.concat(
 							ctor.args(),
 							Seq.of(new Type.CtorApp(union.id(), union.vars())))))));
-		Result<Seq<TypeError>, IdMap<Type>> reconResult = TypeReconstructor.recon(cint, freshFlex);
-		reconResult.unwrap().forEach((id, ty) -> types.put(id, ty));
-		callSiteTypes = result.resolvedNodeTypes();
+		var reconstruction = TypeReconstructor.recon(result, freshFlex).unwrap();
+		reconstruction.types().forEach((id, ty) -> types.put(id, ty));
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
 
-		this.patternErrors = PatternChecker.check(module, callSiteTypes);
+		this.patternErrors = PatternChecker.check(module, reconstruction.caseTypings());
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
 		}
 
 		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
-		this.clconv = new ClosureConverter(module, types, callSiteTypes, builtinIds).convert();
+		this.clconv = new ClosureConverter(module, types, builtinIds).convert();
 		if(this.compileLevel == CompileLevel.CLOSURE_CONV) {
 			return;
 		}
@@ -152,14 +146,6 @@ public class ModuleTester {
 
 	public TypeTester getType(String name) {
 		Type ty = types.get(Id.intern(TARGET_MODULE_NAME+"."+name));
-		return toTypeTester(ty);
-	}
-
-	public TypeTester getCallSiteType(ExpOrPattern node) {
-		Type ty = callSiteTypes.get(node);
-		if(ty == null) {
-			throw new IllegalArgumentException("Type not found for node: " + node);
-		}
 		return toTypeTester(ty);
 	}
 

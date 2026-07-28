@@ -1,7 +1,6 @@
 package zlk.clconv;
 
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -30,7 +29,6 @@ import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcCtor;
 import zlk.idcalc.IcExp;
@@ -63,17 +61,15 @@ public final class ClosureConverter {
 
 	private final IcModule src;
 	private final IdMap<Type> type;  // 変換後のIdの型を追加
-	private final IdentityHashMap<ExpOrPattern, Type> nodeTypes;  // 項の型 TODO: caseのcondしか使っていないので消せそう
 	private final Set<Id> knowns;
 	private final IdMap<Integer> arities;  // その時点で直接呼出し可能であることが確定した関数の引数の数
 
 	private final SeqBuffer<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
-	public ClosureConverter(IcModule src, IdMap<Type> type, IdentityHashMap<ExpOrPattern, Type> nodeTypes, Seq<Id> builtins) {
+	public ClosureConverter(IcModule src, IdMap<Type> type, Seq<Id> builtins) {
 		this.src = src;
 		this.type = type;
-		this.nodeTypes = nodeTypes;
 
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
@@ -239,10 +235,9 @@ public final class ClosureConverter {
 					go.apply(body),
 					loc);
 
-		case CcCase(CcExp cond, Type targetTy, Seq<CcCaseBranch> branches, Location loc) ->
+		case CcCase(CcExp cond, Seq<CcCaseBranch> branches, Location loc) ->
 			new CcCase(
 					go.apply(cond),
-					targetTy,
 					branches.map(branch -> new CcCaseBranch(
 							branch.pattern(),
 							go.apply(branch.body()),
@@ -372,7 +367,7 @@ public final class ClosureConverter {
 									branch.pattern(),
 									compile(branch.body()),
 									branch.loc()));
-			yield new CcCase(ccTarget, nodeTypes.get(target), compiledBranches, loc);
+			yield new CcCase(ccTarget, compiledBranches, loc);
 		}
 		case IcRecord(Seq<IcRecordField> fields, Location loc) ->
 			new CcRecord(
@@ -433,7 +428,7 @@ public final class ClosureConverter {
 			fv(boundExp, bounded, free);
 			fv(body, bounded, free);
 		}
-		case CcCase(CcExp target, Type _, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
 			fv(target, bounded, free);
 			for (CcCaseBranch branch : branches) {
 				branch.pattern().accumulateVars(bounded);

@@ -46,10 +46,9 @@ ZLK は，実験的な関数型プログラミング言語である．本リポ�
 | 3 | `NameEvaluator` | 2 |
 | 4 | `ConstraintExtractor` | 3 |
 | 5 | `TypeReconstructor` | 4 |
-| 6 | ノードごとの型の解決 | 4，5 |
-| 7 | `PatternChecker` | 3，6 |
-| 8 | `ClosureConverter` | 3，5，6 |
-| 9 | `BytecodeGenerator` | 5，8 |
+| 6 | `PatternChecker` | 3，5 |
+| 7 | `ClosureConverter` | 3，5 |
+| 8 | `BytecodeGenerator` | 5，7 |
 
 `ARCHITECTURE.md`のコンパイルフェーズ図とこの一覧は同じパイプラインを表す．フェーズを追加，削除，または変更する場合は，両者の一貫性を確認する．
 
