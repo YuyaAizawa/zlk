@@ -56,7 +56,6 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 
 	record CcCase(
 			CcExp target,
-			Type targetTy,
 			Seq<CcCaseBranch> branches,
 			Location loc) implements CcExp {}
 
@@ -112,10 +111,9 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 					body.substId(map),
 					loc);
 		}
-		case CcCase(CcExp target, Type targetTy, Seq<CcCaseBranch> branches, Location loc) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location loc) -> {
 			yield new CcCase(
 					target.substId(map),
-					targetTy,
 					branches.map(branch -> branch.substId(map)),
 					loc);
 		}
@@ -213,7 +211,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcCase(CcExp target, Type _, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
 			pp.append("case:").endl();
 			pp.indent(() -> {
 				pp.append("target:").endl();

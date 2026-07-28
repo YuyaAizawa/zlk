@@ -11,12 +11,6 @@ import org.junit.jupiter.api.Test;
 
 import zlk.common.RecordField;
 import zlk.common.Type;
-import zlk.idcalc.IcCaseBranch;
-import zlk.idcalc.IcExp.IcApp;
-import zlk.idcalc.IcExp.IcCase;
-import zlk.idcalc.IcExp.IcCnst;
-import zlk.idcalc.IcExp.IcVarLocal;
-import zlk.idcalc.IcPattern;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.util.collection.Seq;
@@ -560,47 +554,6 @@ public class ReconTest {
 		module.getType("idLet").is("a -> a");
 	}
 
-	void capturesExpressionAndPatternTypes() {
-		String src ="""
-				type List a =
-				  | Nil
-				  | Cons a (List a)
-
-				head list =
-				  case list of
-				    Nil ->
-				      0
-				    Cons hd tl ->
-				      add hd 1
-				""";
-
-		var module = new ModuleTester(src, CompileLevel.TYPE_RECON);
-
-		var head = module.getIdcalcModule().decls().head();
-		IcPattern.Var listPat = (IcPattern.Var) head.args().head();
-		IcCase body = (IcCase) head.body();
-		IcVarLocal target = (IcVarLocal) body.target();
-		IcCaseBranch nilBranch = body.branches().at(0);
-		IcCnst zero = (IcCnst) nilBranch.body();
-		IcCaseBranch consBranch = body.branches().at(1);
-		IcPattern.Dector consPat = (IcPattern.Dector) consBranch.pattern();
-		IcPattern.Var hdPat = (IcPattern.Var) consPat.args().at(0).pattern();
-		IcPattern.Var tlPat = (IcPattern.Var) consPat.args().at(1).pattern();
-		IcApp addCall = (IcApp) consBranch.body();
-		IcVarLocal hdRef = (IcVarLocal) addCall.args().at(0);
-		IcCnst one = (IcCnst) addCall.args().at(1);
-
-		module.getCallSiteType(addCall).is("I32");
-		module.getCallSiteType(hdRef).is("I32");
-		module.getCallSiteType(one).is("I32");
-		module.getCallSiteType(zero).is("I32");
-		module.getCallSiteType(target).is("List I32");
-
-		module.getCallSiteType(listPat).is("List I32");
-		module.getCallSiteType(consPat).is("List I32");
-		module.getCallSiteType(hdPat).is("I32");
-		module.getCallSiteType(tlPat).is("List I32");
-	}
 
 	// ===== 複数ROW kind parameterを持つ透明aliasの受け入れテスト群 =====
 	// 関数型alias Mapper inputRow outputRow a b は，inputRowとoutputRowが別々のROW parameter，

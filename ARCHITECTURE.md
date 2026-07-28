@@ -15,20 +15,20 @@ flowchart TD
 
     IC --> Extract["ConstraintExtractor"]
     Extract --> Constraint(["Constraint"])
-    Extract --> RcNodeTypes(["nodeTypes<br/>ExpOrPattern → RcType"])
+    Extract --> RcCaseTypings(["caseTypings<br/>CaseTyping&lt;RcType&gt;"])
 
     Constraint --> Recon["TypeReconstructor"]
-    Recon --> Types(["types<br/>IdMap&lt;Type&gt;"])
-    RcNodeTypes --> ResolvedNodeTypes(["resolvedNodeTypes<br/>ExpOrPattern → Type"])
-    Recon -. "RcType内の型変数を解決" .-> ResolvedNodeTypes
+    RcCaseTypings --> Recon
+    Recon --> Reconstruction(["Reconstructed"])
+    Reconstruction --> Types(["types<br/>IdMap&lt;Type&gt;"])
+    Reconstruction --> CaseTypings(["caseTypings<br/>CaseTyping&lt;Type&gt;"])
 
     IC --> PatternCheck["PatternChecker"]
-    ResolvedNodeTypes --> PatternCheck
+    CaseTypings --> PatternCheck
     PatternCheck --> PcErrors(["Seq&lt;PcError&gt;"])
 
     IC --> Clconv["ClosureConverter"]
     Types --> Clconv
-    ResolvedNodeTypes --> Clconv
     Clconv --> CC(["clcalc"])
 
     CC --> BytecodeGen["BytecodeGenerator"]
@@ -36,11 +36,11 @@ flowchart TD
     BytecodeGen --> Class(["JVM bytecode / .class"])
 ```
 
-`PatternChecker`は，名前解決後の`IcModule`と各式・パターンの解決済み`Type`を検査し，case式の冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とノードごとの型の解決後に実行する．
+`PatternChecker`は，名前解決後の`IcModule`とcase式ごとの解決済み`CaseTyping<Type>`を検査し，冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とcase pattern型の解決後に実行する．
 
 `NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
 
-`ConstraintExtractor.Result.nodeTypes`が保持する`RcType`は，制約と型変数を共有する．そのため，`TypeReconstructor`による制約解決後に`resolvedNodeTypes()`を呼び出すことで，各式およびパターンの解決済み`Type`を取得できる．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
+`ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめた`Reconstructed`を返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
 
 ### 主要な中間表現
 
@@ -59,6 +59,8 @@ flowchart TD
 - `RcType`：単一化および型再構築で使用する型
 - `Constraint`：型の等式，スコープ，宣言グループなどの制約
 - `Variable`：union-findによって管理される型変数
+- `PatternTyping<RcType>`：case patternの構文木と制約上の型を対応付けた木
+- `CaseTyping<RcType>`：一つのcase式に含まれるbranch patternの型付き木
 - `RcType.Anno`：型注釈をrigidな`RcType`へ変換した結果
 - `RcType.Inst`：多相型をfresh flexでインスタンス化した結果
 
