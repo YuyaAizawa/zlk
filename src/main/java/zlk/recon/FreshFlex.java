@@ -5,7 +5,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import zlk.recon.Variable.Kind;
 import zlk.recon.constraint.Content.FlexVar;
-import zlk.recon.constraint.Content.Structure;
 
 /**
  * 型変数に被り名のない名前を与えるためのカウンター

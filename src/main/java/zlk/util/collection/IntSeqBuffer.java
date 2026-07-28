@@ -141,7 +141,6 @@ public final class IntSeqBuffer implements Iterable<Integer>{
 		return false;
 	}
 
-	@SuppressWarnings("unchecked")
 	public void forEachIndexed(ConsumerIndexed<Integer> action) {
 		if(isEmpty()) {
 			return;

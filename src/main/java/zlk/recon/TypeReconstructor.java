@@ -1,15 +1,11 @@
 package zlk.recon;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
 import zlk.common.RecordField;
 import zlk.common.Type;
-import zlk.common.Type.Arrow;
-import zlk.common.Type.CtorApp;
-import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.recon.TypeError.InfinitType;
@@ -34,6 +30,9 @@ import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
 public class TypeReconstructor {
+	public record Reconstructed(
+			IdMap<Type> types,
+			Seq<CaseTyping<Type>> caseTypings) {}
 
 	// TODO 型が付かなかったときは例外でなくResultの方が扱いやすそう
 	// TODO 例外が起きたら，それに関する型はダミーの型に確定したとして続けたらいいか？
@@ -64,12 +63,17 @@ public class TypeReconstructor {
 		this.freshFlex = freshFlex;
 	}
 
-	public static Result<Seq<TypeError>, IdMap<Type>> recon(Constraint con, FreshFlex freshFlex) {
+	public static Result<Seq<TypeError>, Reconstructed> recon(
+			ConstraintExtractor.Result extracted,
+			FreshFlex freshFlex) {
 		TypeReconstructor self = new TypeReconstructor(freshFlex);
-		self.solve(con, 0, new IdMap<>());
+		self.solve(extracted.constraint(), 0, new IdMap<>());
 
 		if(self.errors.isEmpty()) {
-			return new Result.Ok<>(self.result.traverse(v -> v.toType()));
+			return new Result.Ok<>(new Reconstructed(
+					self.result.traverse(Variable::toType),
+					extracted.caseTypings().map(
+							caseTyping -> caseTyping.map(RcType::toType))));
 		} else {
 			return new Result.Err<>(self.errors.toSeq());  // TODO: unifyのmismatchなどを入れる
 		}
@@ -208,11 +212,6 @@ public class TypeReconstructor {
 
 	private Variable register(int letRank, Content content) {
 		Variable var = new Variable(content, letRank);
-		return var;
-	}
-
-	private Variable register(int letRank, Content content, Variable.Kind kind) {
-		Variable var = new Variable(content, letRank, kind);
 		return var;
 	}
 

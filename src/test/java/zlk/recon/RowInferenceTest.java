@@ -192,16 +192,6 @@ class RowInferenceTest {
 		return makeRowRoot(fresh, rank, fields, Optional.empty());
 	}
 
-	/** Row1 fieldsからlabel名でfieldを検索してvalueを返すヘルパ．owning root前提． */
-	private static Variable rowField(Variable rowRoot, String name) {
-		VariableState s = rowRoot.get();
-		Structure st = (Structure) s.content;
-		Row1 r = (Row1) st.flatType();
-		return r.fields().findFirst(f -> f.name().equals(name))
-				.orElseThrow(() -> new AssertionError("field not found: " + name))
-				.value();
-	}
-
 	/** namerはflex idを 'r' + id で命名する固定namer． */
 	private static final IntFunction<String> ROWNAMER = id -> "r" + id;
 
@@ -348,7 +338,7 @@ class RowInferenceTest {
 		FreshFlex fresh = new FreshFlex();
 		int rank = 2;
 		Variable tail = fresh.getVariable(Variable.Kind.ROW, rank);
-		Variable row = makeRowRoot(fresh, rank,
+		makeRowRoot(fresh, rank,
 				Seq.of(new RecordField<>("x", i32Var(rank))),
 				Optional.of(tail));
 		// 構築直後，tailのforbidden labelsに "x" が含まれていること
@@ -361,7 +351,7 @@ class RowInferenceTest {
 		FreshFlex fresh = new FreshFlex();
 		int rank = 2;
 		Variable tail = fresh.getVariable(Variable.Kind.ROW, rank);
-		Variable row = makeRowRoot(fresh, rank,
+		makeRowRoot(fresh, rank,
 				Seq.of(new RecordField<>("x", i32Var(rank))),
 				Optional.of(tail));
 		// 後からxを含むRow1をtailへ構築 → lacks違反でMissmatch/IllArg
