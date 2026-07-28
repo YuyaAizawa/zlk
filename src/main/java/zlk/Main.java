@@ -7,7 +7,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
@@ -22,7 +21,6 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcModule;
 import zlk.nameeval.NameEvaluator;
 import zlk.parser.Lexer;
@@ -136,14 +134,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		IdMap<Type> types = TypeReconstructor.recon(cint, freshFlex).unwrap();
+		var reconstruction = TypeReconstructor.recon(extractResult, freshFlex).unwrap();
+		IdMap<Type> types = reconstruction.types();
 		System.out.println(types.buildString());
 		System.out.println();
 
-		IdentityHashMap<ExpOrPattern, Type> nodeTypes = extractResult.resolvedNodeTypes();
-
 		System.out.println("-- PATTERN CHECK --");
-		Seq<PcError> patternErrors = PatternChecker.check(idcalc, nodeTypes);
+		Seq<PcError> patternErrors = PatternChecker.check(idcalc, reconstruction.caseTypings());
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()
@@ -160,7 +157,7 @@ public class Main {
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConverter(idcalc, types, nodeTypes, builtinIds).convert();
+		CcModule clconv = new ClosureConverter(idcalc, types, builtinIds).convert();
 		clconv.pp(System.out);
 		System.out.println();
 

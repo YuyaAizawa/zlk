@@ -1,6 +1,5 @@
 package zlk.recon;
 
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -10,7 +9,6 @@ import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcCaseBranch;
 import zlk.idcalc.IcExp;
 import zlk.idcalc.IcExp.IcApp;
@@ -42,13 +40,13 @@ public final class ConstraintExtractor {
 
 	private FreshFlex freshFlex;
 	private IdMap<Seq<Id>> letDependers; // dependee -> dependers
-	private IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
+	private SeqBuffer<CaseTyping<RcType>> caseTypings;
 	private Map<String, Variable> rigidVars;
 
 	private ConstraintExtractor(IdMap<Seq<Id>> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
-		this.nodeTypes = new IdentityHashMap<>();
+		this.caseTypings = new SeqBuffer<>();
 		this.rigidVars = Map.of();
 	}
 
@@ -62,19 +60,12 @@ public final class ConstraintExtractor {
 				new CExists(  // TODO: main関数のletにする
 						Seq.of(),
 						Seq.of()));
-		return new Result(constraint, extractor.nodeTypes);
+		return new Result(constraint, extractor.caseTypings.toSeq());
 	}
 
 	public record Result(
 			Constraint constraint,
-			IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
-
-		public IdentityHashMap<ExpOrPattern, Type> resolvedNodeTypes() {
-			IdentityHashMap<ExpOrPattern, Type> result = new IdentityHashMap<>();
-			nodeTypes.forEach((node, rcType) -> result.put(node, rcType.toType()));
-			return result;
-		}
-	}
+			Seq<CaseTyping<RcType>> caseTypings) {}
 
 	/**
 	 * 指定された式の制約を抽出して返す．
@@ -82,7 +73,6 @@ public final class ConstraintExtractor {
 	 * @param expected 期待される型
 	 */
 	public Constraint extract(IcExp exp, RcType expected) {
-		nodeTypes.put(exp, expected);
 		return switch (exp) {
 
 		case IcCnst(ConstValue value, Location _) ->
@@ -176,8 +166,9 @@ public final class ConstraintExtractor {
 		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) ->
 			extractFromDef(decls, extract(body, expected));
 
-		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location loc) -> {
 			SeqBuffer<Constraint> cons = new SeqBuffer<>();
+			SeqBuffer<PatternTyping<RcType>> patterns = new SeqBuffer<>(branches.size());
 
 			Variable patVar = freshFlex.getVariable();
 			RcType patTy = new VarN(patVar);
@@ -187,9 +178,12 @@ public final class ConstraintExtractor {
 			Variable branchVar = freshFlex.getVariable();
 			RcType branchTy = new VarN(branchVar);
 			for(IcCaseBranch branch : branches) {
-				cons.add(extractFromCaseBranch(branch, patTy, branchTy));  // TODO Reason系
+				BranchExtraction extracted = extractFromCaseBranch(branch, patTy, branchTy);
+				cons.add(extracted.constraint());  // TODO Reason系
+				patterns.add(extracted.pattern());
 			}
 			cons.add(new CEqual(branchTy, expected));
+			caseTypings.add(new CaseTyping<>(loc, patterns.toSeq()));
 
 			yield new CExists(Seq.of(patVar, branchVar), cons.toSeq());
 		}
@@ -383,7 +377,7 @@ public final class ConstraintExtractor {
 	}
 
 	public Args extractFromArgs(Seq<IcPattern> args) {
-		PatternBinder pb = new PatternBinder(nodeTypes);
+		PatternBinder pb = new PatternBinder();
 
 		// 引数型に変数を割当て
 		SeqBuffer<RcType> argTys = new SeqBuffer<>(args.size());
@@ -413,21 +407,29 @@ public final class ConstraintExtractor {
 		);
 	}
 
-	private Constraint extractFromCaseBranch(IcCaseBranch branch, RcType patExpected, RcType branchExpected) {
-		PatternBinder pb = new PatternBinder(nodeTypes);
-		pb.bind(branch.pattern(), patExpected, freshFlex);
+	private record BranchExtraction(
+			Constraint constraint,
+			PatternTyping<RcType> pattern) {}
+
+	private BranchExtraction extractFromCaseBranch(
+			IcCaseBranch branch,
+			RcType patExpected,
+			RcType branchExpected) {
+		PatternBinder pb = new PatternBinder();
+		PatternTyping<RcType> pattern = pb.bind(branch.pattern(), patExpected, freshFlex);
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		SeqBuffer<Constraint> cons = new SeqBuffer<>(pb.cons.size()+1);
 		cons.addAll(pb.cons);
 		cons.add(bodyCon);
-		return new CLet(
+		Constraint constraint = new CLet(
 				Seq.of(),
 				pb.vars.toSeq(),
 				pb.headers,
 				Seq.of(new CPhase(cons.toSeq(), Seq.of())),  // case branchは一般化する対象なし
 				new CEqual(branchExpected, branchExpected)  // TODO: 特に制約がないことを表せた方が良いか？
 		);
+		return new BranchExtraction(constraint, pattern);
 	}
 
 	// let内での依存を関係を取得する

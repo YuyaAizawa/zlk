@@ -431,7 +431,7 @@ public final class BytecodeGenerator {
 			storeLocal(locals.size() - 1, varTy);
 			compile(body, ubTy);
 		}
-		case CcCase(CcExp target, Type targetTy, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）
 			// invokedynamic #0:typeSwitch, 0 2つ目の引数は型リストの前半を無視するとき使う
@@ -459,7 +459,7 @@ public final class BytecodeGenerator {
 			 *
 			 * にする．
 			 */
-			compile(target, toJavaType(targetTy));
+			compile(target, JavaType.OBJECT);
 			int caseTargetLocal = locals.size();
 			locals.add(LOCAL_DUMMY_ID);
 			mv.visitVarInsn(Opcodes.ASTORE, caseTargetLocal);

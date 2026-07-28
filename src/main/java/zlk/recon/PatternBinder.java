@@ -1,12 +1,10 @@
 package zlk.recon;
 
-import java.util.IdentityHashMap;
 import java.util.Optional;
 
 import zlk.common.RecordField;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.idcalc.ExpOrPattern;
 import zlk.idcalc.IcExp.IcVarCtor;
 import zlk.idcalc.IcPattern;
 import zlk.idcalc.IcPattern.Arg;
@@ -20,21 +18,14 @@ final class PatternBinder {
 	final SeqBuffer<Variable> vars = new SeqBuffer<>();
 	final IdMap<RcType> headers = new IdMap<>();
 	final SeqBuffer<Constraint> cons = new SeqBuffer<>();
-	final IdentityHashMap<ExpOrPattern, RcType> nodeTypes;
 
-	PatternBinder(IdentityHashMap<ExpOrPattern, RcType> nodeTypes) {
-		this.nodeTypes = nodeTypes;
-	}
-
-	void bind(IcPattern pat, RcType expected, FreshFlex freshFlex) {
-		nodeTypes.put(pat, expected);
-		switch(pat) {
-		case IcPattern.Wildcard(_) -> {
-			// 型は nodeTypes に記録するが名前は導入しない
-		}
+	PatternTyping<RcType> bind(IcPattern pat, RcType expected, FreshFlex freshFlex) {
+		Seq<PatternTyping<RcType>> children = switch(pat) {
+		case IcPattern.Wildcard(_) -> Seq.of();
 		// TODO: リテラル
 		case IcPattern.Var(Id id, _) -> {
 			headers.put(id, expected);
+			yield Seq.of();
 		}
 
 		case IcPattern.Dector(IcVarCtor ctor, Seq<Arg> args, _) -> {
@@ -46,7 +37,7 @@ final class PatternBinder {
 			}
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 
-			Seq.zip(args, ctorInfo.argTys()).forEach(
+			yield Seq.zip(args, ctorInfo.argTys()).map(
 					(arg, argTy) -> bind(arg.pattern(), argTy, freshFlex));
 		}
 		case IcPattern.Record(Seq<IcPattern.RecordField> fields, _) -> {
@@ -57,17 +48,20 @@ final class PatternBinder {
 			Variable tailVar = freshFlex.getVariable(Variable.Kind.ROW);
 			vars.add(tailVar);
 			SeqBuffer<RecordField<RcType>> fieldTypes = new SeqBuffer<>(fields.size());
+			SeqBuffer<PatternTyping<RcType>> fieldPatterns = new SeqBuffer<>(fields.size());
 			for(IcPattern.RecordField field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
 				RcType fieldType = new RcType.VarN(fieldVar);
 				vars.add(fieldVar);
-				bind(field.pattern(), fieldType, freshFlex);
+				fieldPatterns.add(bind(field.pattern(), fieldType, freshFlex));
 				fieldTypes.add(new RecordField<>(field.name(), fieldType));
 			}
 			RcType requiredRecord = new RcType.RecordN(
 					new RcType.RowN(fieldTypes.toSeq(), Optional.of(tailVar)));
 			cons.add(new CEqual(expected, requiredRecord));
+			yield fieldPatterns.toSeq();
 		}
-		}
+		};
+		return new PatternTyping<>(pat, expected, children);
 	}
 }
