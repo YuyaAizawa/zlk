@@ -1,10 +1,8 @@
-package zlk;
+package zlk.phase.patterncheck;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
-
 import zlk.common.id.Id;
 import zlk.patterncheck.PcError;
 import zlk.patterncheck.PcError.Incomplete;
@@ -13,7 +11,7 @@ import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.util.collection.Seq;
 
-public class PatternMatchTest {
+public class PatternCheckerTest {
 	@Test
 	void exhaustiveBoolCaseHasNoError() {
 		String src = """

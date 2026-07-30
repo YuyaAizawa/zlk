@@ -108,15 +108,18 @@ public class ModuleTester {
 					types.put(ctor.id(), Type.fromSeq(Seq.concat(
 							ctor.args(),
 							Seq.of(new Type.CtorApp(union.id(), union.vars())))))));
-		var reconstruction = TypeReconstructor.recon(result, freshFlex).unwrap();
-		reconstruction.types().forEach((id, ty) -> types.put(id, ty));
+		var reconed = TypeReconstructor.recon(result, freshFlex);
+		reconed.types().forEach((id, ty) -> types.put(id, ty));
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}
 
-		this.patternErrors = PatternChecker.check(module, reconstruction.caseTypings());
+		this.patternErrors = PatternChecker.check(module, reconed.caseTypings());
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
+		}
+		if(!patternErrors.isEmpty()) {
+			throw new IllegalStateException("pattern errors: " + patternErrors.join(", "));
 		}
 
 		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());

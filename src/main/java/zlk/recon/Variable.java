@@ -278,7 +278,7 @@ class VariableState {
 			// 既知field namesとroot既存forbiddenの衝突をreject
 			for(RecordField<Variable> field : row1.fields()) {
 				if(baseForbidden.contains(field.name())) {
-					throw new Missmatch(
+					throw new Mismatch(
 							"row field '" + field.name() + "' violates lacks constraint on tail");
 				}
 			}
@@ -304,7 +304,7 @@ class VariableState {
 		if(ts.content instanceof Structure s && s.flatType() instanceof FlatType.Row1 tailRow) {
 			for(RecordField<Variable> field : tailRow.fields()) {
 				if(merged.contains(field.name())) {
-					throw new Missmatch(
+					throw new Mismatch(
 							"row field '" + field.name() + "' violates lacks constraint on parent tail");
 				}
 			}
