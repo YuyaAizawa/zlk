@@ -8,7 +8,6 @@ import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.recon.TypeError.InfinitType;
 import zlk.recon.constraint.Constraint;
 import zlk.recon.constraint.Constraint.CEqual;
 import zlk.recon.constraint.Constraint.CExists;
@@ -25,12 +24,10 @@ import zlk.recon.constraint.RcType.FunN;
 import zlk.recon.constraint.RcType.RecordN;
 import zlk.recon.constraint.RcType.RowN;
 import zlk.recon.constraint.RcType.VarN;
-import zlk.util.Result;
 import zlk.util.collection.Seq;
-import zlk.util.collection.SeqBuffer;
 
 public class TypeReconstructor {
-	public record Reconstructed(
+	public record Result(
 			IdMap<Type> types,
 			Seq<CaseTyping<Type>> caseTypings) {}
 
@@ -41,11 +38,6 @@ public class TypeReconstructor {
 	 * 推論結果
 	 */
 	private IdMap<Variable> result;
-
-	/**
-	 * 検出された型エラー
-	 */
-	private SeqBuffer<TypeError> errors;
 
 	/**
 	 * 衝突しない型変数の生成器
@@ -59,24 +51,28 @@ public class TypeReconstructor {
 
 	private TypeReconstructor(FreshFlex freshFlex) {
 		this.result = new IdMap<>();
-		this.errors = new SeqBuffer<>();
 		this.freshFlex = freshFlex;
 	}
 
-	public static Result<Seq<TypeError>, Reconstructed> recon(
+	public static Result recon(
 			ConstraintExtractor.Result extracted,
 			FreshFlex freshFlex) {
 		TypeReconstructor self = new TypeReconstructor(freshFlex);
 		self.solve(extracted.constraint(), 0, new IdMap<>());
 
-		if(self.errors.isEmpty()) {
-			return new Result.Ok<>(new Reconstructed(
-					self.result.traverse(Variable::toType),
-					extracted.caseTypings().map(
-							caseTyping -> caseTyping.map(RcType::toType))));
-		} else {
-			return new Result.Err<>(self.errors.toSeq());  // TODO: unifyのmismatchなどを入れる
-		}
+		return new Result(
+				self.result.traverse(Variable::toType),
+				extracted.caseTypings().map(
+						caseTyping -> caseTyping.map(RcType::toType)));
+
+//		if(self.errors.isEmpty()) {
+//			return new Result.Ok<>(new Result(
+//					self.result.traverse(Variable::toType),
+//					extracted.caseTypings().map(
+//							caseTyping -> caseTyping.map(RcType::toType))));
+//		} else {
+//			return new Result.Err<>(self.errors.toSeq());  // TODO: unifyのmismatchなどを入れる
+//		}
 	}
 
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {
@@ -218,7 +214,8 @@ public class TypeReconstructor {
 	private void occurCheck(Id id, Variable var) {
 		if(var.occurs()) {
 			// TODO エラーの詳細情報を構築
-			errors.add(new InfinitType(id));
+//			errors.add(new InfinitType(id));
+			throw new RuntimeException();
 		}
 	}
 

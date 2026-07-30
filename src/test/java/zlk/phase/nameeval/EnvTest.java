@@ -1,21 +1,16 @@
-package zlk.nameeval;
+package zlk.phase.nameeval;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import org.junit.jupiter.api.Test;
-
 import zlk.common.id.Id;
+import zlk.nameeval.DuplicatedNameException;
+import zlk.nameeval.Env;
 
-/**
- * Env の lexical binding frame／Id owner 分離，scope lifetime の例外安全性，
- * 内部状態隠蔽を直接検証する．
- */
-class EnvTest {
-
+public class EnvTest {
 	@Test
 	void withScopeClosesOnNormalExit() {
 		Env env = new Env();

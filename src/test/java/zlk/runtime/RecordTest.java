@@ -1,26 +1,23 @@
-package zlk;
+package zlk.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
-
 import zlk.runtime.ArrayRecord;
 import zlk.runtime.ZlkRecord;
 
-class RecordTest {
+public class RecordTest {
 	private record Pair(int x, int y) {}
 
 	private static final class PairRecord implements ZlkRecord {

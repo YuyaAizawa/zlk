@@ -6,34 +6,29 @@
 
 ```mermaid
 flowchart TD
-    Source(["source code"]) --> Lexer["Lexer"]
-    Lexer --> Tokens(["Tokenized"])
-    Tokens --> Parser["Parser"]
-    Parser --> AST(["ast"])
-    AST --> NameEval["NameEvaluator"]
-    NameEval --> IC(["idcalc"])
+    Source(["source code"]) --> LexPhase["LexPhase / Lexer"]
+    LexPhase --> Tokens(["Tokenized"])
+    Tokens --> ParsePhase["ParsePhase / Parser"]
+    ParsePhase --> AST(["ast"])
+    AST --> NamePhase["NamePhase / NameEvaluator"]
+    NamePhase --> IC(["idcalc"])
 
-    IC --> Extract["ConstraintExtractor"]
-    Extract --> Constraint(["Constraint"])
-    Extract --> RcCaseTypings(["caseTypings<br/>CaseTyping&lt;RcType&gt;"])
-
-    Constraint --> Recon["TypeReconstructor"]
-    RcCaseTypings --> Recon
-    Recon --> Reconstruction(["Reconstructed"])
+    IC --> ReconPhase["ReconPhase / ConstraintExtractor + TypeReconstructor"]
+    ReconPhase --> Reconstruction(["Reconstructed"])
     Reconstruction --> Types(["types<br/>IdMap&lt;Type&gt;"])
     Reconstruction --> CaseTypings(["caseTypings<br/>CaseTyping&lt;Type&gt;"])
 
-    IC --> PatternCheck["PatternChecker"]
-    CaseTypings --> PatternCheck
-    PatternCheck --> PcErrors(["Seq&lt;PcError&gt;"])
+    IC --> PatternPhase["PatternPhase / PatternChecker"]
+    CaseTypings --> PatternPhase
+    PatternPhase --> PcErrors(["Seq&lt;PcError&gt;"])
 
-    IC --> Clconv["ClosureConverter"]
-    Types --> Clconv
-    Clconv --> CC(["clcalc"])
+    IC --> ClosurePhase["ClosurePhase / ClosureConverter"]
+    Types --> ClosurePhase
+    ClosurePhase --> CC(["clcalc"])
 
-    CC --> BytecodeGen["BytecodeGenerator"]
-    Types --> BytecodeGen
-    BytecodeGen --> Class(["JVM bytecode / .class"])
+    CC --> BytecodePhase["BytecodePhase / BytecodeGenerator"]
+    Types --> BytecodePhase
+    BytecodePhase --> Class(["JVM bytecode / .class"])
 ```
 
 `PatternChecker`は，名前解決後の`IcModule`とcase式ごとの解決済み`CaseTyping<Type>`を検査し，冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とcase pattern型の解決後に実行する．

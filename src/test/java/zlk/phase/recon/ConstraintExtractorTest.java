@@ -1,13 +1,11 @@
-package zlk;
+package zlk.phase.recon;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import org.junit.jupiter.api.Test;
-
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 
-public class ConstrainerTest {
+public class ConstraintExtractorTest {
 	@Test
 	void selfRecursiveFunction() {
 		String src ="""

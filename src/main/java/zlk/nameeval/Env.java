@@ -31,12 +31,12 @@ import zlk.util.pp.PrettyPrinter;
  * <p>scope lifetimeはcallback APIで構造化し，正常・例外を問わず必ず退出する．
  * frameのpush／popはこのクラスの内部だけで行う．
  */
-final class Env {
+public final class Env {
 	/** 現在有効な binding frame の stack（内側が top）． */
 	private final Stack<Frame> frames;
 	private final Map<String, Id> global;
 
-	Env() {
+	public Env() {
 		this.frames = new Stack<>();
 		this.global = new HashMap<>();
 	}
@@ -46,7 +46,7 @@ final class Env {
 	 * そのscope内で{@code body}を評価する．
 	 * 作成したscopeのIdは{@code body}の引数として渡す．
 	 */
-	<T> T withScope(String simpleName, Function<Id, T> body) {
+	public <T> T withScope(String simpleName, Function<Id, T> body) {
 		Id ownerId = frames.isEmpty()
 				? Id.intern(simpleName)
 				: Id.intern(frames.peek().owner().id(), simpleName);
@@ -58,7 +58,7 @@ final class Env {
 	 * 現在のscopeにlambda用scopeを作り，そのscope内で{@code body}を評価する．
 	 * 作成したscopeのIdは{@code body}の引数として渡す．
 	 */
-	<T> T withLambdaScope(Function<Id, T> body) {
+	public <T> T withLambdaScope(Function<Id, T> body) {
 		Frame parent = frames.peek();
 		String synthetic = "_lambda" + parent.owner().nextLambdaIndex();
 		return withScope(synthetic, body);
@@ -68,7 +68,7 @@ final class Env {
 	 * let用のbinding frameを作り，そのscope内で{@code body}を評価する．
 	 * scopeは作らない．
 	 */
-	<T> T withLetFrame(Supplier<T> body) {
+	public <T> T withLetFrame(Supplier<T> body) {
 		Frame parent = frames.peek();
 		Frame frame = new Frame(parent.owner(), new HashMap<>());
 		return withFrame(frame, body);
@@ -84,14 +84,14 @@ final class Env {
 	}
 
 	/** 現在の binding frame に名前を登録する．owner は現在の frame と同一． */
-	Id register(String name) throws DuplicatedNameException {
+	public Id register(String name) throws DuplicatedNameException {
 		Frame top = frames.peek();
 		Id id = Id.intern(top.owner().id(), name);
 		return register(name, id);
 	}
 
 	/** 指定 Id で名前を登録する．owner は現在の frame と同一とみなす． */
-	Id register(String name, Id id) throws DuplicatedNameException {
+	public Id register(String name, Id id) throws DuplicatedNameException {
 		Frame top = frames.peek();
 		Id oldId = top.owner().assign(name, id);
 		if (oldId != null) {
@@ -102,7 +102,7 @@ final class Env {
 	}
 
 	/** 大域に Id をその simpleName で登録する． */
-	Id registerGlobal(Id id) throws DuplicatedNameException {
+	public Id registerGlobal(Id id) throws DuplicatedNameException {
 		String name = id.simpleName();
 		Id orig = global.putIfAbsent(name, id);
 		if (orig != null) {
@@ -111,7 +111,7 @@ final class Env {
 		return id;
 	}
 
-	Id getOrNull(String name) {
+	public Id getOrNull(String name) {
 		for (Frame frame : frames) {
 			Id id = frame.ids().get(name);
 			if (id != null) {
@@ -121,7 +121,7 @@ final class Env {
 		return global.get(name);
 	}
 
-	Id get(String name) {
+	public Id get(String name) {
 		Id id = getOrNull(name);
 		if (id == null) {
 			throw new NoSuchElementException(name);
@@ -159,18 +159,5 @@ record Frame(Owner owner, Map<String, Id> ids) implements PrettyPrintable {
 	@Override
 	public void mkString(PrettyPrinter pp) {
 		pp.append(owner.id()).append(": ").append(PrettyPrintable.oneLine(ids));
-	}
-}
-
-class DuplicatedNameException extends Exception {
-	private static final long serialVersionUID = 1L;
-
-	public final Id oldId;
-	public final Id newId;
-
-	public DuplicatedNameException(Id oldId, Id newId) {
-		super("old: "+oldId+", new: "+newId);
-		this.oldId = oldId;
-		this.newId = newId;
 	}
 }

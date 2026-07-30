@@ -41,7 +41,7 @@ public final class Unify {
 		if(content instanceof Structure s && s.flatType() instanceof Row1 row1) {
 			for(RecordField<Variable> field : row1.fields()) {
 				if(union.contains(field.name())) {
-					throw new Missmatch(
+					throw new Mismatch(
 							"row field '" + field.name() + "' violates lacks constraint on merged tail");
 				}
 			}
@@ -69,7 +69,7 @@ public final class Unify {
 
 		// kind mismatchの検査
 		if(u.kind() != v.kind()) {
-			throw new Missmatch();
+			throw new Mismatch();
 		}
 
 		// ROW-kind同士はrowUnifyへ
@@ -92,26 +92,26 @@ public final class Unify {
 		case RigidVar _ -> {
 			switch(vState.content) {
 			case FlexVar _ -> merge(u, uState, v, vState, uState.content);
-			case RigidVar _ -> throw new Missmatch();
-			default -> throw new Missmatch();
+			case RigidVar _ -> throw new Mismatch();
+			default -> throw new Mismatch();
 			}
 		}
 		case Structure u_ -> {
 			switch(vState.content) {
 			case FlexVar _ -> merge(u, uState, v, vState, uState.content);
-			case RigidVar _ -> throw new Missmatch();
+			case RigidVar _ -> throw new Mismatch();
 			case Structure v_ -> {
 				if(u_.flatType() instanceof CtorApp1 u__ && v_.flatType() instanceof CtorApp1 v__) {
 					if(u__.id().equals(v__.id())) {
 						Seq<Variable> uArgs = u__.args();
 						Seq<Variable> vArgs = v__.args();
 						if(uArgs.size() != vArgs.size()) {
-							throw new Missmatch();
+							throw new Mismatch();
 						}
 						Seq.zip(uArgs, vArgs).forEach(
 								(uArg, vArg) -> unify(uArg, vArg, freshFlex, letRank));
 					} else {
-						throw new Missmatch();
+						throw new Mismatch();
 					}
 				} else if(u_.flatType() instanceof Record1 u__ && v_.flatType() instanceof Record1 v__) {
 					// Record1同士: 内包するrow変数同士をrowUnify
@@ -124,7 +124,7 @@ public final class Unify {
 					unify(u__.ret(), v__.ret(), freshFlex, letRank);
 					merge(u, uState, v, vState, uState.content);
 				} else {
-					throw new Missmatch();
+					throw new Mismatch();
 				}
 			}
 			case Content.Error e -> merge(u, uState, v, vState, e);
@@ -155,7 +155,7 @@ public final class Unify {
 
 		// kind mismatchの検査（両者ともROW-kindでなければならない）
 		if(u.kind() != Variable.Kind.ROW || v.kind() != Variable.Kind.ROW) {
-			throw new Missmatch();
+			throw new Mismatch();
 		}
 
 		VariableState uState = u.get();
@@ -181,7 +181,7 @@ public final class Unify {
 				// flex + structure → structure採用．
 				// structureのfieldsとflex側forbiddenの衝突をmergeRowで検査する．
 				if(occursAnywhere(v, u)) {
-					throw new Missmatch("recursive row during unification");
+					throw new Mismatch("recursive row during unification");
 				}
 				mergeRow(u, uState, v, vState, vState.content);
 				return u;
@@ -196,25 +196,25 @@ public final class Unify {
 				mergeRow(u, uState, v, vState, uState.content);
 				return u;
 			}
-			case RigidVar _ -> throw new Missmatch();
-			default -> throw new Missmatch();
+			case RigidVar _ -> throw new Mismatch();
+			default -> throw new Mismatch();
 			}
 		}
 		case Structure u_ -> {
 			switch(vState.content) {
 			case FlexVar _ -> {
 				if(occursAnywhere(u, v)) {
-					throw new Missmatch("recursive row during unification");
+					throw new Mismatch("recursive row during unification");
 				}
 				mergeRow(u, uState, v, vState, uState.content);
 				return u;
 			}
-			case RigidVar _ -> throw new Missmatch();
+			case RigidVar _ -> throw new Mismatch();
 			case Structure v_ -> {
 				if(u_.flatType() instanceof Row1 uRow && v_.flatType() instanceof Row1 vRow) {
 					return rowUnifyRow1(u, uState, uRow, v, vState, vRow, freshFlex, letRank);
 				} else {
-					throw new Missmatch();
+					throw new Mismatch();
 				}
 			}
 			case Content.Error e -> mergeRow(u, uState, v, vState, e);
@@ -239,17 +239,17 @@ public final class Unify {
 
 		// occurs check: uがvのtailに出現する場合recursive row
 		if(uTail.isPresent() && uTail.get().isSame(u)) {
-			throw new Missmatch("recursive row during unification");
+			throw new Mismatch("recursive row during unification");
 		}
 		if(vTail.isPresent() && vTail.get().isSame(v)) {
-			throw new Missmatch("recursive row during unification");
+			throw new Mismatch("recursive row during unification");
 		}
 		// uがvRowのtailに出現，またはvがuRowのtailに出現する場合も同様
 		if(uTail.isPresent() && occursAnywhere(uTail.get(), v)) {
-			throw new Missmatch("recursive row during unification");
+			throw new Mismatch("recursive row during unification");
 		}
 		if(vTail.isPresent() && occursAnywhere(vTail.get(), u)) {
-			throw new Missmatch("recursive row during unification");
+			throw new Mismatch("recursive row during unification");
 		}
 
 		// canonical fieldsを二本indexで shared／leftOnly／rightOnly に分割．
@@ -286,10 +286,10 @@ public final class Unify {
 		boolean hasLeftResidual = !leftOnlySeq.isEmpty();
 		boolean hasRightResidual = !rightOnlySeq.isEmpty();
 		if(hasLeftResidual && vTail.isEmpty()) {
-			throw new Missmatch();
+			throw new Mismatch();
 		}
 		if(hasRightResidual && uTail.isEmpty()) {
-			throw new Missmatch();
+			throw new Mismatch();
 		}
 
 		// tailの有無だけで判定できるmismatchを除外してからshared fieldを単一化する
@@ -396,10 +396,4 @@ public final class Unify {
 		}
 		return false;
 	}
-}
-
-@SuppressWarnings("serial")
-class Missmatch extends RuntimeException {
-	Missmatch() { super(); }
-	Missmatch(String message) { super(message); }
 }

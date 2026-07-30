@@ -134,13 +134,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		var reconstruction = TypeReconstructor.recon(extractResult, freshFlex).unwrap();
-		IdMap<Type> types = reconstruction.types();
+		var reconed = TypeReconstructor.recon(extractResult, freshFlex);
+		IdMap<Type> types = reconed.types();
 		System.out.println(types.buildString());
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");
-		Seq<PcError> patternErrors = PatternChecker.check(idcalc, reconstruction.caseTypings());
+		Seq<PcError> patternErrors = PatternChecker.check(idcalc, reconed.caseTypings());
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()

@@ -1,15 +1,12 @@
-package zlk;
+package zlk.phase.parser;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import org.junit.jupiter.api.Test;
-
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.util.collection.IntSeq;
 
-public class ParseErrorTest {
-
+public class ParserRecoveryTest {
 	@Test
 	void panicBlockBodyConsumesNestedIndentBlocks() {
 		String src = """
@@ -166,5 +163,4 @@ public class ParseErrorTest {
 		assertEquals(3, lines.head());
 		assertEquals(2, module.getAst().decls().size());
 	}
-
 }
