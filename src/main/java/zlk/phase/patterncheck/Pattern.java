@@ -3,8 +3,8 @@ package zlk.phase.patterncheck;
 import zlk.common.id.Id;
 import zlk.util.collection.Seq;
 
-public sealed interface PcPattern {
-	enum Anything implements PcPattern {
+sealed interface Pattern {
+	enum Anything implements Pattern {
 		SINGLETON;
 
 		@Override
@@ -16,6 +16,6 @@ public sealed interface PcPattern {
 	record Ctor(
 			Id unionId,
 			Id ctorId,
-			Seq<PcPattern> args
-	) implements PcPattern {}
+			Seq<Pattern> args
+	) implements Pattern {}
 }

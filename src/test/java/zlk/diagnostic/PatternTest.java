@@ -6,10 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.id.Id;
 import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
-import zlk.phase.patterncheck.PcPattern;
 import zlk.util.collection.Seq;
 
 public class PatternTest {
@@ -22,9 +19,11 @@ public class PatternTest {
 		""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
-		Seq<PcPattern> witness = incomplete.examples();
+		Seq<PatternWitness> witness = incomplete.examples();
 		assertEquals(1, witness.size());
-		assertCtor(witness.head(), "Bool", "Basic.False", 0);
+		assertCtor(witness.head(), "Basic.False", 0);
+		assertEquals(3, incomplete.location().startLine());
+		assertEquals(4, incomplete.location().endLine());
 	}
 
 	@Test
@@ -36,7 +35,13 @@ public class PatternTest {
 		    True -> 1
 		""";
 
-		assertInstanceOf(Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
+		Diagnostic.RedundantPattern redundant = assertInstanceOf(
+				Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
+		assertEquals(3, redundant.overallLocation().startLine());
+		assertEquals(5, redundant.overallLocation().endLine());
+		assertEquals(5, redundant.patternLocation().startLine());
+		assertEquals(5, redundant.patternLocation().endLine());
+		assertEquals(1, redundant.caseIndex());
 	}
 
 	@Test
@@ -52,11 +57,11 @@ public class PatternTest {
 		""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
-		Seq<PcPattern> witness = incomplete.examples();
+		Seq<PatternWitness> witness = incomplete.examples();
 		assertEquals(1, witness.size());
-		PcPattern.Ctor cons = assertCtor(witness.head(), "Main.List", "Main.List.Cons", 2);
-		assertTrue(cons.args().at(0) instanceof PcPattern.Anything);
-		assertTrue(cons.args().at(1) instanceof PcPattern.Anything);
+		PatternWitness.Ctor cons = assertCtor(witness.head(), "Main.List.Cons", 2);
+		assertTrue(cons.args().at(0) instanceof PatternWitness.Anything);
+		assertTrue(cons.args().at(1) instanceof PatternWitness.Anything);
 	}
 
 	@Test
@@ -90,11 +95,11 @@ public class PatternTest {
 		""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
-		Seq<PcPattern> witness = incomplete.examples();
+		Seq<PatternWitness> witness = incomplete.examples();
 		assertEquals(1, witness.size());
 
-		PcPattern.Ctor just = assertCtor(witness.head(), "Main.Maybe", "Main.Maybe.Just", 1);
-		assertCtor(just.args().head(), "Bool", "Basic.False", 0);
+		PatternWitness.Ctor just = assertCtor(witness.head(), "Main.Maybe.Just", 1);
+		assertCtor(just.args().head(), "Basic.False", 0);
 	}
 
 	@Test
@@ -122,12 +127,14 @@ public class PatternTest {
 			""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
-		Seq<PcPattern> witness = incomplete.examples();
+		Seq<PatternWitness> witness = incomplete.examples();
 		assertEquals(1, witness.size());
 
-		PcPattern.Ctor product = assertCtor(witness.head(), "$record$5$value", "$record$5$value", 1);
-		PcPattern.Ctor just = assertCtor(product.args().head(), "Main.Maybe", "Main.Maybe.Just", 1);
-		assertCtor(just.args().head(), "Bool", "Basic.False", 0);
+		PatternWitness.Record product = assertInstanceOf(PatternWitness.Record.class, witness.head());
+		assertEquals(1, product.fields().size());
+		assertEquals("value", product.fields().head().name());
+		PatternWitness.Ctor just = assertCtor(product.fields().head().pattern(), "Main.Maybe.Just", 1);
+		assertCtor(just.args().head(), "Basic.False", 0);
 	}
 
 	private static Diagnostic onlyDiagnostic(String src) {
@@ -137,23 +144,23 @@ public class PatternTest {
 		);
 		Driver.CompilationResult.Failed failed = assertInstanceOf(Driver.CompilationResult.Failed.class, result);
 		assertEquals(1, failed.diags().size());
-		return failed.diags().head();
+		Diagnostic diagnostic = failed.diags().head();
+		assertTrue(diagnostic.isError());
+		return diagnostic;
 	}
 
 	private static Diagnostic.IncompletePattern onlyIncomplete(String src) {
 		return assertInstanceOf(Diagnostic.IncompletePattern.class, onlyDiagnostic(src));
 	}
 
-	private static PcPattern.Ctor assertCtor(
-			PcPattern pattern,
-			String expectedUnion,
+	private static PatternWitness.Ctor assertCtor(
+			PatternWitness pattern,
 			String expectedCtor,
 			int expectedArity
 	) {
-		assertTrue(pattern instanceof PcPattern.Ctor, () -> "expected ctor pattern, but got: " + pattern);
-		PcPattern.Ctor ctor = (PcPattern.Ctor) pattern;
-		assertEquals(Id.intern(expectedUnion), ctor.unionId());
-		assertEquals(Id.intern(expectedCtor), ctor.ctorId());
+		assertTrue(pattern instanceof PatternWitness.Ctor, () -> "expected ctor pattern, but got: " + pattern);
+		PatternWitness.Ctor ctor = (PatternWitness.Ctor) pattern;
+		assertEquals(expectedCtor, ctor.name());
 		assertEquals(expectedArity, ctor.args().size());
 		return ctor;
 	}

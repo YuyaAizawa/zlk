@@ -1,6 +1,8 @@
 package zlk.phase.nameeval;
 
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
@@ -8,6 +10,8 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
+import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.DiagnosticReporter;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Decl;
 import zlk.ir.ast.Exp;
@@ -33,6 +37,7 @@ import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
 import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
+import zlk.phase.PhaseResult;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcExp.IcCnst;
@@ -67,6 +72,7 @@ public final class NameEvaluator {
 	private final IdMap<Builtin> builtins;
 	/** 暫定的な組込みconstructor signature表（Id → Type）． */
 	private final IdMap<Type> builtinCtors;
+	private final Map<Id, Location> nameLocations = new HashMap<>();
 
 	public NameEvaluator(Module module) {
 		this.module = module;
@@ -100,17 +106,19 @@ public final class NameEvaluator {
 					decl.ctors().forEach(ctor -> {
 						try {
 							Id ctorId = env.register(ctor.name(), Id.intern(typeResolver.getTypeId(decl.name()), ctor.name()));
+							nameLocations.put(ctorId, ctor.loc());
 							typeResolver.registerConstructor(decl, ctor, ctorId);
 						} catch (DuplicatedNameException e) {
-							throw new RuntimeException(e);
+							throw duplicateName(ctor.loc(), Diagnostic.NameNamespace.CONSTRUCTOR, ctor.name(), e);
 						}
 					});
 				}
 				case ValDecl(String name, _, _, _, _) -> {
 					try {
-						env.register(name);
+						Id id = env.register(name);
+						nameLocations.put(id, def.loc());
 					} catch (DuplicatedNameException e) {
-						throw new RuntimeException(e);
+						throw duplicateName(def.loc(), Diagnostic.NameNamespace.VALUE, name, e);
 					}
 				}
 				case TypeAlias _ -> {}
@@ -133,6 +141,16 @@ public final class NameEvaluator {
 
 			return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
 		});
+	}
+
+	/** Source-facing resolution failures are reported and stop this phase. */
+	public PhaseResult<IcModule> eval(DiagnosticReporter reporter) {
+		try {
+			return PhaseResult.ready(eval());
+		} catch (ResolutionException error) {
+			reporter.report(error.diagnostic());
+			return PhaseResult.blocked();
+		}
 	}
 
 	public IcTypeDecl eval(TypeDecl union) {
@@ -160,6 +178,8 @@ public final class NameEvaluator {
 
 				return new IcValDecl(id, anno, args, body, decl.loc());
 			});
+		} catch (ResolutionException error) {
+			throw error;
 		} catch (RuntimeException e) {
 			throw new RuntimeException("in "+decl.name(), e);
 		}
@@ -171,7 +191,7 @@ public final class NameEvaluator {
 			new IcCnst(value, loc);
 
 		case Var(String name, Location loc) -> {
-			Id id = env.get(name);
+			Id id = getName(name, loc);
 
 			Builtin builtin = builtins.getOrNull(id);
 			if(builtin != null) {
@@ -195,11 +215,18 @@ public final class NameEvaluator {
 						loc));
 		}
 
-		case App(Seq<Exp> exps, Location loc) ->
-			new IcApp(
-					eval(exps.head(), scope),
-					exps.tail().map(arg -> eval(arg, scope)),
-					loc);
+		case App(Seq<Exp> exps, Location loc) -> {
+			IcExp fun = eval(exps.head(), scope);
+			Seq<IcExp> args = exps.tail().map(arg -> eval(arg, scope));
+			if (fun instanceof IcVarCtor ctor) {
+				int expected = ctor.type().flatten().size() - 1;
+				if (args.size() > expected) {
+					throw new ResolutionException(new Diagnostic.ConstructorArityMismatch(
+							loc, ctor.id().simpleName(), expected, args.size()));
+				}
+			}
+			yield new IcApp(fun, args, loc);
+		}
 
 		case If(Exp cond, Exp exp1, Exp exp2, Location loc) ->
 			new IcIf(
@@ -221,9 +248,10 @@ public final class NameEvaluator {
 				yield env.withLetFrame(() -> {
 					for(ValDecl decl: validDecls) {
 						try {
-							env.register(decl.name());
+							Id id = env.register(decl.name());
+							nameLocations.put(id, decl.loc());
 						} catch (DuplicatedNameException e) {
-							throw new RuntimeException(e);
+							throw duplicateName(decl.loc(), Diagnostic.NameNamespace.VALUE, decl.name(), e);
 						}
 					}
 					return new IcLet(
@@ -281,14 +309,19 @@ public final class NameEvaluator {
 			try {
 				id = env.register(name);
 			} catch (DuplicatedNameException e) {
-				throw new RuntimeException(e);
+				throw duplicateName(loc, Diagnostic.NameNamespace.VALUE, name, e);
 			}
+			nameLocations.put(id, loc);
 			return new IcPattern.Var(id, loc);
 		}
 		case Pattern.Ctor(String name, Seq<Pattern> args, Location loc): {
-			Id ctor = env.get(name);
+			Id ctor = getName(name, loc);
 			Type ctorType = getConstructorType(ctor);
 			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctorType, Location.noLocation());
+			int expected = ctorType.flatten().size() - 1;
+			if (args.size() != expected) {
+				throw new ResolutionException(new Diagnostic.ConstructorArityMismatch(loc, name, expected, args.size()));
+			}
 			Seq<Arg> dectorArgs = Seq.zip(args, ctorType.flatten().take(args.size()))
 					.map((arg, argTy) -> new IcPattern.Arg(eval(arg), argTy));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
@@ -316,5 +349,20 @@ public final class NameEvaluator {
 			throw new IllegalArgumentException("not a constructor: " + id);
 		}
 		return type;
+	}
+
+	private Id getName(String name, Location loc) {
+		Id id = env.getOrNull(name);
+		if (id == null) {
+			throw new ResolutionException(new Diagnostic.UnknownName(loc, name));
+		}
+		return id;
+	}
+
+	private ResolutionException duplicateName(
+			Location location, Diagnostic.NameNamespace namespace, String name, DuplicatedNameException error
+	) {
+		return new ResolutionException(new Diagnostic.DuplicateName(
+				location, namespace, name, nameLocations.get(error.oldId)));
 	}
 }

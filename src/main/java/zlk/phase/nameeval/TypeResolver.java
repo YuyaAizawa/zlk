@@ -4,12 +4,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import zlk.common.Location;
 import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.Type.Row;
 import zlk.common.Type.RowVar;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.diagnostic.Diagnostic;
 import zlk.ir.ast.AnType;
 import zlk.ir.ast.Constructor;
 import zlk.ir.ast.Decl;
@@ -43,6 +45,7 @@ final class TypeResolver {
 	private final IdMap<Type> nominalTypes = new IdMap<>();
 	private final IdMap<ParameterKinds> parameterKinds = new IdMap<>();
 	private final IdMap<AliasState> aliasStates = new IdMap<>();
+	private final Map<Id, Location> declarationLocations = new HashMap<>();
 	private Seq<Id> declarationIds = null;
 	private Seq<Id> aliasIds = null;
 	private final IdMap<ResolvedConstructor> resolvedConstructors = new IdMap<>();
@@ -99,8 +102,10 @@ final class TypeResolver {
 			typeEnv.register(decl.name(), id);
 			declInfos.put(id, new TyDeclInfo.Nominal(id, decl.vars(), decl.ctors()));
 			parameterKinds.put(id, new ParameterKinds(decl.vars(), decl.name()));
+			declarationLocations.put(id, decl.loc());
 		} catch (DuplicatedNameException e) {
-			throw new RuntimeException(e);
+			throw new ResolutionException(new Diagnostic.DuplicateName(
+					decl.loc(), Diagnostic.NameNamespace.TYPE, decl.name(), declarationLocations.get(e.oldId)));
 		}
 		return id;
 	}
@@ -112,8 +117,10 @@ final class TypeResolver {
 			declInfos.put(id, new TyDeclInfo.Alias(id, decl.vars(), decl.body()));
 			parameterKinds.put(id, new ParameterKinds(decl.vars(), decl.name()));
 			aliasStates.put(id, new AliasState());
+			declarationLocations.put(id, decl.loc());
 		} catch (DuplicatedNameException e) {
-			throw new RuntimeException(e);
+			throw new ResolutionException(new Diagnostic.DuplicateName(
+					decl.loc(), Diagnostic.NameNamespace.TYPE, decl.name(), declarationLocations.get(e.oldId)));
 		}
 		return id;
 	}
@@ -161,7 +168,7 @@ final class TypeResolver {
 			AliasState state = aliasStates.get(aliasId);
 			if (state.status == AliasState.Status.UNVISITED) {
 				TyDeclInfo.Alias alias = (TyDeclInfo.Alias) declInfos.get(aliasId);
-				resolveAlias(alias);
+				resolveAlias(alias, alias.body().loc());
 			}
 		}
 	}
@@ -212,13 +219,15 @@ final class TypeResolver {
 	}
 
 	/** alias本体をDFS解決し，循環検出用stateと解決結果をcacheする． */
-	private void resolveAlias(TyDeclInfo.Alias alias) {
+	private void resolveAlias(TyDeclInfo.Alias alias, Location useLocation) {
 		AliasState state = aliasStates.get(alias.id());
 		switch (state.status) {
 		case RESOLVED -> { return; }
-		case VISITING -> { throw new IllegalStateException("recursive type alias: " + alias.id().simpleName()); }
+		case VISITING -> throw new ResolutionException(new Diagnostic.RecursiveTypeAlias(
+					useLocation, alias.id().simpleName(), state.cycleLocation));
 		case UNVISITED -> {
 			state.status = AliasState.Status.VISITING;
+			state.cycleLocation = useLocation;
 			try {
 				TypeVarContext.Declared ctx = new TypeVarContext.Declared(
 						alias.params(), kindsOf(alias.id()));
@@ -228,6 +237,7 @@ final class TypeResolver {
 				// 各DFS frameが自分のstateとcacheを復旧する．
 				state.status = AliasState.Status.UNVISITED;
 				state.template = null;
+				state.cycleLocation = null;
 				throw e;
 			}
 		}
@@ -235,13 +245,13 @@ final class TypeResolver {
 	}
 
 	private Type applyAlias(TyDeclInfo.Alias alias, Seq<AnType> args, TypeVarContext ctx) {
-		resolveAlias(alias);
+		resolveAlias(alias, args.isEmpty() ? alias.body().loc() : args.head().loc());
 		AliasState state = aliasStates.get(alias.id());
 
 		if (alias.params().size() != args.size()) {
-			throw new IllegalArgumentException(
-					"arity mismatch for type alias " + alias.id().simpleName()
-					+ ": expected " + alias.params().size() + ", got " + args.size());
+			throw new ResolutionException(new Diagnostic.TypeArityMismatch(
+					args.isEmpty() ? alias.body().loc() : args.head().loc(), alias.id().simpleName(),
+					alias.params().size(), args.size()));
 		}
 
 		Map<String, Type> typeBinds = new HashMap<>();
@@ -254,7 +264,7 @@ final class TypeResolver {
 			AnType arg = args.at(i);
 
 			if (paramKind == Kind.ROW) {
-				Row row = evalAsRow(arg, ctx);
+				Row row = evalAsRow(arg, ctx, alias.id().simpleName());
 				rowBinds.put(paramName, row);
 			} else {
 				Type t = evalAsType(arg, ctx);
@@ -262,6 +272,7 @@ final class TypeResolver {
 			}
 		}
 
+		checkDuplicateExpandedFields(alias.body(), args);
 		return substituteAlias(state.template, typeBinds, rowBinds);
 	}
 
@@ -295,24 +306,41 @@ final class TypeResolver {
 		};
 	}
 
+	private void checkDuplicateExpandedFields(AnType body, Seq<AnType> args) {
+		if (!(body instanceof AnType.Record(var extension, var fields, _)) || extension.isEmpty()) {
+			return;
+		}
+		for (AnType arg : args) {
+			if (arg instanceof AnType.Record(_, var argumentFields, _)) {
+				for (AnType.RecordField field : fields) {
+					for (AnType.RecordField argumentField : argumentFields) {
+						if (field.name().equals(argumentField.name())) {
+							throw new ResolutionException(new Diagnostic.DuplicateRecordField(
+									field.loc(), field.name(), argumentField.loc()));
+						}
+					}
+				}
+			}
+		}
+	}
+
 	/** AnTypeをTYPE文脈で評価してsemantic Typeを返す */
 	private Type evalAsType(AnType aTy, TypeVarContext ctx) {
 		return switch (aTy) {
 		case AnType.Unit _ -> Type.UNIT;
-		case AnType.Var(String name, _) -> {
-			ctx.use(name, Kind.TYPE);
+		case AnType.Var(String name, Location loc) -> {
+			ctx.use(name, Kind.TYPE, loc);
 			yield new Type.Var(name);
 		}
-		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
+		case AnType.Type(String ctor, Seq<AnType> args, Location loc) -> {
 			Id id = typeEnv.getOrNull(ctor);
 			if (id == null) {
-				throw new IllegalArgumentException("unknown type: " + ctor);
+				throw new ResolutionException(new Diagnostic.UnknownName(loc, ctor));
 			}
 			TyDeclInfo info = declInfos.get(id);
 			if (info.arity() != args.size()) {
-				throw new IllegalArgumentException(
-						"arity mismatch for " + ctor
-						+ ": expected " + info.arity() + ", got " + args.size());
+				throw new ResolutionException(new Diagnostic.TypeArityMismatch(
+						loc, ctor, info.arity(), args.size()));
 			}
 			if (info instanceof TyDeclInfo.Alias alias) {
 				yield applyAlias(alias, args, ctx);
@@ -327,7 +355,7 @@ final class TypeResolver {
 			Seq<RecordField<Type>> fieldTypes = fields.map(f ->
 					new RecordField<>(f.name(), evalAsType(f.type(), ctx)));
 			Optional<RowVar> ext = extension.map(v -> {
-				ctx.use(v.name(), Kind.ROW);
+				ctx.use(v.name(), Kind.ROW, v.loc());
 				return new RowVar(v.name());
 			});
 			yield new Type.Record(new Row(fieldTypes, ext));
@@ -336,34 +364,34 @@ final class TypeResolver {
 	}
 
 	/** AnTypeをROW文脈で評価してRowを返す */
-	private Row evalAsRow(AnType aTy, TypeVarContext ctx) {
+	private Row evalAsRow(AnType aTy, TypeVarContext ctx, String subject) {
 		switch (aTy) {
 		case AnType.Record(Optional<AnType.Var> ext, Seq<AnType.RecordField> fields, _):
 			Seq<RecordField<Type>> fieldTypes = fields.map(f ->
 					new RecordField<>(f.name(), evalAsType(f.type(), ctx)));
 			Optional<RowVar> ext2 = ext.map(v -> {
-				ctx.use(v.name(), Kind.ROW);
+				ctx.use(v.name(), Kind.ROW, v.loc());
 				return new RowVar(v.name());
 			});
 			return new Row(fieldTypes, ext2);
 		case AnType.Var(String name, _):
 			// Foo aでROW期待位置のAnType.Var aはRecord([], RowVar(a))相当
-			ctx.use(name, Kind.ROW);
+			ctx.use(name, Kind.ROW, aTy.loc());
 			return new Row(Seq.of(), Optional.of(new RowVar(name)));
 		default:
 			Type t = evalAsType(aTy, ctx);
 			if (t instanceof Type.Record rec) {
 				return rec.row();
 			}
-			throw new IllegalArgumentException(
-					"ROW argument must be a record, but got: " + t);
+			throw new ResolutionException(new Diagnostic.TypeKindMismatch(
+					aTy.loc(), subject, Diagnostic.TypeKind.ROW, Diagnostic.TypeKind.TYPE, null));
 		}
 	}
 
 	private Seq<Type> evalNominalArguments(TyDeclInfo info, Seq<AnType> args, TypeVarContext ctx) {
 		return Seq.zip(args, kindsOf(info.id())).map(
 				(arg, kind) -> kind == Kind.ROW
-						? new Type.Record(evalAsRow(arg, ctx))
+						? new Type.Record(evalAsRow(arg, ctx, info.id().simpleName()))
 						: evalAsType(arg, ctx));
 	}
 
@@ -381,17 +409,16 @@ final class TypeResolver {
 	private void constrainAsType(AnType type, KindScope scope) {
 		switch (type) {
 		case AnType.Unit _ -> {}
-		case AnType.Var(String name, _) -> scope.require(name, Kind.TYPE);
-		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
+		case AnType.Var(String name, Location loc) -> scope.require(name, Kind.TYPE, loc);
+		case AnType.Type(String ctor, Seq<AnType> args, Location loc) -> {
 			Id id = typeEnv.getOrNull(ctor);
 			if (id == null) {
-				throw new IllegalArgumentException("unknown type: " + ctor);
+				throw new ResolutionException(new Diagnostic.UnknownName(loc, ctor));
 			}
 			TyDeclInfo info = declInfos.get(id);
 			if (info.arity() != args.size()) {
-				throw new IllegalArgumentException(
-						"arity mismatch for " + ctor
-						+ ": expected " + info.arity() + ", got " + args.size());
+				throw new ResolutionException(new Diagnostic.TypeArityMismatch(
+						loc, ctor, info.arity(), args.size()));
 			}
 			ParameterKinds target = parameterKinds.get(id);
 			for (int i = 0; i < args.size(); i++) {
@@ -403,7 +430,7 @@ final class TypeResolver {
 			constrainAsType(ret, scope);
 		}
 		case AnType.Record(Optional<AnType.Var> extension, Seq<AnType.RecordField> fields, _) -> {
-			extension.ifPresent(var -> scope.require(var.name(), Kind.ROW));
+			extension.ifPresent(var -> scope.require(var.name(), Kind.ROW, var.loc()));
 			fields.forEach(field -> constrainAsType(field.type(), scope));
 		}
 		}
@@ -411,9 +438,9 @@ final class TypeResolver {
 
 	private void constrainArgument(AnType arg, KindSlot expected, KindScope scope) {
 		switch (arg) {
-		case AnType.Var(String name, _) -> scope.link(name, expected);
+		case AnType.Var(String name, Location loc) -> scope.link(name, expected, loc);
 		case AnType.Unit _, AnType.Arrow _ -> {
-			expected.require(Kind.TYPE);
+			expected.require(Kind.TYPE, arg.loc(), "type argument");
 			constrainAsType(arg, scope);
 		}
 		case AnType.Type _, AnType.Record _ -> constrainAsType(arg, scope);
@@ -438,6 +465,7 @@ final class TypeResolver {
 
 		private Status status = Status.UNVISITED;
 		private Type template;
+		private Location cycleLocation;
 	}
 
 	private enum Kind { TYPE, ROW }
@@ -447,6 +475,7 @@ final class TypeResolver {
 	private static final class KindSlot {
 		private KindSlot parent = this;
 		private KindStatus status = KindStatus.UNKNOWN;
+		private Location firstLocation;
 
 		private KindSlot root() {
 			if (parent != this) {
@@ -455,17 +484,19 @@ final class TypeResolver {
 			return parent;
 		}
 
-		private void require(Kind kind) {
+		private void require(Kind kind, Location location, String subject) {
 			KindSlot root = root();
 			KindStatus required = kind == Kind.ROW ? KindStatus.ROW : KindStatus.TYPE;
 			if (root.status != KindStatus.UNKNOWN && root.status != required) {
-				throw new IllegalArgumentException(
-						"kind conflict: " + root.status + " vs " + required);
+				throw mismatch(location, subject, root.status, required, root.firstLocation);
 			}
 			root.status = required;
+			if (root.firstLocation == null) {
+				root.firstLocation = location;
+			}
 		}
 
-		private void link(KindSlot other) {
+		private void link(KindSlot other, Location location, String subject) {
 			KindSlot left = root();
 			KindSlot right = other.root();
 			if (left == right) {
@@ -474,13 +505,25 @@ final class TypeResolver {
 			if (left.status != KindStatus.UNKNOWN
 					&& right.status != KindStatus.UNKNOWN
 					&& left.status != right.status) {
-				throw new IllegalArgumentException(
-						"kind conflict: " + left.status + " vs " + right.status);
+				throw mismatch(location, subject, left.status, right.status,
+						left.firstLocation != null ? left.firstLocation : right.firstLocation);
 			}
 			right.parent = left;
 			if (left.status == KindStatus.UNKNOWN) {
 				left.status = right.status;
+				left.firstLocation = right.firstLocation;
 			}
+		}
+
+		private static ResolutionException mismatch(
+				Location location, String subject, KindStatus expected, KindStatus actual, Location previousLocation
+		) {
+			return new ResolutionException(new Diagnostic.TypeKindMismatch(
+					location, subject, diagnosticKind(expected), diagnosticKind(actual), previousLocation));
+		}
+
+		private static Diagnostic.TypeKind diagnosticKind(KindStatus kind) {
+			return kind == KindStatus.ROW ? Diagnostic.TypeKind.ROW : Diagnostic.TypeKind.TYPE;
 		}
 
 		private Kind resolve() {
@@ -502,19 +545,27 @@ final class TypeResolver {
 			for (AnType.Var param : params) {
 				KindSlot slot = new KindSlot();
 				if (byName.putIfAbsent(param.name(), slot) != null) {
-					throw new IllegalArgumentException(
-							"duplicated type parameter: " + param.name()
-							+ " in " + declarationName);
+					throw new ResolutionException(new Diagnostic.DuplicateTypeParameter(
+							param.loc(), param.name(), firstParameterLocation(params, param.name())));
 				}
 				slots.add(slot);
 			}
 			this.slots = slots.toSeq();
 		}
 
-		private KindSlot slot(String name) {
+		private Location firstParameterLocation(Seq<AnType.Var> params, String name) {
+			for (AnType.Var param : params) {
+				if (param.name().equals(name)) {
+					return param.loc();
+				}
+			}
+			throw new IllegalStateException();
+		}
+
+		private KindSlot slot(String name, Location location) {
 			KindSlot slot = byName.get(name);
 			if (slot == null) {
-				throw new IllegalArgumentException("undeclared type variable: " + name);
+				throw new ResolutionException(new Diagnostic.UndeclaredTypeVariable(location, name));
 			}
 			return slot;
 		}
@@ -548,31 +599,32 @@ final class TypeResolver {
 			this.params = params;
 		}
 
-		private void require(String name, Kind kind) {
-			params.slot(name).require(kind);
+		private void require(String name, Kind kind, Location location) {
+			params.slot(name, location).require(kind, location, name);
 		}
 
-		private void link(String name, KindSlot target) {
-			params.slot(name).link(target);
+		private void link(String name, KindSlot target, Location location) {
+			params.slot(name, location).link(target, location, name);
 		}
 	}
 
 	/** semantic型評価時の変数導入規則と確定済みkindを検査する文脈． */
 	static sealed abstract class TypeVarContext {
 		final Map<String, Kind> kinds = new HashMap<>();
+		final Map<String, Location> firstLocations = new HashMap<>();
 
-		abstract void use(String name, Kind kind);
+		abstract void use(String name, Kind kind, Location location);
 
 		/** 値注釈では型変数を暗黙導入する． */
 		private static final class Implicit extends TypeVarContext {
 			@Override
-			public void use(String name, Kind kind) {
+			public void use(String name, Kind kind, Location location) {
 				Kind existing = kinds.get(name);
 				if (existing != null && existing != kind) {
-					throw new IllegalArgumentException(
-							"kind conflict for variable " + name + ": " + existing + " vs " + kind);
+					throw typeKindMismatch(location, name, existing, kind, firstLocations.get(name));
 				}
 				kinds.put(name, kind);
+				firstLocations.putIfAbsent(name, location);
 			}
 		}
 
@@ -581,23 +633,32 @@ final class TypeResolver {
 			Declared(Seq<AnType.Var> vars, Seq<Kind> declaredKinds) {
 				Seq.zip(vars, declaredKinds).forEach((var, kind) -> {
 					if (kinds.putIfAbsent(var.name(), kind) != null) {
-						throw new IllegalArgumentException(
-								"duplicated type parameter: " + var.name());
+						throw new ResolutionException(new Diagnostic.DuplicateTypeParameter(
+								var.loc(), var.name(), firstLocations.get(var.name())));
 					}
+					firstLocations.put(var.name(), var.loc());
 				});
 			}
 
 			@Override
-			public void use(String name, Kind kind) {
+			public void use(String name, Kind kind, Location location) {
 				Kind existing = kinds.get(name);
 				if (existing == null) {
-					throw new IllegalArgumentException("undeclared type variable: " + name);
+					throw new ResolutionException(new Diagnostic.UndeclaredTypeVariable(location, name));
 				}
 				if (existing != kind) {
-					throw new IllegalArgumentException(
-							"kind conflict for variable " + name + ": " + existing + " vs " + kind);
+					throw typeKindMismatch(location, name, existing, kind, firstLocations.get(name));
 				}
 			}
+		}
+
+		private static ResolutionException typeKindMismatch(
+				Location location, String name, Kind expected, Kind actual, Location previousLocation
+		) {
+			return new ResolutionException(new Diagnostic.TypeKindMismatch(location, name,
+					expected == Kind.ROW ? Diagnostic.TypeKind.ROW : Diagnostic.TypeKind.TYPE,
+					actual == Kind.ROW ? Diagnostic.TypeKind.ROW : Diagnostic.TypeKind.TYPE,
+					previousLocation));
 		}
 	}
 }

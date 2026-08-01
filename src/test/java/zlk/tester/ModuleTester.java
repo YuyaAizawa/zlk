@@ -14,14 +14,11 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.diagnostic.Diagnostic;
-import zlk.ir.ast.Decl;
-import zlk.ir.ast.Exp;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcModule;
@@ -36,7 +33,6 @@ import zlk.phase.recon.TypeReconstructor;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
-import zlk.util.collection.SeqBuffer;
 
 public class ModuleTester {
 
@@ -63,7 +59,7 @@ public class ModuleTester {
 
 	// CompileLevelに応じて用意するもの
 	private Module ast = null;
-	private Seq<LocationHolder> parseErrors = null;
+	private Seq<Diagnostic.SyntaxError> parseErrors = null;
 	private IcModule module = null;
 	private Constraint cint = null;
 	private IdMap<Type> types = null;
@@ -78,15 +74,16 @@ public class ModuleTester {
 		this.classLoader = new InMemoryClassLoader();
 
 		Tokenized tokens = new zlk.phase.parse.Lexer(TARGET_FILE_NAME, this.src).lex();
-		this.ast = zlk.phase.parse.Parser.parse(tokens);
-		this.parseErrors = collectParseErrors(ast);
+		var parsed = zlk.phase.parse.Parser.parseResult(tokens);
+		this.ast = parsed.module();
+		this.parseErrors = parsed.diagnostics();
 
 		if(this.compileLevel == CompileLevel.PARSE) {
 			return;
 		}
 		if(!parseErrors.isEmpty()) {
 			throw new IllegalStateException("parse errors in line "
-					+ parseErrors.map(exp -> exp.loc().startLine()).join(", "));
+					+ parseErrors.map(error -> error.location().startLine()).join(", "));
 		}
 
 		this.module = new NameEvaluator(ast).eval();
@@ -157,11 +154,11 @@ public class ModuleTester {
 	}
 
 	// 当面は行数だけ使うので使わない
-	public Seq<LocationHolder> getParseErrors() {
+	public Seq<Diagnostic.SyntaxError> getParseErrors() {
 		return parseErrors;
 	}
 	public IntSeq getParseErrorStartLines() {
-		return parseErrors.mapToInt(err -> err.loc().startLine() - 1);  // module Mainの分を引く
+		return parseErrors.mapToInt(err -> err.location().startLine() - 1);  // module Mainの分を引く
 	}
 
 	public Seq<Diagnostic> getPatternErrors() {
@@ -245,53 +242,6 @@ public class ModuleTester {
 		cr.accept(tcv, 0);
 	}
 
-	private static Seq<LocationHolder> collectParseErrors(Module module) {
-		SeqBuffer<LocationHolder> errors = new SeqBuffer<>();
-		for(Decl decl : module.decls()) {
-			switch(decl) {
-			case Decl.ValDecl valDecl -> collectParseErrors(valDecl.body(), errors);
-			case Decl.ValErr err -> errors.add(err);
-			case Decl.TypeErr err -> errors.add(err);
-			case Decl.TypeDecl _, Decl.TypeAlias _ -> {}
-			}
-		}
-		return errors.toSeq();
-	}
-
-	private static void collectParseErrors(Exp exp, SeqBuffer<LocationHolder> errors) {
-		switch(exp) {
-		case Exp.Cnst _, Exp.Var _ -> {}
-		case Exp.Err err -> errors.add(err);
-		case Exp.Lamb(_, Exp body, _) -> collectParseErrors(body, errors);
-		case Exp.App(Seq<Exp> exps, _) -> exps.forEach(e -> collectParseErrors(e, errors));
-		case Exp.If(Exp cond, Exp thenExp, Exp elseExp, _) -> {
-			collectParseErrors(cond, errors);
-			collectParseErrors(thenExp, errors);
-			collectParseErrors(elseExp, errors);
-		}
-		case Exp.Let(Seq<Decl.Value> decls, Exp body, _) -> {
-			decls.forEach(decl -> {
-				switch(decl) {
-				case Decl.ValDecl valDecl -> collectParseErrors(valDecl.body(), errors);
-				case Decl.ValErr err -> errors.add(err);
-				}
-			});
-			collectParseErrors(body, errors);
-		}
-		case Exp.Case(Exp scrutinee, Seq<zlk.ir.ast.CaseBranch> branches, _) -> {
-			collectParseErrors(scrutinee, errors);
-			branches.forEach(branch -> collectParseErrors(branch.body(), errors));
-		}
-		case Exp.Record(Seq<Exp.RecordField> fields, _) ->
-			fields.forEach(field -> collectParseErrors(field.value(), errors));
-		case Exp.RecordAccess(Exp target, String _, _) ->
-			collectParseErrors(target, errors);
-		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, _) -> {
-			collectParseErrors(target, errors);
-			fields.forEach(field -> collectParseErrors(field.value(), errors));
-		}
-		}
-	}
 }
 
 class InMemoryClassLoader extends ClassLoader {

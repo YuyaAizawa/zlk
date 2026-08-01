@@ -77,11 +77,15 @@ public final class Driver {
 	}
 
 	private static PhaseResult<Module> parsePhase(Tokenized tokens, DiagnosticReporter sink) {
-		return PhaseResult.ready(Parser.parse(tokens));
+		Parser.Result result = Parser.parseResult(tokens);
+		result.diagnostics().forEach(sink::report);
+		return result.diagnostics().isEmpty()
+				? PhaseResult.ready(result.module())
+				: PhaseResult.blocked();
 	}
 
 	private static PhaseResult<IcModule> nameEvalPhase(Module module, DiagnosticReporter sink) {
-		return PhaseResult.ready(new NameEvaluator(module).eval());
+		return new NameEvaluator(module).eval(sink);
 	}
 
 	record TypesAndCaseTypings(
@@ -128,12 +132,10 @@ public final class Driver {
 			DiagnosticReporter diagCollector
 	) {
 		Seq<Diagnostic> result = PatternChecker.check(module, caseTypings);
-		if(result.isEmpty()) {
-			return PhaseResult.ready(PhaseResult.Unit.INSTANCE);
-		}
-		// 警告はないので1つでも診断があれば即失敗
 		result.forEach(diagCollector::report);
-		return PhaseResult.blocked();
+		return result.anyMatch(Diagnostic::isError)
+				? PhaseResult.blocked()
+				: PhaseResult.ready(PhaseResult.Unit.INSTANCE);
 	}
 
 	private static PhaseResult<CcModule> closurePhase(
