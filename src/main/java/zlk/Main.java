@@ -35,8 +35,8 @@ import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.Seq;
 
 /**
- * フロントエンドが完成するまでに実装した言語機能を確認するための，
- * コンパイルから実行までの動くサンプル．完成したコンパイラドライバではない．
+ * 各コンパイルフェーズの中間結果と生成bytecodeを表示して実行する手動サンプル．
+ * 古いので廃止予定．通常のコンパイル入口は {@link zlk.compiler.Driver}．
  */
 public class Main {
 

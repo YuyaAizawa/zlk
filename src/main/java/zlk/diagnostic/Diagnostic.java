@@ -6,7 +6,12 @@ import zlk.util.collection.Seq;
 /**
  * コンパイル中に検出した診断
  *
- * エラーメッセージの生成やログに利用する予定
+ * 各variantは，rendererやIDEがphase内部のIRを参照せずに表示できる，
+ * source-facingなpayloadを持つ．{@link zlk.compiler.Driver}は発生順に診断を収集し，
+ * {@link Severity#ERROR}を一件以上含む場合は後続phaseを実行せず
+ * {@code CompilationResult.Failed}を返す．{@link Severity#WARN}と
+ * {@link Severity#INFO}だけの場合は，診断列を保持した
+ * {@code CompilationResult.Succeeded}を返す．
  */
 public sealed interface Diagnostic {
 
@@ -14,9 +19,9 @@ public sealed interface Diagnostic {
 	 * 重要度
 	 *
 	 * <ul>
-	 * <li> {@link #ERROR}: コンパイルを失敗させる問題
-	 * <li> {@link #WARN}: コンパイルを失敗させない潜在的な問題
-	 * <li> {@link #INFO}: 問題なく実行された処理の情報
+	 * <li> {@link #ERROR}: 後続phaseをblockしコンパイルを失敗させる問題
+	 * <li> {@link #WARN}: コンパイルを継続する潜在的な問題
+	 * <li> {@link #INFO}: コンパイルを継続する情報
 	 * </ul>
 	 */
 	public enum Severity {
