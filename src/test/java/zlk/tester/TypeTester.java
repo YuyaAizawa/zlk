@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.Optional;
 
-import zlk.ast.AnType;
 import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.Type.Arrow;
@@ -12,7 +11,8 @@ import zlk.common.Type.CtorApp;
 import zlk.common.Type.Var;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.parser.Parser;
+import zlk.ir.ast.AnType;
+import zlk.phase.parse.Parser;
 import zlk.util.collection.Seq;
 
 public final class TypeTester {
