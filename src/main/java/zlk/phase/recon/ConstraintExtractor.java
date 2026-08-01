@@ -33,6 +33,8 @@ import zlk.phase.recon.constraint.Constraint.CForeign;
 import zlk.phase.recon.constraint.Constraint.CLet;
 import zlk.phase.recon.constraint.Constraint.CLocal;
 import zlk.phase.recon.constraint.Constraint.CPhase;
+import zlk.phase.recon.constraint.Constraint.Provenance;
+import zlk.phase.recon.constraint.Context;
 import zlk.phase.recon.constraint.RcType.FunN;
 import zlk.phase.recon.constraint.RcType.VarN;
 import zlk.util.collection.Seq;
@@ -75,19 +77,24 @@ public final class ConstraintExtractor {
 	 * @param expected 期待される型
 	 */
 	public Constraint extract(IcExp exp, RcType expected) {
+		return extract(exp, expected, Context.NONE);
+	}
+
+	private Constraint extract(IcExp exp, RcType expected, Context context) {
 		return switch (exp) {
 
-		case IcCnst(ConstValue value, Location _) ->
-			new CEqual(RcType.instantiate(value.type(), freshFlex).resultTy(), expected);
+		case IcCnst(ConstValue value, Location loc) ->
+			new CEqual(RcType.instantiate(value.type(), freshFlex).resultTy(), expected,
+					new Provenance(loc, context));
 
-		case IcVarLocal(Id id, Location _) ->
-			new CLocal(id, expected);
+		case IcVarLocal(Id id, Location loc) ->
+			new CLocal(id, expected, new Provenance(loc, context));
 
-		case IcVarForeign(Id id, Type type, Location _) ->
-			new CForeign(id, type, expected);
+		case IcVarForeign(Id id, Type type, Location loc) ->
+			new CForeign(id, type, expected, new Provenance(loc, context));
 
-		case IcVarCtor(Id id, Type type, Location _) ->
-			new CForeign(id, type, expected);
+		case IcVarCtor(Id id, Type type, Location loc) ->
+			new CForeign(id, type, expected, new Provenance(loc, context));
 
 		case IcLamb(Id id, Seq<IcPattern> args, IcExp body, Location _) -> {
 			Args args_ = extractFromArgs(args);
@@ -110,7 +117,7 @@ public final class ConstraintExtractor {
 							new CEqual(args_.funTy, expected)));
 		}
 
-		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
+		case IcApp(IcExp fun, Seq<IcExp> args, Location loc) -> {
 			// f a b c : R
 			// f : F
 			// a : A
@@ -128,11 +135,12 @@ public final class ConstraintExtractor {
 
 			SeqBuffer<Constraint> argCons = new SeqBuffer<>();
 			SeqBuffer<RcType> argTys = new SeqBuffer<>();
-			for(IcExp arg : args) {
+			for(int index = 0; index < args.size(); index++) {
+				IcExp arg = args.at(index);
 				Variable argVar = freshFlex.getVariable();
 				vars.add(argVar);
 				RcType argTy = new VarN(argVar);
-				argCons.add(extract(arg, argTy));
+				argCons.add(extract(arg, argTy, new Context.CallArg(fun.getId(), index)));
 				argTys.add(argTy);
 			}
 
@@ -144,9 +152,10 @@ public final class ConstraintExtractor {
 				arityType = new FunN(ty, arityType);
 			}
 
-			cons.add(new CEqual(funTy, arityType));
+			cons.add(new CEqual(funTy, arityType,
+					new Provenance(loc, new Context.CallArity(fun.getId(), args.size()))));
 			cons.addAll(argCons);  // アリティの後にしないと引数の数のチェックができない
-			cons.add(new CEqual(resultType, expected));
+			cons.add(new CEqual(resultType, expected, new Provenance(loc, context)));
 
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}
@@ -159,7 +168,7 @@ public final class ConstraintExtractor {
 
 			yield new CExists(
 					Seq.of(branchVar),
-					Seq.of(extract(condExp, RcType.BOOL),
+					Seq.of(extract(condExp, RcType.BOOL, Context.IF_CONDITION),
 							extract(thenExp, branchTy),
 							extract(elseExp, branchTy),
 							new CEqual(branchTy, expected)));
@@ -205,7 +214,7 @@ public final class ConstraintExtractor {
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}
 
-		case IcExp.IcRecordAccess(IcExp target, String field, Location _) -> {
+		case IcExp.IcRecordAccess(IcExp target, String field, Location loc) -> {
 			// target = RecordN(RowN([field:fieldTy], rowTail))
 			// fieldTy = expected
 			// rowTailはopen rowのtail（ROW kind）
@@ -221,15 +230,16 @@ public final class ConstraintExtractor {
 			yield new CExists(
 					Seq.of(targetVar, fieldVar, tailVar),
 					Seq.of(
-							extract(target, targetType),
-							new CEqual(targetType, requiredRecord),
-							new CEqual(fieldType, expected)));
+							extract(target, targetType, new Context.FieldAccess(field)),
+							new CEqual(targetType, requiredRecord,
+									new Provenance(loc, new Context.FieldAccess(field))),
+							new CEqual(fieldType, expected, new Provenance(loc, context))));
 		}
 
 		case IcExp.IcRecordUpdate(
 				IcExp target,
 				Seq<IcExp.IcRecordField> fields,
-				Location _)
+				Location loc)
 		-> {
 			// updated各fieldにfresh TYPE，shared fresh ROW tail rを1個生成．
 			// target = RecordN(RowN([updated fields..., tail r]))
@@ -243,7 +253,7 @@ public final class ConstraintExtractor {
 			SeqBuffer<RecordField<RcType>> rowFields = new SeqBuffer<>();
 			vars.add(targetVar);
 			vars.add(sharedTail);
-			cons.add(extract(target, targetType));
+			cons.add(extract(target, targetType, new Context.FieldAccess(fields.head().name())));
 			for(IcExp.IcRecordField field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
 				RcType fieldType = new VarN(fieldVar);
@@ -253,7 +263,8 @@ public final class ConstraintExtractor {
 			}
 			RcType requiredRecord = new RcType.RecordN(
 					new RcType.RowN(rowFields.toSeq(), Optional.of(sharedTail)));
-			cons.add(new CEqual(targetType, requiredRecord));
+			cons.add(new CEqual(targetType, requiredRecord,
+					new Provenance(loc, new Context.FieldAccess(fields.head().name()))));
 			cons.add(new CEqual(targetType, expected));
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}
@@ -307,7 +318,8 @@ public final class ConstraintExtractor {
 				Seq.of(),
 				annotatedHeaders,
 				Seq.of(new CPhase(Seq.of(), annotatedHeaders.keys())),
-				inferredCon);
+				Seq.of(inferredCon),
+				declarationLocations(annotatedDefs.toSeq().map(AnnotatedDef::decl)));
 	}
 
 	private Constraint extractFromAnnotatedDef(AnnotatedDef annotated) {
@@ -320,16 +332,18 @@ public final class ConstraintExtractor {
 			Args a = extractFromArgs(decl.args());
 
 			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
-			headerCons.add(new CEqual(a.funTy, anno.type()));
+			headerCons.add(new CEqual(a.funTy, anno.type(),
+					new Provenance(decl.loc(), new Context.Annotation(decl.id()))));
 			headerCons.addAll(a.binder.cons);
-			headerCons.add(extract(decl.body(), a.resultTy));
+			headerCons.add(extract(decl.body(), a.resultTy, new Context.Annotation(decl.id())));
 
 			return new CLet(
 					anno.rigids(),
 					a.binder.vars.toSeq(),
 					a.binder.headers,
 					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),
-					new CExists(Seq.of(), Seq.of()));
+					Seq.of(new CExists(Seq.of(), Seq.of())),
+					declarationLocations(Seq.of(decl)));
 		} finally {
 			rigidVars = outerRigidVars;
 		}
@@ -357,7 +371,8 @@ public final class ConstraintExtractor {
 					a.binder.vars.toSeq(),
 					a.binder.headers,
 					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),  // 内側CLetは一般化なし
-					new CEqual(a.funTy, header.get(decl.id()))
+					new CEqual(a.funTy, header.get(decl.id()),
+							new Provenance(decl.loc(), Context.NONE))
 			);
 			defCons.put(decl.id(), rhs);
 		}
@@ -375,7 +390,14 @@ public final class ConstraintExtractor {
 				Seq.of(),
 				header,
 				phases,
-				bodyCons);
+				bodyCons,
+				declarationLocations(decls));
+	}
+
+	private static IdMap<Location> declarationLocations(Seq<IcValDecl> decls) {
+		IdMap<Location> locations = new IdMap<>();
+		decls.forEach(decl -> locations.put(decl.id(), decl.loc()));
+		return locations;
 	}
 
 	public Args extractFromArgs(Seq<IcPattern> args) {

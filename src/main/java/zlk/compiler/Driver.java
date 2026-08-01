@@ -23,7 +23,10 @@ import zlk.phase.parse.Parser;
 import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.TypeError;
+import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
+import zlk.phase.recon.constraint.Context;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -105,7 +108,13 @@ public final class Driver {
 		ConstraintExtractor.Result extracted = ConstraintExtractor.extract(module, freshFlex);
 
 		// 型推論部
-		TypeReconstructor.Result reconed = TypeReconstructor.recon(extracted, freshFlex);
+		TypeReconstructor.Result reconed;
+		try {
+			reconed = TypeReconstructor.recon(extracted, freshFlex);
+		} catch(TypeErrorException error) {
+			sink.report(toDiagnostic(error.error()));
+			return PhaseResult.blocked();
+		}
 
 		// 組込み型とコンストラクタを追加
 		IdMap<Type> types = new IdMap<>();
@@ -124,6 +133,29 @@ public final class Driver {
 		reconed.types().forEach(types::put);
 
 		return PhaseResult.ready(new TypesAndCaseTypings(types, reconed.caseTypings()));
+	}
+
+	private static Diagnostic toDiagnostic(TypeError error) {
+		return switch(error) {
+		case TypeError.InfiniteType(var location, var id) ->
+			new Diagnostic.InfiniteType(location, id.simpleName());
+		case TypeError.UnificationFailure(var provenance, var reason) ->
+			new Diagnostic.TypeMismatch(provenance.location(), toDiagnosticContext(provenance.context()),
+					Diagnostic.TypeMismatchReason.valueOf(reason.name()));
+		};
+	}
+
+	private static Diagnostic.TypingContext toDiagnosticContext(Context context) {
+		return switch(context) {
+		case Context.Annotation(var id) -> new Diagnostic.TypingContext.Annotation(id.simpleName());
+		case Context.CallArg(var maybeId, var index) ->
+			new Diagnostic.TypingContext.CallArgument(maybeId.map(id -> id.simpleName()).orElse(""), index);
+		case Context.CallArity(var maybeId, var length) ->
+			new Diagnostic.TypingContext.CallArity(maybeId.map(id -> id.simpleName()).orElse(""), length);
+		case Context.FieldAccess(var field) -> new Diagnostic.TypingContext.FieldAccess(field);
+		case Context.IfCondition _ -> new Diagnostic.TypingContext.IfCondition();
+		case Context.None _ -> new Diagnostic.TypingContext.None();
+		};
 	}
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(

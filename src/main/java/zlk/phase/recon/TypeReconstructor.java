@@ -10,8 +10,6 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.ir.typing.CaseTyping;
 import zlk.phase.recon.constraint.Constraint;
-import zlk.phase.recon.constraint.Content;
-import zlk.phase.recon.constraint.RcType;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
 import zlk.phase.recon.constraint.Constraint.CForeign;
@@ -19,7 +17,10 @@ import zlk.phase.recon.constraint.Constraint.CLet;
 import zlk.phase.recon.constraint.Constraint.CLocal;
 import zlk.phase.recon.constraint.Constraint.CPattern;
 import zlk.phase.recon.constraint.Constraint.CPhase;
+import zlk.phase.recon.constraint.Constraint.Provenance;
+import zlk.phase.recon.constraint.Content;
 import zlk.phase.recon.constraint.Content.Structure;
+import zlk.phase.recon.constraint.RcType;
 import zlk.phase.recon.constraint.RcType.AppN;
 import zlk.phase.recon.constraint.RcType.FunN;
 import zlk.phase.recon.constraint.RcType.RecordN;
@@ -65,47 +66,48 @@ public class TypeReconstructor {
 				self.result.traverse(Variable::toType),
 				extracted.caseTypings().map(
 						caseTyping -> caseTyping.map(RcType::toType)));
-
-//		if(self.errors.isEmpty()) {
-//			return new Result.Ok<>(new Result(
-//					self.result.traverse(Variable::toType),
-//					extracted.caseTypings().map(
-//							caseTyping -> caseTyping.map(RcType::toType))));
-//		} else {
-//			return new Result.Err<>(self.errors.toSeq());  // TODO: unifyのmismatchなどを入れる
-//		}
 	}
 
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {
+		solve(con, letRank, env, null);
+	}
+
+	private void solve(
+			Constraint con,
+			int letRank,
+			IdMap<Variable> env,
+			TypeError.InfiniteType infiniteType
+	) {
 		switch(con) {
-		case CEqual(RcType type, RcType expectation) -> {
+		case CEqual(RcType type, RcType expectation, Provenance provenance) -> {
 			Variable actual = typeToVar(letRank, type, IdMap.of());
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected, freshFlex, letRank);
+			unify(actual, expected, provenance, letRank);
 		}
-		case CLocal(Id id, RcType expectation) -> {
+		case CLocal(Id id, RcType expectation, Provenance provenance) -> {
 			Variable actual = instantiateIfGeneralized(letRank, env.get(id));
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected, freshFlex, letRank);
+			unify(actual, expected, provenance, letRank);
 		}
-		case CForeign(Id _, Type type, RcType expectation) -> {
+		case CForeign(Id _, Type type, RcType expectation, Provenance provenance) -> {
 			RcType.Inst inst = RcType.instantiate(type, freshFlex);
 			introduce(inst.flexes(), letRank);
 			Variable actual = typeToVar(letRank, inst.type(), IdMap.of());
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
-			Unify.unify(actual, expected, freshFlex, letRank);
+			unify(actual, expected, provenance, letRank);
 		}
-		case CPattern(Id _, RcType ctorTy, RcType expection) -> {
+		case CPattern(Id _, RcType ctorTy, RcType expection, Provenance provenance) -> {
 			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
 			Variable expected = typeToVar(letRank, expection, IdMap.of());
-			Unify.unify(actual, expected, freshFlex, letRank);
+			unify(actual, expected, provenance, letRank);
 		}
 		case CLet(
 				Seq<Variable> rigids,
 				Seq<Variable> flexes,
 				IdMap<RcType> header,
 				Seq<CPhase> headerCons,
-				Seq<Constraint> bodyCons)
+				Seq<Constraint> bodyCons,
+				IdMap<zlk.common.Location> declarationLocations)
 		-> {
 			final int nextRank = letRank + 1;
 
@@ -118,7 +120,14 @@ public class TypeReconstructor {
 
 			// 強連結成分ごとに解決
 			for (CPhase phase : headerCons) {
-				solve(phase.cons(), nextRank, newEnv);
+				TypeError.InfiniteType phaseInfiniteType = infiniteType;
+				if(!phase.genTargets().isEmpty()) {
+					Id id = phase.genTargets().head();
+					if(declarationLocations.containsKey(id)) {
+						phaseInfiniteType = new TypeError.InfiniteType(declarationLocations.get(id), id);
+					}
+				}
+				solve(phase.cons(), nextRank, newEnv, phaseInfiniteType);
 
 				// let宣言の関数を一般化
 				Seq<Variable> anchors = phase.genTargets().map(locals::get);
@@ -134,7 +143,10 @@ public class TypeReconstructor {
 				generalizeAnchors(youngMark, visitMark, nextRank, rigids);
 				for(Variable rigid : rigids) {
 					if(!rigid.get().isQuantified()) {
-						throw new IllegalStateException("rigid variable escaped its scope: " + rigid);
+						Id id = declarationLocations.keys().head();
+						throw new TypeErrorException(new TypeError.UnificationFailure(
+								new Provenance(declarationLocations.get(id), new zlk.phase.recon.constraint.Context.Annotation(id)),
+								Mismatch.Reason.INCOMPATIBLE), null);
 					}
 				}
 			}
@@ -142,9 +154,13 @@ public class TypeReconstructor {
 			locals.forEach((id, v) -> result.put(id, v));
 
 			// 本体を解く
-			solve(bodyCons, letRank, newEnv);
+			solve(bodyCons, letRank, newEnv, infiniteType);
 
-			locals.forEach(this::occurCheck);
+			declarationLocations.forEach((id, location) -> {
+				if(locals.containsKey(id)) {
+					occurCheck(id, locals.get(id), location);
+				}
+			});
 		}
 		case CExists(
 				Seq<Variable> vars,
@@ -152,8 +168,13 @@ public class TypeReconstructor {
 		-> {
 			final int nextRank = letRank + 1;
 			introduce(vars, nextRank);
-			solve(cons, nextRank, env);
-			// assert vars.stream().allMatch(var->!var.occurs());
+			solve(cons, nextRank, env, infiniteType);
+			if(vars.anyMatch(Variable::occurs)) {
+				if(infiniteType != null) {
+					throw new TypeErrorException(infiniteType, null);
+				}
+				throw new IllegalStateException("cyclic inference variable escaped CExists scope");
+			}
 		}
 		}
 	}
@@ -161,6 +182,26 @@ public class TypeReconstructor {
 	private void solve(Seq<Constraint> cons, int letRank, IdMap<Variable> env) {
 		for(Constraint con : cons) {
 			solve(con, letRank, env);
+		}
+	}
+
+	private void solve(
+			Seq<Constraint> cons,
+			int letRank,
+			IdMap<Variable> env,
+			TypeError.InfiniteType infiniteType
+	) {
+		for(Constraint con : cons) {
+			solve(con, letRank, env, infiniteType);
+		}
+	}
+
+	private void unify(Variable actual, Variable expected, Provenance provenance, int letRank) {
+		try {
+			Unify.unify(actual, expected, freshFlex, letRank);
+		} catch(Mismatch mismatch) {
+			throw new TypeErrorException(
+					new TypeError.UnificationFailure(provenance, mismatch.reason()), mismatch);
 		}
 	}
 
@@ -212,11 +253,10 @@ public class TypeReconstructor {
 		return var;
 	}
 
-	private void occurCheck(Id id, Variable var) {
+	private void occurCheck(Id id, Variable var, zlk.common.Location location) {
 		if(var.occurs()) {
-			// TODO エラーの詳細情報を構築
-//			errors.add(new InfinitType(id));
-			throw new RuntimeException();
+			throw new TypeErrorException(
+					new TypeError.InfiniteType(location, id), null);
 		}
 	}
 

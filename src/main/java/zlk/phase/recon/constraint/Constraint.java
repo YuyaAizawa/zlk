@@ -1,6 +1,7 @@
 package zlk.phase.recon.constraint;
 
 import zlk.common.Type;
+import zlk.common.Location;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.phase.recon.Variable;
@@ -17,22 +18,34 @@ import zlk.util.pp.PrettyPrinter;
 public sealed interface Constraint extends PrettyPrintable
 permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 
-	// TODO: エラーメッセージ用の制約の由来
-	// どんな情報が必要か詰めてから
+	/** Source information attached by {@link zlk.phase.recon.ConstraintExtractor}. */
+	record Provenance(Location location, Context context) {
+		public static final Provenance NONE = new Provenance(Location.noLocation(), Context.NONE);
+	}
 
 	/**
 	 * 型の等式制約
 	 */
 	record CEqual(
 			RcType type,
-			RcType expected) implements Constraint {}
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CEqual(RcType type, RcType expected) {
+			this(type, expected, Provenance.NONE);
+		}
+	}
 
 	/**
 	 * 出現した変数の型
 	 */
 	record CLocal(
 			Id id,
-			RcType expected) implements Constraint {}
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CLocal(Id id, RcType expected) {
+			this(id, expected, Provenance.NONE);
+		}
+	}
 
 	/**
 	 * 出現した外部変数（コンストラクタ含む）の型
@@ -40,7 +53,12 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	record CForeign(
 			Id id,
 			Type ty,
-			RcType expected) implements Constraint {}
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CForeign(Id id, Type ty, RcType expected) {
+			this(id, ty, expected, Provenance.NONE);
+		}
+	}
 
 	/**
 	 * パターンによる制約
@@ -48,7 +66,12 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	record CPattern(
 			Id id,  // TODO Ctor以外のカテゴリに対応
 			RcType ctorTy,
-			RcType expected) implements Constraint {}
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CPattern(Id id, RcType ctorTy, RcType expected) {
+			this(id, ctorTy, expected, Provenance.NONE);
+		}
+	}
 
 	/**
 	 * letやcaseのパターンとスコープに関わる制約．
@@ -71,7 +94,17 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 			Seq<Variable> flexes,
 			IdMap<RcType> header,
 			Seq<CPhase> headerCons,
-			Seq<Constraint> bodyCon) implements Constraint {
+			Seq<Constraint> bodyCon,
+			IdMap<Location> declarationLocations) implements Constraint {
+
+		public CLet(
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
+				IdMap<RcType> header,
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCon) {
+			this(rigids, flexes, header, headerCons, bodyCon, new IdMap<>());
+		}
 
 		public CLet(
 				Seq<Variable> rigids,
@@ -79,7 +112,7 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 				IdMap<RcType> header,
 				Seq<CPhase> headerCons,
 				Constraint bodyCon) {
-			this(rigids, flexes, header, headerCons, Seq.of(bodyCon));
+			this(rigids, flexes, header, headerCons, Seq.of(bodyCon), new IdMap<>());
 		}
 	}
 
@@ -119,16 +152,16 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch (this) {
-		case CEqual(RcType type, RcType expected) -> {
+		case CEqual(RcType type, RcType expected, Provenance _) -> {
 			pp.append(type).append(" = ").append(expected);
 		}
-		case CLocal(Id id, RcType expected) -> {
+		case CLocal(Id id, RcType expected, Provenance _) -> {
 			pp.append("Local: ").append(id).append(" = ").append(expected);
 		}
-		case CForeign(Id id, Type type, RcType expected) -> {
+		case CForeign(Id id, Type type, RcType expected, Provenance _) -> {
 			pp.append("Foreign: ").append(id).append(":").append(type).append(" = ").append(expected);
 		}
-		case CPattern(Id id, RcType ctorTy, RcType expected) -> {
+		case CPattern(Id id, RcType ctorTy, RcType expected, Provenance _) -> {
 			pp.append("Pattern: ").append(id).append(": ").append(ctorTy).append(" = ").append(expected);
 		}
 		case CLet(
@@ -136,7 +169,8 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 				Seq<Variable> flexes,
 				IdMap<RcType> header,
 				Seq<CPhase> headerCons,
-				Seq<Constraint> bodyCons
+				Seq<Constraint> bodyCons,
+				IdMap<Location> _
 		) -> {
 			pp.append("Let:").endl();
 			pp.indent(() -> {
