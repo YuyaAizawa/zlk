@@ -37,32 +37,6 @@ flowchart TD
 
 `ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめた`Reconstructed`を返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
 
-### 主要な中間表現
-
-#### `ast`
-
-構文解析直後の抽象構文木．ソース上の名前と構文を保持する．構文解析後は変更せず，後続フェーズに必要な情報は別のIRまたは対応表として生成する．
-
-#### `idcalc`
-
-`NameEvaluator`による名前解決後のIR．ローカル変数，外部変数，データコンストラクタなどが`Id`によって識別される．`PatternChecker`，`ConstraintExtractor`，`ClosureConverter`の入力となる．
-
-#### `Constraint`
-
-`recon.constraint`に定義された型推論用のIR．主な構成要素は次のとおり．
-
-- `RcType`：単一化および型再構築で使用する型
-- `Constraint`：型の等式，スコープ，宣言グループなどの制約
-- `Variable`：union-findによって管理される型変数
-- `PatternTyping<RcType>`：case patternの構文木と制約上の型を対応付けた木
-- `CaseTyping<RcType>`：一つのcase式に含まれるbranch patternの型付き木
-- `RcType.Anno`：型注釈をrigidな`RcType`へ変換した結果
-- `RcType.Inst`：多相型をfresh flexでインスタンス化した結果
-
-#### `clcalc`
-
-`ClosureConverter`によるクロージャ変換後のIR．自由変数を明示的に扱い，JVMバイトコード生成の入力となる．
-
 ### レコード型
 
 ZLKのレコード型は，行多相を持つ構造的型である．重要な設計は次のとおり．
@@ -98,19 +72,36 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 
 | パッケージ | 責務 |
 |---|---|
-| `ast` | 抽象構文木 |
-| `parser` | 字句解析と構文解析 |
-| `nameeval` | 名前解決 |
-| `idcalc` | 名前解決後のIR |
-| `patterncheck` | パターンマッチの冗長性および網羅性の検査 |
-| `recon` | 型制約の抽出と型再構築 |
-| `clconv` | クロージャ変換 |
-| `clcalc` | クロージャ変換後のIR |
-| `bytecodegen` | JVMバイトコード生成 |
-| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
-| `common` | `Id`，`Location`，`Type`などの共通データ構造 |
+| `common`，`common.id` | `Id`，`Location`，`Type`などの共通データ構造 |
+| `compiler` | `Driver`によるコンパイルパイプラインと結果の統括 |
 | `core` | 組み込み関数と組み込み値 |
-| `util` | コレクション，`Result`，Pretty Printerなどの汎用部品 |
+| `diagnostic` | 構造化診断と診断の報告先 |
+| `ir.ast` | 抽象構文木 |
+| `ir.token` | 字句解析結果 |
+| `ir.idcalc` | 名前解決後のIR |
+| `ir.typing` | 型再構築後に後続フェーズが利用する型情報 |
+| `ir.clcalc` | クロージャ変換後のIR |
+| `phase` | コンパイルフェーズ共通の結果表現 |
+| `phase.parse` | 字句解析と構文解析 |
+| `phase.nameeval` | 名前解決と型名解決 |
+| `phase.recon` | 型制約の抽出と型再構築 |
+| `phase.recon.constraint` | 型制約IRと型再構築中の型表現 |
+| `phase.patterncheck` | パターンマッチの冗長性および網羅性の検査 |
+| `phase.clconv` | クロージャ変換 |
+| `phase.codegen` | JVMバイトコード生成 |
+| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
+| `util`，`util.collection`，`util.pp` | `Result`，コレクション，Pretty Printerなどの汎用部品 |
+
+### テストコード：`src/test/java/zlk`
+
+| パッケージ | 責務 |
+|---|---|
+| `zlk` | 全テストpackageを選択するsuite |
+| `zlk.feature.*` | 言語機能および実行時意味論のテスト |
+| `zlk.diagnostic` | コンパイラの診断機能のテスト |
+| `zlk.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
+| `zlk.runtime` | 生成コードが利用するランタイムの検査 |
+| `zlk.tester` | コンパイルフェーズごとのテスト支援ユーティリティ |
 
 `Main.java`は，フロントエンドが完成するまでに実装した言語機能を確認するための，コンパイルから実行までの動くサンプルである．コンパイラ全体を統括する完成したドライバではない．
 

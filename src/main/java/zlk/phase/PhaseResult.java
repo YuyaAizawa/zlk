@@ -5,6 +5,14 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class PhaseResult<T> {
+
+	/**
+	 * 成功時の処理結果が無いとき返す用の型
+	 */
+	public enum Unit {
+		INSTANCE
+	}
+
 	private static final PhaseResult<?> STOP = new PhaseResult<>(null);
 
 	private T value;

@@ -19,6 +19,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
+import zlk.diagnostic.Diagnostic;
 import zlk.ir.ast.Decl;
 import zlk.ir.ast.Exp;
 import zlk.ir.ast.Module;
@@ -29,7 +30,6 @@ import zlk.phase.clconv.ClosureConverter;
 import zlk.phase.codegen.BytecodeGenerator;
 import zlk.phase.nameeval.NameEvaluator;
 import zlk.phase.patterncheck.PatternChecker;
-import zlk.phase.patterncheck.PcError;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
 import zlk.phase.recon.TypeReconstructor;
@@ -67,7 +67,7 @@ public class ModuleTester {
 	private IcModule module = null;
 	private Constraint cint = null;
 	private IdMap<Type> types = null;
-	private Seq<PcError> patternErrors = null;
+	private Seq<Diagnostic> patternErrors = null;
 	private CcModule clconv = null;
 	private final Map<String, ValueTester> functions = new HashMap<>();
 	private List<String> generatedClassNames = Collections.emptyList();
@@ -164,7 +164,7 @@ public class ModuleTester {
 		return parseErrors.mapToInt(err -> err.loc().startLine() - 1);  // module Mainの分を引く
 	}
 
-	public Seq<PcError> getPatternErrors() {
+	public Seq<Diagnostic> getPatternErrors() {
 		return patternErrors;
 	}
 
