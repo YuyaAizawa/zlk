@@ -3,32 +3,44 @@ package zlk.compiler;
 import java.util.HashMap;
 import java.util.Map;
 
-import zlk.ast.Module;
-import zlk.bytecodegen.BytecodeGenerator;
-import zlk.clcalc.CcModule;
-import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.IcModule;
-import zlk.nameeval.NameEvaluator;
-import zlk.parser.Lexer;
-import zlk.parser.Parser;
-import zlk.parser.Tokenized;
-import zlk.patterncheck.PatternChecker;
-import zlk.patterncheck.PcError;
-import zlk.recon.CaseTyping;
-import zlk.recon.ConstraintExtractor;
-import zlk.recon.FreshFlex;
-import zlk.recon.TypeReconstructor;
+import zlk.diagnostic.Diagnostic;
+import zlk.ir.ast.Module;
+import zlk.ir.clcalc.CcModule;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.token.Tokenized;
+import zlk.ir.typing.CaseTyping;
+import zlk.phase.PhaseResult;
+import zlk.phase.clconv.ClosureConverter;
+import zlk.phase.codegen.BytecodeGenerator;
+import zlk.phase.nameeval.NameEvaluator;
+import zlk.phase.parse.Lexer;
+import zlk.phase.parse.Parser;
+import zlk.phase.patterncheck.PatternChecker;
+import zlk.phase.patterncheck.PcError;
+import zlk.phase.recon.ConstraintExtractor;
+import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.TypeReconstructor;
 import zlk.util.collection.Seq;
 
 public final class Driver {
 
-	// TODO: 出力を副作用にするのか，戻り値にするのか
-	// これはCompilePhaseのインターフェースをとりあえずで決めるために作った
-	public static PhaseResult<Map<String, byte[]>> compile(String name, String src) {
+	sealed interface CompilationResult {
+
+		record Succeeded(
+				Map<String, byte[]> clazzes,
+				Seq<Diagnostic> diags
+		) implements CompilationResult {}
+
+		record Failed(
+				Seq<Diagnostic> diags
+		) implements CompilationResult {}
+	}
+
+	public static CompilationResult compile(String name, String src) {
 
 		Diagnostic.Sink sink = new Diagnostic.Sink();
 
@@ -53,8 +65,10 @@ public final class Driver {
 					typesAndcaseTypings -> closurePhase(module, typesAndcaseTypings.types(), sink)
 						.andThen(clcalced -> bytecodePhase(clcalced, typesAndcaseTypings.types(), name, sink)))));
 
-		// TODO: sinkであつめた診断の処理
-		return result;
+		Seq<Diagnostic> diags = sink.toSeq();
+		return result.fold(
+				clazzes -> new CompilationResult.Succeeded(clazzes, diags),
+				() -> new CompilationResult.Failed(diags));
 	}
 
 	private static PhaseResult<Tokenized> lexPhase(String name, String src, Diagnostic.Sink sink) {

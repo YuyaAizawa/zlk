@@ -14,26 +14,26 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-import zlk.ast.Decl;
-import zlk.ast.Exp;
-import zlk.ast.Module;
-import zlk.bytecodegen.BytecodeGenerator;
-import zlk.clcalc.CcModule;
-import zlk.clconv.ClosureConverter;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.IcModule;
-import zlk.nameeval.NameEvaluator;
-import zlk.parser.Tokenized;
-import zlk.patterncheck.PatternChecker;
-import zlk.patterncheck.PcError;
-import zlk.recon.ConstraintExtractor;
-import zlk.recon.FreshFlex;
-import zlk.recon.TypeReconstructor;
-import zlk.recon.constraint.Constraint;
+import zlk.ir.ast.Decl;
+import zlk.ir.ast.Exp;
+import zlk.ir.ast.Module;
+import zlk.ir.clcalc.CcModule;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.token.Tokenized;
+import zlk.phase.clconv.ClosureConverter;
+import zlk.phase.codegen.BytecodeGenerator;
+import zlk.phase.nameeval.NameEvaluator;
+import zlk.phase.patterncheck.PatternChecker;
+import zlk.phase.patterncheck.PcError;
+import zlk.phase.recon.ConstraintExtractor;
+import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.TypeReconstructor;
+import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -77,8 +77,8 @@ public class ModuleTester {
 		this.src = "module " + TARGET_MODULE_NAME + "\n" + src;  // TODO: これ要る？
 		this.classLoader = new InMemoryClassLoader();
 
-		Tokenized tokens = new zlk.parser.Lexer(TARGET_FILE_NAME, this.src).lex();
-		this.ast = zlk.parser.Parser.parse(tokens);
+		Tokenized tokens = new zlk.phase.parse.Lexer(TARGET_FILE_NAME, this.src).lex();
+		this.ast = zlk.phase.parse.Parser.parse(tokens);
 		this.parseErrors = collectParseErrors(ast);
 
 		if(this.compileLevel == CompileLevel.PARSE) {
@@ -278,7 +278,7 @@ public class ModuleTester {
 			});
 			collectParseErrors(body, errors);
 		}
-		case Exp.Case(Exp scrutinee, Seq<zlk.ast.CaseBranch> branches, _) -> {
+		case Exp.Case(Exp scrutinee, Seq<zlk.ir.ast.CaseBranch> branches, _) -> {
 			collectParseErrors(scrutinee, errors);
 			branches.forEach(branch -> collectParseErrors(branch.body(), errors));
 		}

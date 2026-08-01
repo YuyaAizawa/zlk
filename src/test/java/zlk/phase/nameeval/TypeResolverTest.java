@@ -10,7 +10,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import zlk.common.RecordField;
 import zlk.common.Type;
-import zlk.idcalc.IcModule;
+import zlk.ir.idcalc.IcModule;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 import zlk.util.collection.Seq;
