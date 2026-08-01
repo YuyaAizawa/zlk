@@ -99,8 +99,6 @@ public final class Driver {
 			IcModule module,
 			DiagnosticReporter sink
 	) {
-		// TODO: せっかく2段階で型推論をしているので気の利いたエラーを考える
-
 		// 共通のフレッシュ変数カウンタ
 		FreshFlex freshFlex = new FreshFlex();
 
