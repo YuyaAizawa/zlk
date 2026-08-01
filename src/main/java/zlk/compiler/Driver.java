@@ -8,6 +8,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.DiagnosticReporter;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcModule;
@@ -20,66 +21,66 @@ import zlk.phase.nameeval.NameEvaluator;
 import zlk.phase.parse.Lexer;
 import zlk.phase.parse.Parser;
 import zlk.phase.patterncheck.PatternChecker;
-import zlk.phase.patterncheck.PcError;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
 import zlk.phase.recon.TypeReconstructor;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public final class Driver {
 
-	sealed interface CompilationResult {
+	public sealed interface CompilationResult {
 
-		record Succeeded(
+		public record Succeeded(
 				Map<String, byte[]> clazzes,
 				Seq<Diagnostic> diags
 		) implements CompilationResult {}
 
-		record Failed(
+		public record Failed(
 				Seq<Diagnostic> diags
 		) implements CompilationResult {}
 	}
 
 	public static CompilationResult compile(String name, String src) {
 
-		Diagnostic.Sink sink = new Diagnostic.Sink();
+		DiagnosticCollector diagCollector = new DiagnosticCollector();
 
 		// 字句解析から名前解決まで
-		PhaseResult<IcModule> nameEvaled = lexPhase(name, src, sink)
-				.andThen(tokenized -> parsePhase(tokenized, sink))
-				.andThen(module -> nameEvalPhase(module, sink));
+		PhaseResult<IcModule> nameEvaled = lexPhase(name, src, diagCollector)
+				.andThen(tokenized -> parsePhase(tokenized, diagCollector))
+				.andThen(module -> nameEvalPhase(module, diagCollector));
 
 		// 型推論
 		PhaseResult<TypesAndCaseTypings> reconed =
-				nameEvaled.andThen(icModule -> reconPhase(icModule, sink));
+				nameEvaled.andThen(icModule -> reconPhase(icModule, diagCollector));
 
 		// パターン検査
-		PhaseResult<Class<Void>> patternChecked = reconed.andThen(
+		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
 				typesAndcaseTypings -> nameEvaled.andThen(
-				module -> patternPhase(module, typesAndcaseTypings.caseTypings(), sink)));
+				module -> patternPhase(module, typesAndcaseTypings.caseTypings(), diagCollector)));
 
 		// 閉包変換からバイトコード生成まで
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
 				module -> patternChecked.andThen(
 				_ -> reconed.andThen(
-					typesAndcaseTypings -> closurePhase(module, typesAndcaseTypings.types(), sink)
-						.andThen(clcalced -> bytecodePhase(clcalced, typesAndcaseTypings.types(), name, sink)))));
+					typesAndcaseTypings -> closurePhase(module, typesAndcaseTypings.types(), diagCollector)
+						.andThen(clcalced -> bytecodePhase(clcalced, typesAndcaseTypings.types(), name, diagCollector)))));
 
-		Seq<Diagnostic> diags = sink.toSeq();
+		Seq<Diagnostic> diags = diagCollector.collect();
 		return result.fold(
 				clazzes -> new CompilationResult.Succeeded(clazzes, diags),
 				() -> new CompilationResult.Failed(diags));
 	}
 
-	private static PhaseResult<Tokenized> lexPhase(String name, String src, Diagnostic.Sink sink) {
+	private static PhaseResult<Tokenized> lexPhase(String name, String src, DiagnosticReporter sink) {
 		return PhaseResult.ready(new Lexer(name, src).lex());
 	}
 
-	private static PhaseResult<Module> parsePhase(Tokenized tokens, Diagnostic.Sink sink) {
+	private static PhaseResult<Module> parsePhase(Tokenized tokens, DiagnosticReporter sink) {
 		return PhaseResult.ready(Parser.parse(tokens));
 	}
 
-	private static PhaseResult<IcModule> nameEvalPhase(Module module, Diagnostic.Sink sink) {
+	private static PhaseResult<IcModule> nameEvalPhase(Module module, DiagnosticReporter sink) {
 		return PhaseResult.ready(new NameEvaluator(module).eval());
 	}
 
@@ -89,7 +90,7 @@ public final class Driver {
 	) {}
 	private static PhaseResult<TypesAndCaseTypings> reconPhase(
 			IcModule module,
-			Diagnostic.Sink sink
+			DiagnosticReporter sink
 	) {
 		// TODO: せっかく2段階で型推論をしているので気の利いたエラーを考える
 
@@ -121,24 +122,24 @@ public final class Driver {
 		return PhaseResult.ready(new TypesAndCaseTypings(types, reconed.caseTypings()));
 	}
 
-	private static PhaseResult<Class<Void>> patternPhase(
+	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
 			Seq<CaseTyping<Type>> caseTypings,
-			Diagnostic.Sink sink
+			DiagnosticReporter diagCollector
 	) {
-		Seq<PcError> result = PatternChecker.check(module, caseTypings);
+		Seq<Diagnostic> result = PatternChecker.check(module, caseTypings);
 		if(result.isEmpty()) {
-			return PhaseResult.ready(Void.TYPE);
+			return PhaseResult.ready(PhaseResult.Unit.INSTANCE);
 		}
 		// 警告はないので1つでも診断があれば即失敗
-		result.map(Diagnostic.InvalidPattern::new).forEach(sink::report);
+		result.forEach(diagCollector::report);
 		return PhaseResult.blocked();
 	}
 
 	private static PhaseResult<CcModule> closurePhase(
 			IcModule module,
 			IdMap<Type> types,
-			Diagnostic.Sink sink
+			DiagnosticReporter sink
 	) {
 		Seq<Id> builtinIds = Builtin.functions().map(Builtin::id);
 		return PhaseResult.ready(new ClosureConverter(module, types, builtinIds).convert());
@@ -148,11 +149,25 @@ public final class Driver {
 			CcModule module,
 			IdMap<Type> types,
 			String name,
-			Diagnostic.Sink sink
+			DiagnosticReporter sink
 	) {
 		Map<String, byte[]> bytecode = new HashMap<>();
 		new BytecodeGenerator(module, types, Builtin.functions(), name)
 				.compile(bytecode::put);
 		return PhaseResult.ready(bytecode);
+	}
+}
+
+final class DiagnosticCollector implements DiagnosticReporter {
+
+	private SeqBuffer<Diagnostic> acc = new SeqBuffer<>();
+
+	@Override
+	public void report(Diagnostic diag) {
+		acc.add(diag);
+	}
+
+	Seq<Diagnostic> collect() {
+		return acc.toSeq();
 	}
 }

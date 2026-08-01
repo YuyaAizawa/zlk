@@ -6,6 +6,7 @@ import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.diagnostic.Diagnostic;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
@@ -17,7 +18,7 @@ import zlk.util.collection.SeqBuffer;
 // http://moscova.inria.fr/~maranget/papers/warn/warn.pdf
 
 public final class PatternChecker {
-	public static Seq<PcError> check(
+	public static Seq<Diagnostic> check(
 			IcModule module,
 			Seq<CaseTyping<Type>> caseTypings) {
 		PatternChecker checker = new PatternChecker(module);
@@ -27,7 +28,7 @@ public final class PatternChecker {
 
 	private final IdMap<UnionInfo> unionInfos;
 	private final IdMap<Id> ctorToUnion;
-	private final SeqBuffer<PcError> errors;
+	private final SeqBuffer<Diagnostic> errors;
 	private PatternChecker(IcModule module) {
 		this.unionInfos = new IdMap<>();
 		this.ctorToUnion = new IdMap<>();
@@ -79,7 +80,7 @@ public final class PatternChecker {
 
 			// 上の行まで完全に覆われている行は冗長
 			if(findWitness(row, usefulRows).isEmpty()) {
-				errors.add(new PcError.Redundant(
+				errors.add(new Diagnostic.RedundantPattern(
 						overallLoc, pattern.pattern().loc(), caseIdx));
 			} else {
 				usefulRows.add(row);
@@ -88,7 +89,7 @@ public final class PatternChecker {
 
 		// 網羅チェック
 		findWitness(anythings(1), usefulRows).ifPresent(missing -> {
-			errors.add(new PcError.Incomplete(overallLoc, missing));
+			errors.add(new Diagnostic.IncompletePattern(overallLoc, missing));
 		});
 	}
 

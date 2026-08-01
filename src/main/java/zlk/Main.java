@@ -17,6 +17,7 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
+import zlk.diagnostic.Diagnostic;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcModule;
@@ -27,7 +28,6 @@ import zlk.phase.nameeval.NameEvaluator;
 import zlk.phase.parse.Lexer;
 import zlk.phase.parse.Parser;
 import zlk.phase.patterncheck.PatternChecker;
-import zlk.phase.patterncheck.PcError;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
 import zlk.phase.recon.TypeReconstructor;
@@ -140,7 +140,7 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");
-		Seq<PcError> patternErrors = PatternChecker.check(idcalc, reconed.caseTypings());
+		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc, reconed.caseTypings());
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()
