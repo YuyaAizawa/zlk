@@ -69,7 +69,7 @@ public final class Unify {
 
 		// kind mismatchの検査
 		if(u.kind() != v.kind()) {
-			throw new Mismatch();
+			throw new Mismatch(Mismatch.Reason.KIND);
 		}
 
 		// ROW-kind同士はrowUnifyへ
@@ -155,7 +155,7 @@ public final class Unify {
 
 		// kind mismatchの検査（両者ともROW-kindでなければならない）
 		if(u.kind() != Variable.Kind.ROW || v.kind() != Variable.Kind.ROW) {
-			throw new Mismatch();
+			throw new Mismatch(Mismatch.Reason.KIND);
 		}
 
 		VariableState uState = u.get();
@@ -181,7 +181,7 @@ public final class Unify {
 				// flex + structure → structure採用．
 				// structureのfieldsとflex側forbiddenの衝突をmergeRowで検査する．
 				if(occursAnywhere(v, u)) {
-					throw new Mismatch("recursive row during unification");
+					throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 				}
 				mergeRow(u, uState, v, vState, vState.content);
 				return u;
@@ -204,7 +204,7 @@ public final class Unify {
 			switch(vState.content) {
 			case FlexVar _ -> {
 				if(occursAnywhere(u, v)) {
-					throw new Mismatch("recursive row during unification");
+					throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 				}
 				mergeRow(u, uState, v, vState, uState.content);
 				return u;
@@ -239,17 +239,17 @@ public final class Unify {
 
 		// occurs check: uがvのtailに出現する場合recursive row
 		if(uTail.isPresent() && uTail.get().isSame(u)) {
-			throw new Mismatch("recursive row during unification");
+			throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 		}
 		if(vTail.isPresent() && vTail.get().isSame(v)) {
-			throw new Mismatch("recursive row during unification");
+			throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 		}
 		// uがvRowのtailに出現，またはvがuRowのtailに出現する場合も同様
 		if(uTail.isPresent() && occursAnywhere(uTail.get(), v)) {
-			throw new Mismatch("recursive row during unification");
+			throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 		}
 		if(vTail.isPresent() && occursAnywhere(vTail.get(), u)) {
-			throw new Mismatch("recursive row during unification");
+			throw new Mismatch(Mismatch.Reason.RECURSIVE_ROW, "recursive row during unification");
 		}
 
 		// canonical fieldsを二本indexで shared／leftOnly／rightOnly に分割．

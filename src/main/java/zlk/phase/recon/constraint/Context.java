@@ -3,9 +3,12 @@ package zlk.phase.recon.constraint;
 import java.util.Optional;
 
 import zlk.common.id.Id;
+import zlk.phase.recon.constraint.Context.Annotation;
 import zlk.phase.recon.constraint.Context.CallArg;
 import zlk.phase.recon.constraint.Context.CallArity;
+import zlk.phase.recon.constraint.Context.FieldAccess;
 import zlk.phase.recon.constraint.Context.IfCondition;
+import zlk.phase.recon.constraint.Context.None;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -13,9 +16,19 @@ import zlk.util.pp.PrettyPrinter;
  * 型が期待される理由のうち文脈が関係するもの
  */
 public sealed interface Context extends PrettyPrintable
-permits CallArg, CallArity, IfCondition {
+permits Annotation, CallArg, CallArity, FieldAccess, IfCondition, None {
 
+	public static final Context NONE = new None();
 	public static final Context IF_CONDITION = new IfCondition();
+
+	/** 型注釈 */
+	record Annotation(Id id) implements Context {}
+
+	/** フィールドアクセス */
+	record FieldAccess(String field) implements Context {}
+
+	/** 特になし */
+	record None() implements Context {}
 
 	/**
 	 * 関数呼び出しの引数
@@ -41,6 +54,7 @@ permits CallArg, CallArity, IfCondition {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
+		case Annotation(Id id) -> pp.append("annotation: ").append(id);
 		case CallArg(Optional<Id> maybeName, int index) -> {
 			PrettyPrintable name = maybeName
 					.map(id -> (PrettyPrintable)(p -> p.append(id)))
@@ -56,6 +70,8 @@ permits CallArg, CallArity, IfCondition {
 		case IfCondition() -> {
 			pp.append("if condition");
 		}
+		case FieldAccess(String field) -> pp.append("field access: ").append(field);
+		case None() -> pp.append("no context");
 		}
 	}
 }

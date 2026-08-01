@@ -1,11 +1,106 @@
 package zlk.phase.recon;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 import org.junit.jupiter.api.Test;
+import zlk.common.id.Id;
+import zlk.phase.recon.constraint.Constraint;
+import zlk.phase.recon.constraint.Constraint.CEqual;
+import zlk.phase.recon.constraint.Constraint.CExists;
+import zlk.phase.recon.constraint.Constraint.CForeign;
+import zlk.phase.recon.constraint.Constraint.CLet;
+import zlk.phase.recon.constraint.Constraint.CLocal;
+import zlk.phase.recon.constraint.Constraint.CPattern;
+import zlk.phase.recon.constraint.Context;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
 
 public class ConstraintExtractorTest {
+	@Test
+	void leafConstraintsRetainSourceProvenanceForFieldAccessAnnotationAndApplication() {
+		var module = new ModuleTester("""
+				getX : { x : I32 } -> I32
+				getX record = record.x
+				answer = getX { x = 1 }
+				""", CompileLevel.TYPE_CINT);
+		List<Constraint> leaves = leaves(module.getConstraint());
+
+		CEqual fieldAccess = leaves.stream()
+				.filter(CEqual.class::isInstance)
+				.map(CEqual.class::cast)
+				.filter(con -> con.provenance().context() instanceof Context.FieldAccess)
+				.findFirst().orElseThrow();
+		assertEquals(3, fieldAccess.provenance().location().startLine());
+		assertEquals(new Context.FieldAccess("x"), fieldAccess.provenance().context());
+
+		CEqual annotation = leaves.stream()
+				.filter(CEqual.class::isInstance)
+				.map(CEqual.class::cast)
+				.filter(con -> con.provenance().context() instanceof Context.Annotation)
+				.findFirst().orElseThrow();
+		assertEquals(2, annotation.provenance().location().startLine());
+		assertEquals(new Context.Annotation(Id.intern("Main.getX")), annotation.provenance().context());
+
+		CEqual application = leaves.stream()
+				.filter(CEqual.class::isInstance)
+				.map(CEqual.class::cast)
+				.filter(con -> con.provenance().context() instanceof Context.CallArity)
+				.findFirst().orElseThrow();
+		assertEquals(4, application.provenance().location().startLine());
+		assertEquals(new Context.CallArity(Optional.of(Id.intern("Main.getX")), 1),
+				application.provenance().context());
+	}
+
+	private static List<Constraint> leaves(Constraint constraint) {
+		List<Constraint> result = new ArrayList<>();
+		collectLeaves(constraint, result);
+		return result;
+	}
+
+	private static void collectLeaves(Constraint constraint, List<Constraint> result) {
+		switch(constraint) {
+		case CEqual _, CLocal _, CForeign _, CPattern _ -> result.add(constraint);
+		case CLet(_, _, _, var phases, var body, _) -> {
+				phases.forEach(phase -> phase.cons().forEach(con -> collectLeaves(con, result)));
+				body.forEach(con -> collectLeaves(con, result));
+			}
+		case CExists(_, var constraints) -> constraints.forEach(con -> collectLeaves(con, result));
+		}
+	}
+
+	@Test
+	void reconstructionReportsLeafProvenanceWithUnificationReason() {
+		TypeErrorException exception = assertThrows(TypeErrorException.class, () ->
+				new ModuleTester("""
+					typed : I32 -> I32
+					typed value = value
+					bad = typed True
+					""", CompileLevel.TYPE_RECON));
+
+		TypeError.UnificationFailure error = assertInstanceOf(
+				TypeError.UnificationFailure.class, exception.error());
+		assertEquals(4, error.provenance().location().startLine());
+		assertEquals(new Context.CallArg(Optional.of(Id.intern("Main.typed")), 0),
+				error.provenance().context());
+		assertEquals(Mismatch.Reason.INCOMPATIBLE, error.reason());
+	}
+
+	@Test
+	void infiniteTypeReportsDeclaringLocationAndId() {
+		TypeErrorException exception = assertThrows(TypeErrorException.class, () ->
+				new ModuleTester("omega x = x x", CompileLevel.TYPE_RECON));
+
+		TypeError.InfiniteType error = assertInstanceOf(TypeError.InfiniteType.class, exception.error());
+		assertEquals(2, error.location().startLine());
+		assertEquals(Id.intern("Main.omega"), error.id());
+	}
+
 	@Test
 	void selfRecursiveFunction() {
 		String src ="""

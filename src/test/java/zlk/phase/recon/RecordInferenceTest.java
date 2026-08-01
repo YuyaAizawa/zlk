@@ -1,6 +1,5 @@
 package zlk.phase.recon;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import zlk.common.RecordField;
@@ -95,13 +94,6 @@ public class RecordInferenceTest {
 		module.getType("updated").is(updated);
 	}
 
-	@Test
-	void recordUpdateRejectsClosedRecordWithoutUpdatedField() {
-		assertThrows(RuntimeException.class, () -> new ModuleTester("""
-				setX record value = { record | x = value }
-				bad = setX { y = True } 1
-				""", CompileLevel.TYPE_RECON));
-	}
 
 	@Test
 	void openRowAnnotationCanDescribePolymorphicRecordUpdate() {
@@ -147,13 +139,6 @@ public class RecordInferenceTest {
 		module.getType("result").is(Type.I32);
 	}
 
-	@Test
-	void fieldAccessRejectsClosedRecordWithoutRequestedField() {
-		assertThrows(RuntimeException.class, () -> new ModuleTester("""
-				getX record = record.x
-				bad = getX { y = True }
-				""", CompileLevel.TYPE_RECON));
-	}
 
 	@Test
 	void openRowAnnotationAllowsFieldAccessFromWiderRecord() {

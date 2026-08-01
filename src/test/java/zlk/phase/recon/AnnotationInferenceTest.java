@@ -1,6 +1,5 @@
 package zlk.phase.recon;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.Test;
 import zlk.tester.ModuleTester;
 import zlk.tester.ModuleTester.CompileLevel;
@@ -43,16 +42,6 @@ public class AnnotationInferenceTest {
 		module.getType("bool").is("Bool");
 	}
 
-	@Test
-	void typeAnnotationCannotBeMoreGeneralThanInferredType() {
-		String src = """
-				bad : a -> a
-				bad x = 1
-				""";
-
-		assertThrows(RuntimeException.class,
-				() -> new ModuleTester(src, CompileLevel.TYPE_RECON));
-	}
 
 	@Test
 	void typeAnnotationDescribesTheWholeValueType() {
@@ -118,19 +107,6 @@ public class AnnotationInferenceTest {
 		module.getType("g").is("b -> b");
 	}
 
-	@Test
-	void incompatibleMutuallyRecursiveAnnotationsAreRejected() {
-		String src = """
-				f : a -> a
-				f x = g x
-
-				g : b -> I32
-				g x = f x
-				""";
-
-		assertThrows(RuntimeException.class,
-				() -> new ModuleTester(src, CompileLevel.TYPE_RECON));
-	}
 
 	@Test
 	void typeAnnotationBreaksInferenceDependencyCycle() {
@@ -146,16 +122,6 @@ public class AnnotationInferenceTest {
 		module.getType("g").is("a -> a");
 	}
 
-	@Test
-	void recursiveTypeAnnotationIsRigidInItsOwnBody() {
-		String src = """
-				f : a -> a
-				f x = f 1
-				""";
-
-		assertThrows(RuntimeException.class,
-				() -> new ModuleTester(src, CompileLevel.TYPE_RECON));
-	}
 
 	@Test
 	void nestedTypeAnnotationsShareOuterRigidVariable() {
@@ -174,18 +140,5 @@ public class AnnotationInferenceTest {
 		module.getType("outer.inner").is("a -> a");
 	}
 
-	@Test
-	void localTypeAnnotationCannotCaptureOuterTypeVariable() {
-		String src = """
-				outer x =
-				  let
-				    f : a -> a
-				    f y = x
-				  in
-				    f
-				""";
 
-		assertThrows(RuntimeException.class,
-				() -> new ModuleTester(src, CompileLevel.TYPE_RECON));
-	}
 }

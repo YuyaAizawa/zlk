@@ -24,6 +24,8 @@ public class UnifyTest {
 		Variable a = fresh.getVariable(Variable.Kind.TYPE);
 		Variable b = fresh.getVariable(Variable.Kind.ROW);
 
-		assertThrows(Mismatch.class, () -> Unify.unify(a, b));
+		Mismatch mismatch = assertThrows(Mismatch.class, () -> Unify.unify(a, b));
+
+		assertEquals(Mismatch.Reason.KIND, mismatch.reason());
 	}
 }
