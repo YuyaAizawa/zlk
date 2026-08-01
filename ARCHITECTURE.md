@@ -2,71 +2,47 @@
 
 この文書は，ZLKコンパイラの全体構造，コンパイルフェーズ，主要なデータ構造，およびコードを読むための用語と命名の凡例を示す．個々のクラスやアルゴリズムの詳細は，関連するソースコードとコメントに記載されている．
 
-## コンパイルフェーズと中間表現
+## コンパイルフェーズ
 
 ```mermaid
 flowchart TD
-    Source(["source code"]) --> Lexer["Lexer"]
-    Lexer --> Tokens(["Tokenized"])
-    Tokens --> Parser["Parser"]
-    Parser --> AST(["ast"])
-    AST --> NameEval["NameEvaluator"]
-    NameEval --> IC(["idcalc"])
+    Source(["source code"]) --> Lexer["Lex<br/>phase.parse.Lexer"]
+    Lexer --> Tokens(["token.Tokenized"])
+    Tokens --> Parser["Parse<br/>phase.parse.Parser"]
+    Parser --> AST(["ast.Module"])
+    AST --> NameEvaluator["NameEval<br/>phase.nameeval.NameEvaluator"]
+    NameEvaluator --> IC(["idcalc.IcModule"])
 
-    IC --> Extract["ConstraintExtractor"]
-    Extract --> Constraint(["Constraint"])
-    Extract --> RcCaseTypings(["caseTypings<br/>CaseTyping&lt;RcType&gt;"])
+    IC --> Extractor["ConstraintExtract<br/>phase.recon.ConstraintExtractor"]
+    subgraph Recon
+        Extractor --> Extracted(["ConstraintExtractor.Result<br/>Constraint + CaseTyping&lt;RcType&gt;"])
+        Extracted --> Reconstructor["TypeReconstruct<br/>phase.recon.TypeReconstructor"]
+    end
+    Reconstructor --> Types(["types<br/>IdMap&lt;Type&gt;"])
+    Reconstructor --> CaseTypings(["caseTypings<br/>CaseTyping&lt;Type&gt;"])
 
-    Constraint --> Recon["TypeReconstructor"]
-    RcCaseTypings --> Recon
-    Recon --> Reconstruction(["Reconstructed"])
-    Reconstruction --> Types(["types<br/>IdMap&lt;Type&gt;"])
-    Reconstruction --> CaseTypings(["caseTypings<br/>CaseTyping&lt;Type&gt;"])
+    IC --> PatternChecker["PatternChecker<br/>phase.patterncheck.PatternChecker"]
+    CaseTypings --> PatternChecker
 
-    IC --> PatternCheck["PatternChecker"]
-    CaseTypings --> PatternCheck
-    PatternCheck --> PcErrors(["Seq&lt;PcError&gt;"])
+    IC --> ClosureConverter["ClosureConverter<br/>phase.clconv.ClosureConverter"]
+    Types --> ClosureConverter
+    ClosureConverter --> CC(["clcalc.CcModule"])
 
-    IC --> Clconv["ClosureConverter"]
-    Types --> Clconv
-    Clconv --> CC(["clcalc"])
-
-    CC --> BytecodeGen["BytecodeGenerator"]
-    Types --> BytecodeGen
-    BytecodeGen --> Class(["JVM bytecode / .class"])
+    CC --> BytecodeGenerator["BytecodeGenerator<br/>phase.codegen.BytecodeGenerator"]
+    Types --> BytecodeGenerator
+    BytecodeGenerator --> Class(["JVM bytecode / .class"])
 ```
 
-`PatternChecker`は，名前解決後の`IcModule`とcase式ごとの解決済み`CaseTyping<Type>`を検査し，冗長なパターンと網羅されていないパターンを`PcError`として報告する．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とcase pattern型の解決後に実行する．
+`Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
+`reconPhase`は`Driver`内では1つのフェーズのように記述してあるが，内部は`ConstraintExtractor`と`TypeReconstructor`という概念上異なるフェーズを含む．
+
+parser，nameeval，recon，patterncheckの各経路で得られた公開`Diagnostic`は，`Driver`がreportする．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
+
+`PatternChecker`は，名前解決後の`IcModule`とcase式ごとの解決済み`CaseTyping<Type>`を検査し，診断を返す．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とcase pattern型の解決後に実行する．
 
 `NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
 
-`ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめた`Reconstructed`を返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
-
-### 主要な中間表現
-
-#### `ast`
-
-構文解析直後の抽象構文木．ソース上の名前と構文を保持する．構文解析後は変更せず，後続フェーズに必要な情報は別のIRまたは対応表として生成する．
-
-#### `idcalc`
-
-`NameEvaluator`による名前解決後のIR．ローカル変数，外部変数，データコンストラクタなどが`Id`によって識別される．`PatternChecker`，`ConstraintExtractor`，`ClosureConverter`の入力となる．
-
-#### `Constraint`
-
-`recon.constraint`に定義された型推論用のIR．主な構成要素は次のとおり．
-
-- `RcType`：単一化および型再構築で使用する型
-- `Constraint`：型の等式，スコープ，宣言グループなどの制約
-- `Variable`：union-findによって管理される型変数
-- `PatternTyping<RcType>`：case patternの構文木と制約上の型を対応付けた木
-- `CaseTyping<RcType>`：一つのcase式に含まれるbranch patternの型付き木
-- `RcType.Anno`：型注釈をrigidな`RcType`へ変換した結果
-- `RcType.Inst`：多相型をfresh flexでインスタンス化した結果
-
-#### `clcalc`
-
-`ClosureConverter`によるクロージャ変換後のIR．自由変数を明示的に扱い，JVMバイトコード生成の入力となる．
+`ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめて返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
 
 ### レコード型
 
@@ -103,21 +79,38 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 
 | パッケージ | 責務 |
 |---|---|
-| `ast` | 抽象構文木 |
-| `parser` | 字句解析と構文解析 |
-| `nameeval` | 名前解決 |
-| `idcalc` | 名前解決後のIR |
-| `patterncheck` | パターンマッチの冗長性および網羅性の検査 |
-| `recon` | 型制約の抽出と型再構築 |
-| `clconv` | クロージャ変換 |
-| `clcalc` | クロージャ変換後のIR |
-| `bytecodegen` | JVMバイトコード生成 |
-| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
-| `common` | `Id`，`Location`，`Type`などの共通データ構造 |
+| `common`，`common.id` | `Id`，`Location`，`Type`などの共通データ構造 |
+| `compiler` | `Driver`によるコンパイルパイプラインと結果の統括 |
 | `core` | 組み込み関数と組み込み値 |
-| `util` | コレクション，`Result`，Pretty Printerなどの汎用部品 |
+| `diagnostic` | 構造化診断と診断の報告先 |
+| `ir.ast` | 抽象構文木 |
+| `ir.token` | 字句解析結果 |
+| `ir.idcalc` | 名前解決後のIR |
+| `ir.typing` | 型再構築後に後続フェーズが利用する型情報 |
+| `ir.clcalc` | クロージャ変換後のIR |
+| `phase` | コンパイルフェーズ共通の結果表現 |
+| `phase.parse` | 字句解析と構文解析 |
+| `phase.nameeval` | 名前解決と型名解決 |
+| `phase.recon` | 型制約の抽出と型再構築 |
+| `phase.recon.constraint` | 型制約IRと型再構築中の型表現 |
+| `phase.patterncheck` | パターンマッチの冗長性および網羅性の検査 |
+| `phase.clconv` | クロージャ変換 |
+| `phase.codegen` | JVMバイトコード生成 |
+| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
+| `util`，`util.collection`，`util.pp` | `Result`，コレクション，Pretty Printerなどの汎用部品 |
 
-`Main.java`は，フロントエンドが完成するまでに実装した言語機能を確認するための，コンパイルから実行までの動くサンプルである．コンパイラ全体を統括する完成したドライバではない．
+### テストコード：`src/test/java/zlk`
+
+| パッケージ | 責務 |
+|---|---|
+| `zlk` | 全テストpackageを選択するsuite |
+| `zlk.feature.*` | 言語機能および実行時意味論のテスト |
+| `zlk.diagnostic` | コンパイラの診断機能のテスト |
+| `zlk.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
+| `zlk.runtime` | 生成コードが利用するランタイムの検査 |
+| `zlk.tester` | コンパイルフェーズごとのテスト支援ユーティリティ |
+
+`Driver`は，コンパイルパイプラインを統括し，構造化diagnosticと`CompilationResult`を返す公開入口である．`Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
 
 ## 用語と命名
 

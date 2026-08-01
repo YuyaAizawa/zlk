@@ -7,10 +7,10 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.bytecodegen.Instructions;
-import zlk.bytecodegen.Primitive;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.phase.codegen.Instructions;
+import zlk.phase.codegen.Primitive;
 import zlk.util.collection.Seq;
 
 public record Builtin(

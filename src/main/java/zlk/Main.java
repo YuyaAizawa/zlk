@@ -13,30 +13,30 @@ import java.util.function.BiConsumer;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-import zlk.ast.Module;
-import zlk.bytecodegen.BytecodeGenerator;
-import zlk.clcalc.CcModule;
-import zlk.clconv.ClosureConverter;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.idcalc.IcModule;
-import zlk.nameeval.NameEvaluator;
-import zlk.parser.Lexer;
-import zlk.parser.Parser;
-import zlk.parser.Tokenized;
-import zlk.patterncheck.PatternChecker;
-import zlk.patterncheck.PcError;
-import zlk.recon.ConstraintExtractor;
-import zlk.recon.FreshFlex;
-import zlk.recon.TypeReconstructor;
-import zlk.recon.constraint.Constraint;
+import zlk.diagnostic.Diagnostic;
+import zlk.ir.ast.Module;
+import zlk.ir.clcalc.CcModule;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.token.Tokenized;
+import zlk.phase.clconv.ClosureConverter;
+import zlk.phase.codegen.BytecodeGenerator;
+import zlk.phase.nameeval.NameEvaluator;
+import zlk.phase.parse.Lexer;
+import zlk.phase.parse.Parser;
+import zlk.phase.patterncheck.PatternChecker;
+import zlk.phase.recon.ConstraintExtractor;
+import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.TypeReconstructor;
+import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.Seq;
 
 /**
- * フロントエンドが完成するまでに実装した言語機能を確認するための，
- * コンパイルから実行までの動くサンプル．完成したコンパイラドライバではない．
+ * 各コンパイルフェーズの中間結果と生成bytecodeを表示して実行する手動サンプル．
+ * 古いので廃止予定．通常のコンパイル入口は {@link zlk.compiler.Driver}．
  */
 public class Main {
 
@@ -134,13 +134,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		var reconstruction = TypeReconstructor.recon(extractResult, freshFlex).unwrap();
-		IdMap<Type> types = reconstruction.types();
+		var reconed = TypeReconstructor.recon(extractResult, freshFlex);
+		IdMap<Type> types = reconed.types();
 		System.out.println(types.buildString());
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");
-		Seq<PcError> patternErrors = PatternChecker.check(idcalc, reconstruction.caseTypings());
+		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc, reconed.caseTypings());
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()
