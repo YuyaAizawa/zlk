@@ -10,11 +10,9 @@ import org.junit.jupiter.api.Test;
 
 import zlk.common.RecordField;
 import zlk.common.Type;
-import zlk.recon.FreshFlex;
-import zlk.recon.Variable;
-import zlk.recon.constraint.RcType;
-import zlk.recon.constraint.RcType.Inst;
-import zlk.recon.constraint.RcType.RecordN;
+import zlk.phase.recon.constraint.RcType;
+import zlk.phase.recon.constraint.RcType.Inst;
+import zlk.phase.recon.constraint.RcType.RecordN;
 import zlk.util.collection.Seq;
 
 public class RcTypeTest {

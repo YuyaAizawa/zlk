@@ -5,11 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.recon.FreshFlex;
-import zlk.recon.Mismatch;
-import zlk.recon.Unify;
-import zlk.recon.Variable;
-
 public class UnifyTest {
 	@Test
 	void unifyPreservesRowKind() {

@@ -7,8 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import zlk.common.id.Id;
-import zlk.nameeval.DuplicatedNameException;
-import zlk.nameeval.Env;
 
 public class EnvTest {
 	@Test

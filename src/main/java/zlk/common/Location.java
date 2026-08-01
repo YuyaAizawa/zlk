@@ -1,6 +1,5 @@
 package zlk.common;
 
-import zlk.parser.Source;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
