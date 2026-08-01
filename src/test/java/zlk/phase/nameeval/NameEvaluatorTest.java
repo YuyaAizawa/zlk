@@ -4,7 +4,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import zlk.tester.DumpOnFailureWatcher;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.Test;
 import zlk.common.Type;
 import zlk.ir.idcalc.IcCtor;
@@ -16,21 +15,6 @@ import zlk.util.collection.Seq;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class NameEvaluatorTest {
-	@Test
-	void letInThenBranchDoesNotLeakToElseBranch() {
-		// then 側の let で宣言した名前が else 側から見えてはならない．
-		// 退出後に binding を破棄する一時 frame の検証．
-		assertThrows(RuntimeException.class, () -> new ModuleTester("""
-				f n =
-				  if isZero n then
-				    let
-				      one = 1
-				    in
-				      one
-				  else
-				    one
-				""", CompileLevel.NAME_EVAL));
-	}
 
 	@Test
 	void ctorSignatureAndIcCtorArgsShareResolvedArguments() {

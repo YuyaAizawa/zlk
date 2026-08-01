@@ -34,7 +34,7 @@ final class PatternBinder {
 			vars.addAll(ctorInfo.flexes());
 
 			if (args.size() != ctorInfo.argTys().size()) {
-				throw new RuntimeException("arity missmatch");  // TODO: コンパイルエラーに
+				throw new IllegalStateException("constructor arity must be validated during name evaluation");
 			}
 			cons.add(new CEqual(ctorInfo.resultTy(), expected));
 

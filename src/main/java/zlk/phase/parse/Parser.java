@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.diagnostic.Diagnostic;
 import zlk.ir.ast.AnType;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Constructor;
@@ -93,7 +94,13 @@ import zlk.util.collection.SeqBuffer;
  */
 public final class Parser {
 
+	public record Result(Module module, Seq<Diagnostic.SyntaxError> diagnostics) {}
+
 	public static Module parse(Tokenized src) {
+		return parseResult(src).module();
+	}
+
+	public static Result parseResult(Tokenized src) {
 		Module result = module.parse(src);
 		if(result == null) {
 			todo("error");
@@ -102,7 +109,7 @@ public final class Parser {
 			System.err.println(src.restSource());
 			todo("error");
 		}
-		return result;
+		return new Result(result, collectSyntaxErrors(result));
 	}
 
 	public static Module parse(String fileName, String src) {
@@ -111,6 +118,53 @@ public final class Parser {
 
 	public static Module parse(String fileName) throws IOException {
 		return parse(new Lexer(fileName).lex());
+	}
+
+	private static Seq<Diagnostic.SyntaxError> collectSyntaxErrors(Module module) {
+		SeqBuffer<Diagnostic.SyntaxError> errors = new SeqBuffer<>();
+		for(Decl decl : module.decls()) {
+			switch(decl) {
+			case Decl.ValDecl valDecl -> collectSyntaxErrors(valDecl.body(), errors);
+			case Decl.ValErr err -> errors.add(new Diagnostic.SyntaxError(err.loc()));
+			case Decl.TypeErr err -> errors.add(new Diagnostic.SyntaxError(err.loc()));
+			case Decl.TypeDecl _, Decl.TypeAlias _ -> {}
+			}
+		}
+		return errors.toSeq();
+	}
+
+	private static void collectSyntaxErrors(Exp exp, SeqBuffer<Diagnostic.SyntaxError> errors) {
+		switch(exp) {
+		case Exp.Cnst _, Exp.Var _ -> {}
+		case Exp.Err err -> errors.add(new Diagnostic.SyntaxError(err.loc()));
+		case Exp.Lamb(_, Exp body, _) -> collectSyntaxErrors(body, errors);
+		case Exp.App(Seq<Exp> exps, _) -> exps.forEach(e -> collectSyntaxErrors(e, errors));
+		case Exp.If(Exp cond, Exp thenExp, Exp elseExp, _) -> {
+			collectSyntaxErrors(cond, errors);
+			collectSyntaxErrors(thenExp, errors);
+			collectSyntaxErrors(elseExp, errors);
+		}
+		case Exp.Let(Seq<Decl.Value> decls, Exp body, _) -> {
+			decls.forEach(decl -> {
+				switch(decl) {
+				case Decl.ValDecl valDecl -> collectSyntaxErrors(valDecl.body(), errors);
+				case Decl.ValErr err -> errors.add(new Diagnostic.SyntaxError(err.loc()));
+				}
+			});
+			collectSyntaxErrors(body, errors);
+		}
+		case Exp.Case(Exp scrutinee, Seq<CaseBranch> branches, _) -> {
+			collectSyntaxErrors(scrutinee, errors);
+			branches.forEach(branch -> collectSyntaxErrors(branch.body(), errors));
+		}
+		case Exp.Record(Seq<Exp.RecordField> fields, _) ->
+			fields.forEach(field -> collectSyntaxErrors(field.value(), errors));
+		case Exp.RecordAccess(Exp target, String _, _) -> collectSyntaxErrors(target, errors);
+		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, _) -> {
+			collectSyntaxErrors(target, errors);
+			fields.forEach(field -> collectSyntaxErrors(field.value(), errors));
+		}
+		}
 	}
 
 	public static AnType parseTypeForTest(String src) {
