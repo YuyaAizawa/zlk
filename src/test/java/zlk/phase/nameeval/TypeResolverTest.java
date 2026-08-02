@@ -21,7 +21,8 @@ import zlk.util.collection.Seq;
 public class TypeResolverTest {
 	@Test
 	void aliasNotPresentInIcModuleTypes() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Box a = { value : a }
 				box : Box I32
 				box = { value = 1 }
@@ -34,7 +35,8 @@ public class TypeResolverTest {
 
 	@Test
 	void aliasPreservesOpenRowArgument() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Foo a = { a | x : I32 }
 				keep : Foo a -> Foo a
 				keep value = value
@@ -48,7 +50,8 @@ public class TypeResolverTest {
 
 	@Test
 	void adtConstructorArgumentCanUseAlias() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Box a = { value : a }
 				type Wrapped a = Wrapped (Box a)
 				""", CompileLevel.NAME_EVAL);
@@ -59,7 +62,8 @@ public class TypeResolverTest {
 
 	@Test
 	void adtParameterCanBeUsedAsRowParameter() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type Foo a = Foo { a | bar : I32 }
 				""", CompileLevel.NAME_EVAL);
 		var foo = module.getIdcalcModule().types().head();
@@ -73,7 +77,8 @@ public class TypeResolverTest {
 
 	@Test
 	void adtRowParameterKindPropagatesAcrossMutuallyRecursiveNominalReferences() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type A r = A (B r)
 				type B r = B (A r) | BEnd { r | value : I32 }
 				""", CompileLevel.NAME_EVAL);
@@ -85,7 +90,8 @@ public class TypeResolverTest {
 
 	@Test
 	void adtRowParameterKindPropagatesThroughAlias() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Open r = { r | value : I32 }
 				type Box r = Box (Open r)
 				""", CompileLevel.NAME_EVAL);
@@ -96,7 +102,8 @@ public class TypeResolverTest {
 
 	@Test
 	void valueAnnotationImplicitlyIntroducesTypeParameter() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				id : a -> a
 				id x = x
 				""", CompileLevel.NAME_EVAL);

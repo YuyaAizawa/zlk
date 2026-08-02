@@ -16,7 +16,8 @@ import zlk.util.collection.Seq;
 public class PatternFeatureTest {
 	@Test
 	void matchesNestedRecordPatterns() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				extract { outer = { flag = _, value = value }, tag = _ } = value
 				result = extract { tag = True, outer = { value = 42, flag = False } }
 				""", CompileLevel.BYTECODE_GEN);
@@ -43,7 +44,8 @@ public class PatternFeatureTest {
 
 	@Test
 	void checksRefutablePatternsNestedInsideRecords() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type Option a = None | Some a
 				read record =
 				  case record of
@@ -59,7 +61,8 @@ public class PatternFeatureTest {
 
 	@Test
 	void emptyRecordPatternMatchesKnownNonEmptyRecord() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				ignore : { x : I32 } -> I32
 				ignore {} = 1
 				result = ignore { x = 0 }
@@ -75,7 +78,8 @@ public class PatternFeatureTest {
 
 	@Test
 	void partialRecordPatternMatchesKnownWiderRecord() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				pick : { x : I32, y : Bool } -> I32
 				pick { x } = x
 				result = pick { y = True, x = 3 }
@@ -87,7 +91,8 @@ public class PatternFeatureTest {
 
 	@Test
 	void checksPartialRecordBranchesAgainstTheFullKnownShape() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type Option a = None | Some a
 				read : { x : Option I32, y : Bool } -> I32
 				read record =

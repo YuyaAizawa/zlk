@@ -51,7 +51,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void infersNestedRecordsTogetherWithParametricPolymorphism() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				wrap value = { payload = { value = value } }
 				wrappedInt = wrap 1
 				wrappedBool = wrap True
@@ -75,7 +76,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void accessesNestedFieldsAndUpdatesImmutably() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				base = { y = True, x = 1 }
 				updated = { base | x = 2 }
 				nested = { outer = updated }
@@ -90,7 +92,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void updatesMultipleRecordFieldsImmutably() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				base = { z = 3, y = True, x = 1 }
 				updated = { base | x = 2, y = False }
 				baseX = base.x
@@ -109,7 +112,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void acceptsNestedRecordTypeAnnotations() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				getValue : { outer : { value : I32 } } -> I32
 				getValue record = record.outer.value
 				result = getValue { outer = { value = 7 } }
@@ -123,7 +127,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void distinguishesEmptyRecordTypeFromUnit() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				empty : {}
 				empty = {}
 				""", CompileLevel.BYTECODE_GEN);
@@ -134,7 +139,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void inferredAccessorAcceptsWiderShapesAtBytecodeLevel() {
-		String src = """
+		String src =
+				"""
 				getX record = record.x
 				intResult = getX { x = 1, y = True }
 				nestedResult = getX { x = 2, z = 3, w = False }
@@ -149,7 +155,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void polymorphicUpdatePreservesExtraFieldsInZlkRecord() {
-		String src = """
+		String src =
+				"""
 				setX record value = { record | x = value }
 				base = { y = True, x = 1 }
 				updated = setX base 2
@@ -171,7 +178,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void annotatedRowPolymorphicAccessorRunsAtBytecodeLevel() {
-		String src = """
+		String src =
+				"""
 				getX : { r | x : I32 } -> I32
 				getX record = record.x
 				intResult = getX { x = 1, y = True }
