@@ -1,0 +1,88 @@
+package zlk.util.tester;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.util.Optional;
+
+import zlk.common.RecordField;
+import zlk.common.Type;
+import zlk.common.Type.Arrow;
+import zlk.common.Type.CtorApp;
+import zlk.common.Type.Var;
+import zlk.common.id.Id;
+import zlk.common.id.IdMap;
+import zlk.ir.ast.AnType;
+import zlk.phase.parse.Parser;
+import zlk.util.collection.Seq;
+
+public final class TypeTester {
+
+	private Type ty;
+	private Id moduleId;
+	private IdMap<Type> tysInModule;
+
+	TypeTester(Type ty, Id moduleId, IdMap<Type> tysInModule) {
+		this.ty = ty;
+		this.moduleId = moduleId;
+		this.tysInModule = tysInModule;
+	}
+
+	public void is(String expected) {
+		Type expectedTy = simpleEval(Parser.parseTypeForTest(expected));
+		expectedTy = importFromModule(expectedTy);
+		is(expectedTy);
+	}
+	public void is(Type expected) {
+		assertEquals(expected, ty);
+	}
+
+	private Type simpleEval(AnType aTy) {
+		return switch (aTy) {
+		case AnType.Unit _ -> Type.UNIT;
+		case AnType.Var(String name, _) -> new Type.Var(name);
+		case AnType.Type(String ctor, Seq<AnType> args, _) -> {
+			Id ctor_ = Id.intern(ctor);
+			Seq<Type> args_ = args.map(arg -> simpleEval(arg));
+			yield new Type.CtorApp(ctor_, args_);
+		}
+		case AnType.Arrow(AnType arg, AnType ret, _) -> new Type.Arrow(simpleEval(arg), simpleEval(ret));
+		case AnType.Record(Optional<AnType.Var> extension, Seq<AnType.RecordField> fields, _) -> {
+			if(extension.isPresent()) {
+				throw new IllegalArgumentException("open record type is not supported in expected types yet");
+			}
+			yield new Type.Record(fields.map(field -> new RecordField<>(
+					field.name(), simpleEval(field.type()))));
+		}
+		};
+	}
+
+	/**
+	 * モジュール内で定義した型はモジュール名なしにしたい
+	 * @param ty
+	 */
+	private Type importFromModule(Type ty) {
+		return switch(ty) {
+			case CtorApp(Id id, Seq<Type> typeArguments) -> {
+				yield new CtorApp(condidate(id), typeArguments.map(t -> importFromModule(t)));
+			}
+			case Arrow(Type arg, Type ret) -> {
+				yield new Arrow(importFromModule(arg), importFromModule(ret));
+			}
+			case Var _ -> { yield ty; }
+			case Type.Record(Type.Row row) ->
+				new Type.Record(
+						row.fields().map(field -> new RecordField<>(
+								field.name(), importFromModule(field.value()))),
+						row.extension());
+		};
+	}
+	private Id condidate(Id id) {
+		Id id_ = Id.intern(this.moduleId.canonicalName()+Id.SEPARATOR+id.canonicalName());  // TODO: 何とかする
+		return this.tysInModule.containsKey(id_) ? id_ : id;
+	}
+
+	@Override
+	public String toString() {
+		return ty.buildString();
+	}
+}

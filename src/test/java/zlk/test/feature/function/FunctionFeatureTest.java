@@ -1,0 +1,254 @@
+package zlk.test.feature.function;
+
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import zlk.util.tester.DumpOnFailureWatcher;
+import zlk.util.tester.ModuleTester;
+import zlk.util.tester.ModuleTester.CompileLevel;
+
+import org.junit.jupiter.api.Test;
+
+@ExtendWith(DumpOnFailureWatcher.class)
+public class FunctionFeatureTest {
+	@Test
+	void selfRecursiveFunction() {
+		String src =
+				"""
+				fact n =
+				  if isZero n then
+				    1
+				  else
+				    let
+				      one = 1
+				      nn = sub n one
+				    in
+				      mul n (fact nn)
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var fact = module.getValue("fact");
+		fact.apply(0).is(1);
+		fact.apply(5).is(120);
+	}
+
+	@Test
+	void closuerConversion() {
+		String src =
+				"""
+				make_adder x =
+				  let
+				    adder y =
+				      let
+				        adder2 z = add (add x y) z
+				      in
+				        adder2
+				  in
+				    adder
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var make_adder = module.getValue("make_adder");
+		make_adder.apply(1).apply(2).apply(3).is(6);
+	}
+
+	@Test
+	void selfRecursiveAndClosure() {
+		String src =
+				"""
+				f d n =
+				  let
+				    fuctplus m =
+				      if isZero m then
+				        1
+				      else
+				        add d (mul m (fuctplus (sub m 1)))
+				  in
+				    fuctplus n
+
+				ans = f 1 3
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getValue("ans").is(16);
+	}
+
+	@Test
+	void mutualRecursionAndClosure() {
+		String src=
+				"""
+				makeEvenFromOffset offset =
+				  let
+				    even n =
+				      if isZero n then
+				        True
+				      else
+				        odd (sub n 1)
+				    odd n =
+				      if isZero n then
+				        False
+				      else
+				        even (sub n 1)
+				    evenFromOffset n =
+				      even (add n offset)
+				  in
+				    evenFromOffset
+				main =
+				  let
+				    f = makeEvenFromOffset 1
+				  in
+				    f 3
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("makeEvenFromOffset").is("I32 -> I32 -> Bool");
+		module.getValue("main").is(true);
+	}
+
+	@Test
+	void genericFunction() {
+		String src=
+				"""
+				type List a =
+				  | Nil
+				  | Cons a (List a)
+
+				map f list=
+				  case list of
+				    Nil -> Nil
+				    Cons e rest ->
+				      Cons (f e) (map f rest)
+
+				isZero_ i = isZero i
+
+				test =
+				  map isZero_ (Cons 0 (Cons 1 (Cons 2 Nil)))
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("map").is("(a -> b) -> List a -> List b");
+		module.getValue("test").isWrittenIn("Cons True (Cons False (Cons False Nil))");
+	}
+
+	@Test
+	void genericAndClosure() {
+		String src=
+				"""
+				type Pair a b = Pair_ a b
+
+				test =
+				  let
+				    id x = x
+				    makePair a b =
+				      Pair_ (id a) (id b)
+				    intBoolPair = makePair 1 True
+				  in
+				    intBoolPair
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("test").is("Pair I32 Bool");
+		module.getValue("test").isWrittenIn("Pair_ 1 True");
+	}
+
+	@Test
+	void leftPartialApplication() {
+		String src=
+				"""
+				fun x y = add x y
+				f1 = fun 1
+
+				type Pair a b = Pair_ a b
+				f2 = Pair_ 1
+
+				a1 = f1 2
+				a2 = case f2 2 of
+				  Pair_ a b -> add a b
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("f1").is("I32 -> I32");
+		module.getType("f2").is("a -> Pair I32 a");
+		module.getValue("a1").is(3);
+		module.getValue("a2").is(3);
+	}
+
+	@Test
+	void minimumLambda() {
+		String src =
+				"""
+				id =
+				  \\x -> x
+				apply =
+				  \\f x -> f x
+				add_ =
+				  \\x y -> add x y
+				ans =
+				  (\\x -> add x 1) 2
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("id").is("a -> a");
+		module.getType("apply").is("(a -> b) -> a -> b");
+		module.getType("add_").is("I32 -> I32 -> I32");
+		module.getValue("ans").is(3);
+	}
+
+	@Test
+	void mapAndUseTwice() {
+		String src=
+				"""
+				type List a = Nil | Cons a (List a)
+				type Pair a b = Pair_ a b
+				mapAndUseTwice =
+				  let
+				    map f xs =
+				      case xs of
+				        Nil ->
+				          Nil
+				        Cons x xs1 ->
+				          Cons (f x) (map f xs1)
+				    incAll xs =
+				      map (\\x -> add x 1) xs
+				    inverseAll xs =
+				      map (\\b -> if b then False else True) xs
+				    ints = Cons 1 (Cons 2 (Cons 3 Nil))
+				    bools = Cons True (Cons False Nil)
+				    incResult = incAll ints
+				    inverseResult = inverseAll bools
+				  in
+				    Pair_ incResult inverseResult
+				mapAndUseTwiceLeft =
+				  case mapAndUseTwice of
+				    Pair_ left a -> left
+				mapAndUseTwiseRight =
+				  case mapAndUseTwice of
+				    Pair_ a right -> right
+				""";
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getType("mapAndUseTwice").is("Pair (List I32) (List Bool)");
+		module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))");
+		module.getValue("mapAndUseTwiseRight").isWrittenIn("Cons False (Cons True Nil)");
+	}
+
+	@Test
+	void genericTypeInLetExp() {
+		String src =
+				"""
+				type IntList =
+				  | Nil
+				  | Cons I32 IntList
+				car list =
+				  case list of
+				    Nil ->
+				      0
+				    Cons hd tl ->
+				      hd
+				rectest =
+				  let
+				    id x =
+				      x
+				    res =
+				      Cons (id 1) (Cons (car (id (Cons 2 Nil))) Nil)
+				  in
+				    res
+				""";
+
+		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		module.getValue("rectest").isWrittenIn("Cons 1 (Cons 2 Nil)");
+	}
+
+	// ===== 透明型エイリアス探索テスト群 =====
+}
