@@ -1,11 +1,11 @@
 package zlk.common.id;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
@@ -27,13 +27,15 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	private final Id parent; // トップレベルはnull
 	private final String simple;
+	private final int hash;
 
 	private Id(Id parent, String simple) {
 		this.parent = parent;
 		this.simple = simple;
-	}
 
-	// TODO: Idもinternできるように
+		int parentHash = parent == null ? 0 : parent.hash;
+		this.hash = parentHash * 31 + simple.hashCode();
+	}
 
 	/**
 	 * 親と名前がSEPARATORで区切られた識別子を用意する
@@ -79,15 +81,7 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 	}
 
 	public String canonicalName() {
-		StringBuilder sb = new StringBuilder();
-
-		List<String> parts = list();
-		sb.append(parts.getFirst());
-		for(String part : parts.subList(1, parts.size())) {
-			sb.append(SEPARATOR);
-			sb.append(part);
-		}
-		return sb.toString();
+		return seq().join(SEPARATOR);
 	}
 
 	@Override
@@ -101,11 +95,7 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	@Override
 	public int hashCode() {
-		if(parent != null) {
-			return parent.hashCode() * 31 + simple.hashCode();
-		} else {
-			return simple.hashCode();
-		}
+		return hash;
 	}
 
 	@Override
@@ -120,11 +110,11 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 
 	@Override
 	public int compareTo(Id o) {
-		List<String> ts = this.list();
-		List<String> os = o.list();
+		Seq<String> ts = this.seq();
+		Seq<String> os = o.seq();
 
 		for(int i = 0; ts.size() > i && os.size() > i; i++) {
-			int cmp = ts.get(i).compareTo(os.get(i));
+			int cmp = ts.at(i).compareTo(os.at(i));
 			if(cmp != 0) {
 				return cmp;
 			}
@@ -132,11 +122,11 @@ public final class Id implements PrettyPrintable, Comparable<Id> {
 		return ts.size() - os.size();
 	}
 
-	private List<String> list() {
-		List<String> acc = new ArrayList<>();
+	private Seq<String> seq() {
+		SeqBuffer<String> acc = new SeqBuffer<>();
 		for(Id cursor = this; cursor != null; cursor = cursor.parent) {
 			acc.add(cursor.simple);
 		}
-		return acc.reversed();
+		return acc.toSeq().reversed();
 	}
 }

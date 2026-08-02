@@ -23,7 +23,8 @@ public class NameEvaluatorTest {
 		// 同じ解決結果から供給される．aliasをconstructor引数に持つADTで，
 		// IcCtor.args と IcVarCtor.type().flatten() の引数部分が同一の
 		// semantic Type であることを確認する．
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Box a = { value : a }
 				type Wrapped a = Wrapped (Box a)
 				wrapped = Wrapped { value = 1 }

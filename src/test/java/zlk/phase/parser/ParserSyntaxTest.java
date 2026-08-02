@@ -33,7 +33,8 @@ public class ParserSyntaxTest {
 
 	@Test
 	void parsesClosedAndOpenRecordsAsTypeConstructorArguments() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				type alias Foo a = { a | x : I32 }
 				closed : Foo {}
 				closed = { x = 1 }

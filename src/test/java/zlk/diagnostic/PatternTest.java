@@ -12,11 +12,12 @@ import zlk.util.collection.Seq;
 public class PatternTest {
 	@Test
 	void incompleteBoolCaseReportsMissingConstructor() {
-		String src = """
-		toInt b =
-		  case b of
-		    True -> 1
-		""";
+		String src =
+				"""
+				toInt b =
+				  case b of
+				    True -> 1
+				""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
 		Seq<PatternWitness> witness = incomplete.examples();
@@ -28,12 +29,13 @@ public class PatternTest {
 
 	@Test
 	void wildcardMakesLaterConstructorBranchRedundant() {
-		String src = """
-		toInt b =
-		  case b of
-		    _ -> 0
-		    True -> 1
-		""";
+		String src =
+				"""
+				toInt b =
+				  case b of
+				    _ -> 0
+				    True -> 1
+				""";
 
 		Diagnostic.RedundantPattern redundant = assertInstanceOf(
 				Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
@@ -46,15 +48,16 @@ public class PatternTest {
 
 	@Test
 	void incompleteUserDefinedListCaseReportsSingleConsWitness() {
-		String src = """
-		type List a =
-		  | Nil
-		  | Cons a (List a)
+		String src =
+				"""
+				type List a =
+				  | Nil
+				  | Cons a (List a)
 
-		length xs =
-		  case xs of
-		    Nil -> 0
-		""";
+				length xs =
+				  case xs of
+				    Nil -> 0
+				""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
 		Seq<PatternWitness> witness = incomplete.examples();
@@ -66,33 +69,35 @@ public class PatternTest {
 
 	@Test
 	void nestedBranchAfterGeneralConsIsRedundant() {
-		String src = """
-		type List a =
-		  | Nil
-		  | Cons a (List a)
+		String src =
+				"""
+				type List a =
+				  | Nil
+				  | Cons a (List a)
 
-		classify xs =
-		  case xs of
-		    Nil -> 0
-		    Cons _ _ -> 1
-		    Cons _ Nil -> 2
-		""";
+				classify xs =
+				  case xs of
+				    Nil -> 0
+				    Cons _ _ -> 1
+				    Cons _ Nil -> 2
+				""";
 
 		assertInstanceOf(Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
 	}
 
 	@Test
 	void nestedBoolInsideMaybeReportsMissingNestedConstructor() {
-		String src = """
-		type Maybe a =
-		  | Nothing
-		  | Just a
+		String src =
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
 
-		toInt m =
-		  case m of
-		    Nothing -> 0
-		    Just True -> 1
-		""";
+				toInt m =
+				  case m of
+				    Nothing -> 0
+				    Just True -> 1
+				""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
 		Seq<PatternWitness> witness = incomplete.examples();
@@ -104,27 +109,29 @@ public class PatternTest {
 
 	@Test
 	void emptyRecordPatternOnOpenRowIsIrrefutableAndMakesLaterRecordBranchRedundant() {
-		String src = """
-			classify record =
-			  case record of
-			    {} -> 0
-			    { flag = True } -> 1
-			""";
+		String src =
+				"""
+				classify record =
+				  case record of
+				    {} -> 0
+				    { flag = True } -> 1
+				""";
 
 		assertInstanceOf(Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
 	}
 
 	@Test
 	void openRecordWithNestedMaybeBoolReportsMissingJustFalse() {
-		String src = """
-			type Maybe a =
-			  | Nothing
-			  | Just a
-			classify record =
-			  case record of
-			    { value = Nothing } -> 0
-			    { value = Just True } -> 1
-			""";
+		String src =
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+				classify record =
+				  case record of
+				    { value = Nothing } -> 0
+				    { value = Just True } -> 1
+				""";
 
 		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
 		Seq<PatternWitness> witness = incomplete.examples();

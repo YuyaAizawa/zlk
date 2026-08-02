@@ -16,7 +16,8 @@ import zlk.util.collection.Seq;
 public class TypeAliasFeatureTest {
 	@Test
 	void aliasEndToEndResolvesToClosedRecordAndGeneratesNoAliasClass() throws ReflectiveOperationException {
-		String src = """
+		String src =
+				"""
 				type alias Foo a = { a | x : I32, y : Bool }
 				bar : Foo { z : I32 } -> I32
 				bar record = add record.x record.z

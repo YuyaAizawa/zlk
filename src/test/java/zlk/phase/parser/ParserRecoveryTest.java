@@ -9,14 +9,15 @@ import zlk.util.collection.IntSeq;
 public class ParserRecoveryTest {
 	@Test
 	void panicBlockBodyConsumesNestedIndentBlocks() {
-		String src = """
-		bad =
-		  ?
-		    nested
-		      deeper
-		after =
-		  1
-		""";
+		String src =
+				"""
+				bad =
+				  ?
+				    nested
+				      deeper
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -27,12 +28,13 @@ public class ParserRecoveryTest {
 
 	@Test
 	void parseRecoveryContinuesAfterBadBlock() {
-		String src = """
-		bad =
-		  ?
-		after =
-		  1
-		""";
+		String src =
+				"""
+				bad =
+				  ?
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		var errors = module.getParseErrors();
@@ -43,14 +45,15 @@ public class ParserRecoveryTest {
 
 	@Test
 	void multipleBadBlocksReportMultipleStartLines() {
-		String src = """
-		a =
-		  ?
-		b =
-		  ??
-		c =
-		  1
-		""";
+		String src =
+				"""
+				a =
+				  ?
+				b =
+				  ??
+				c =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -62,16 +65,17 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badThenBlockReportsStartLineAndKeepsElseBlock() {
-		String src = """
-		test x =
-		  if x then
-		    ?
-		      nested
-		  else
-		    1
-		after =
-		  2
-		""";
+		String src =
+				"""
+				test x =
+				  if x then
+				    ?
+				      nested
+				  else
+				    1
+				after =
+				  2
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -83,11 +87,12 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badArgumentIsExpressionErrorNotDeclarationError() {
-		String src = """
-		bad = f ?
-		after =
-		  1
-		""";
+		String src =
+				"""
+				bad = f ?
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -99,11 +104,12 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badValueDeclarationHeaderRecoversAtNextTopLevelDeclaration() {
-		String src = """
-		bad a ? = f x
-		after =
-		  1
-		""";
+		String src =
+				"""
+				bad a ? = f x
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -115,11 +121,12 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badTypeDeclarationRecoversAtNextTopLevelDeclaration() {
-		String src = """
-		type Maybe a = | ?
-		after =
-		  1
-		""";
+		String src =
+				"""
+				type Maybe a = | ?
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();
@@ -131,11 +138,12 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badTypeAliasDeclarationRecoversAtNextTopLevelDeclaration() {
-		String src = """
-		type alias Foo a =
-		after =
-		  1
-		""";
+		String src =
+				"""
+				type alias Foo a =
+				after =
+				  1
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 
@@ -145,16 +153,17 @@ public class ParserRecoveryTest {
 
 	@Test
 	void badLetValueDeclarationHeaderRecoversAtNextLocalDeclaration() {
-		String src = """
-		test =
-		  let
-		    bad a ? = f x
-		    good = 1
-		  in
-		    good
-		after =
-		  2
-		""";
+		String src =
+				"""
+				test =
+				  let
+				    bad a ? = f x
+				    good = 1
+				  in
+				    good
+				after =
+				  2
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.PARSE);
 		IntSeq lines = module.getParseErrorStartLines();

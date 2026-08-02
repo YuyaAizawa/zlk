@@ -1,6 +1,8 @@
 package zlk.diagnostic;
 
 import zlk.common.Location;
+import zlk.common.Type;
+import zlk.common.id.Id;
 import zlk.util.collection.Seq;
 
 /**
@@ -206,6 +208,20 @@ public sealed interface Diagnostic {
 	}
 
 	// ================== typing ==================
+
+	/**
+	 * 値宣言またはADT constructorに対して解決された型．
+	 *
+	 * @param location 宣言の位置
+	 * @param declaration 宣言の識別子
+	 * @param type 再構築後の安定した型
+	 */
+	record InferredType(Location location, Id declaration, Type type) implements Diagnostic {
+		@Override
+		public Severity severity() {
+			return Severity.INFO;
+		}
+	}
 
 	record TypeMismatch(
 			Location location,

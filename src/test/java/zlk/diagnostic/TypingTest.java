@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import zlk.compiler.Driver;
+import zlk.fixture.CompilationFixture;
 
 public class TypingTest {
 	@Test
@@ -200,21 +201,18 @@ public class TypingTest {
 
 	@Test
 	void invalidSourceDoesNotLeakRuntimeExceptionsFromTheDriver() {
-		Driver.CompilationResult result = assertDoesNotThrow(() -> Driver.compile("Main.zlk",
-				"""
-				module Main
-				bad = add True 1
-				"""));
-		assertInstanceOf(Driver.CompilationResult.Failed.class, result);
+		CompilationFixture module = assertDoesNotThrow(
+				() -> CompilationFixture.compile("bad = add True 1\n"));
+		assertInstanceOf(Driver.CompilationResult.Failed.class, module.result());
 	}
 
 	private static <T extends Diagnostic> T only(Class<T> type, String src) {
-		Driver.CompilationResult result = assertDoesNotThrow(
-				() -> Driver.compile("Main.zlk", "module Main\n" + src));
-		Driver.CompilationResult.Failed failed = assertInstanceOf(Driver.CompilationResult.Failed.class, result);
-		assertEquals(1, failed.diags().size());
-		Diagnostic diagnostic = failed.diags().head();
+		CompilationFixture module = assertDoesNotThrow(() -> CompilationFixture.compile(src));
+		assertInstanceOf(Driver.CompilationResult.Failed.class, module.result());
+		var diagnostics = module.diagnostics(type);
+		assertEquals(1, diagnostics.size());
+		T diagnostic = diagnostics.head();
 		assertTrue(diagnostic.isError());
-		return assertInstanceOf(type, diagnostic);
+		return diagnostic;
 	}
 }
