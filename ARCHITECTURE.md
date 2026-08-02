@@ -44,7 +44,7 @@ parser，nameeval，recon，patterncheckの各経路で得られた公開`Diagno
 
 `ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめて返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
 
-### レコード型
+## レコード型
 
 ZLKのレコード型は，行多相を持つ構造的型である．重要な設計は次のとおり．
 
@@ -53,7 +53,7 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 - **宣言全体でのkind解決と透明alias**：`TypeResolver`は前方参照や相互再帰を含む全型宣言からparameter kindを解決する．型aliasはkind確定後に展開され，alias identityやkind情報をbackendへ持ち越さない．
 - **後段では既知shapeだけを利用**：`PatternChecker`は解決済みrowのknown fieldsを積型として扱い，unknown tailを暗黙のwildcardとする．runtimeではopen／closedの区別を消去し，全レコード値をpublic `ZlkRecord` interfaceへ統一する．
 
-### `Id`とクラスファイル中の名前
+## `Id`とクラスファイル中の名前
 
 `Id`は，モジュール名を根として構文上のスコープを`.`で連結した完全修飾名である．クラスファイルのメソッド名は，`Id`からモジュール名と直後の`.`を除き，残りの`.`を`$`へ置換して生成する．次の表では，モジュール名を`M`，型名を`T`，コンストラクタ名を`C`，関数名を`f`，変数名を`x`とする．`k`は0から始まるクロージャ変換時のモジュール内通し番号，`n`は1から始まる同一スコープ内のラムダ番号，`i`は0から始まるcase分岐番号またはカリー化段階番号である．
 
@@ -104,13 +104,15 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 | パッケージ | 責務 |
 |---|---|
 | `zlk` | 全テストpackageを選択するsuite |
-| `zlk.feature.*` | 言語機能および実行時意味論のテスト |
-| `zlk.diagnostic` | コンパイラの診断機能のテスト |
-| `zlk.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
-| `zlk.runtime` | 生成コードが利用するランタイムの検査 |
-| `zlk.tester` | コンパイルフェーズごとのテスト支援ユーティリティ |
+| `zlk.test.feature.*` | 言語機能および実行時意味論のテスト |
+| `zlk.test.diagnostic` | コンパイラの診断機能のテスト |
+| `zlk.test.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
+| `zlk.test.runtime` | 生成コードが利用するランタイムの検査 |
+| `zlk.util.fixture` | `Driver`のコンパイル結果，推論型，および生成bytecodeのload・実行を扱うテスト支援ユーティリティ |
+| `zlk.util.tester` | コンパイルフェーズの内部IRおよびphase固有アルゴリズムを直接検査するテスト支援ユーティリティ |
 
 `Driver`は，コンパイルパイプラインを統括し，構造化diagnosticと`CompilationResult`を返す公開入口である．`Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
+featureテストは`Driver`を公開入口として利用し，phaseテストだけが検査対象のコンパイルフェーズを直接組み立てる．
 
 ## 用語と命名
 
@@ -136,5 +138,3 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 | Declaration | `Decl` | `IcValDecl`，`IcTypeDecl` |
 | Calculation | `calc` | `idcalc`，`clcalc` |
 | Conversion / Converter | `conv` | `clconv`，`ClosureConverter` |
-
-
