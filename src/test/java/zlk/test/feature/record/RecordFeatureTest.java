@@ -4,22 +4,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Test;
-import zlk.common.RecordField;
-import zlk.common.Type;
 import zlk.runtime.ZlkRecord;
-import zlk.util.collection.Seq;
+import zlk.util.fixture.CompilationFixture;
 import zlk.util.tester.DumpOnFailureWatcher;
-import zlk.util.tester.ModuleTester;
-import zlk.util.tester.ModuleTester.CompileLevel;
-import zlk.util.tester.ValueTester.VData;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class RecordFeatureTest {
 	@Test
 	void emptyRecordLiteral() {
-		var module = new ModuleTester("empty = {}", CompileLevel.BYTECODE_GEN);
-		Object value = ((VData) module.getValue("empty")).value();
+		var module = CompilationFixture.compileSucceeded("empty = {}");
+		Object value = module.value("empty");
 
 		assertTrue(value instanceof ZlkRecord);
 		assertEquals("{}", value.toString());
@@ -27,10 +23,8 @@ public class RecordFeatureTest {
 
 	@Test
 	void recordLiteralUsesCanonicalFieldOrder() {
-		var module = new ModuleTester(
-				"record = { y = True, x = 1 }",
-				CompileLevel.BYTECODE_GEN);
-		ZlkRecord value = (ZlkRecord) ((VData) module.getValue("record")).value();
+		var module = CompilationFixture.compileSucceeded("record = { y = True, x = 1 }");
+		ZlkRecord value = (ZlkRecord) module.value("record");
 
 		assertEquals("{ x = 1, y = True }", value.toString());
 		assertEquals(1, value.get("x"));
@@ -39,10 +33,9 @@ public class RecordFeatureTest {
 
 	@Test
 	void instantiatesNestedRecords() {
-		var module = new ModuleTester(
-				"nested = { z = { y = True, x = 1 }, a = 2 }",
-				CompileLevel.BYTECODE_GEN);
-		ZlkRecord outer = (ZlkRecord) ((VData) module.getValue("nested")).value();
+		var module = CompilationFixture.compileSucceeded(
+				"nested = { z = { y = True, x = 1 }, a = 2 }");
+		ZlkRecord outer = (ZlkRecord) module.value("nested");
 		ZlkRecord inner = (ZlkRecord) outer.get("z");
 
 		assertEquals("{ a = 2, z = { x = 1, y = True } }", outer.toString());
@@ -52,48 +45,43 @@ public class RecordFeatureTest {
 
 	@Test
 	void infersNestedRecordsTogetherWithParametricPolymorphism() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				wrap value = { payload = { value = value } }
 				wrappedInt = wrap 1
 				wrappedBool = wrap True
-				""", CompileLevel.BYTECODE_GEN);
-		Type.Var a = new Type.Var("a");
-		Type.Record genericInner = new Type.Record(Seq.of(new RecordField<>("value", a)));
-		Type.Record genericOuter = new Type.Record(Seq.of(new RecordField<>("payload", genericInner)));
-		Type.Record intOuter = new Type.Record(Seq.of(new RecordField<>("payload",
-				new Type.Record(Seq.of(new RecordField<>("value", Type.I32))))));
-		Type.Record boolOuter = new Type.Record(Seq.of(new RecordField<>("payload",
-				new Type.Record(Seq.of(new RecordField<>("value", Type.BOOL))))));
+				""");
 
-		module.getType("wrap").is(new Type.Arrow(a, genericOuter));
-		module.getType("wrappedInt").is(intOuter);
-		module.getType("wrappedBool").is(boolOuter);
-		ZlkRecord intValue = (ZlkRecord) ((VData) module.getValue("wrappedInt")).value();
-		ZlkRecord boolValue = (ZlkRecord) ((VData) module.getValue("wrappedBool")).value();
+		module.assertType("wrap", "a -> { payload : { value : a } }");
+		module.assertType("wrappedInt", "{ payload : { value : I32 } }");
+		module.assertType("wrappedBool", "{ payload : { value : Bool } }");
+		ZlkRecord intValue = (ZlkRecord) module.value("wrappedInt");
+		ZlkRecord boolValue = (ZlkRecord) module.value("wrappedBool");
 		assertEquals(1, ((ZlkRecord) intValue.get("payload")).get("value"));
 		assertEquals(true, ((ZlkRecord) boolValue.get("payload")).get("value"));
 	}
 
 	@Test
 	void accessesNestedFieldsAndUpdatesImmutably() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				base = { y = True, x = 1 }
 				updated = { base | x = 2 }
 				nested = { outer = updated }
 				selected = nested.outer.x
 				baseX = base.x
-				""", CompileLevel.BYTECODE_GEN);
+				""");
 
-		module.getType("selected").is(Type.I32);
-		assertEquals(2, ((VData) module.getValue("selected")).value());
-		assertEquals(1, ((VData) module.getValue("baseX")).value());
+		module.assertType("selected", "I32");
+		int selected = (int) module.value("selected");
+		int baseX = (int) module.value("baseX");
+		assertEquals(2, selected);
+		assertEquals(1, baseX);
 	}
 
 	@Test
 	void updatesMultipleRecordFieldsImmutably() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				base = { z = 3, y = True, x = 1 }
 				updated = { base | x = 2, y = False }
@@ -102,40 +90,45 @@ public class RecordFeatureTest {
 				updatedX = updated.x
 				updatedY = updated.y
 				updatedZ = updated.z
-				""", CompileLevel.BYTECODE_GEN);
+				""");
 
-		assertEquals(1, ((VData) module.getValue("baseX")).value());
-		assertEquals(true, ((VData) module.getValue("baseY")).value());
-		assertEquals(2, ((VData) module.getValue("updatedX")).value());
-		assertEquals(false, ((VData) module.getValue("updatedY")).value());
-		assertEquals(3, ((VData) module.getValue("updatedZ")).value());
+		int baseX = (int) module.value("baseX");
+		boolean baseY = (boolean) module.value("baseY");
+		int updatedX = (int) module.value("updatedX");
+		boolean updatedY = (boolean) module.value("updatedY");
+		int updatedZ = (int) module.value("updatedZ");
+		assertEquals(1, baseX);
+		assertEquals(true, baseY);
+		assertEquals(2, updatedX);
+		assertEquals(false, updatedY);
+		assertEquals(3, updatedZ);
 	}
 
 	@Test
 	void acceptsNestedRecordTypeAnnotations() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				getValue : { outer : { value : I32 } } -> I32
 				getValue record = record.outer.value
 				result = getValue { outer = { value = 7 } }
-				""", CompileLevel.BYTECODE_GEN);
+				""");
 
-		Type.Record argument = new Type.Record(Seq.of(new RecordField<>("outer",
-				new Type.Record(Seq.of(new RecordField<>("value", Type.I32))))));
-		module.getType("getValue").is(new Type.Arrow(argument, Type.I32));
-		assertEquals(7, ((VData) module.getValue("result")).value());
+		module.assertType("getValue", "{ outer : { value : I32 } } -> I32");
+		int actual = (int) module.value("result");
+		assertEquals(7, actual);
 	}
 
 	@Test
 	void distinguishesEmptyRecordTypeFromUnit() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				empty : {}
 				empty = {}
-				""", CompileLevel.BYTECODE_GEN);
+				""");
 
-		module.getType("empty").is(new Type.Record(Seq.of()));
-		assertEquals("{}", ((VData) module.getValue("empty")).value().toString());
+		module.assertType("empty", "{  }");
+		ZlkRecord actual = (ZlkRecord) module.value("empty");
+		assertEquals("{}", actual.toString());
 	}
 
 	@Test
@@ -147,11 +140,13 @@ public class RecordFeatureTest {
 				nestedResult = getX { x = 2, z = 3, w = False }
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var module = CompilationFixture.compileSucceeded(src);
 
 		// inferred accessorが異なるwider shapesでBYTECODE_GEN実行し値をassert
-		assertEquals(1, ((VData) module.getValue("intResult")).value());
-		assertEquals(2, ((VData) module.getValue("nestedResult")).value());
+		int intResult = (int) module.value("intResult");
+		int nestedResult = (int) module.value("nestedResult");
+		assertEquals(1, intResult);
+		assertEquals(2, nestedResult);
 	}
 
 	@Test
@@ -166,15 +161,18 @@ public class RecordFeatureTest {
 				baseX = base.x
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var module = CompilationFixture.compileSucceeded(src);
 
-		ZlkRecord updatedValue = (ZlkRecord) ((VData) module.getValue("updated")).value();
+		ZlkRecord updatedValue = (ZlkRecord) module.value("updated");
 		assertEquals(2, updatedValue.get("x"));
 		assertEquals(true, updatedValue.get("y"));
 		assertEquals("{ x = 2, y = True }", updatedValue.toString());
-		assertEquals(2, ((VData) module.getValue("updatedX")).value());
-		assertEquals(true, ((VData) module.getValue("updatedY")).value());
-		assertEquals(1, ((VData) module.getValue("baseX")).value());
+		int updatedX = (int) module.value("updatedX");
+		boolean updatedY = (boolean) module.value("updatedY");
+		int baseX = (int) module.value("baseX");
+		assertEquals(2, updatedX);
+		assertEquals(true, updatedY);
+		assertEquals(1, baseX);
 	}
 
 	@Test
@@ -187,9 +185,11 @@ public class RecordFeatureTest {
 				nestedResult = getX { x = 42, z = 3, w = False }
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var module = CompilationFixture.compileSucceeded(src);
 
-		assertEquals(1, ((VData) module.getValue("intResult")).value());
-		assertEquals(42, ((VData) module.getValue("nestedResult")).value());
+		int intResult = (int) module.value("intResult");
+		int nestedResult = (int) module.value("nestedResult");
+		assertEquals(1, intResult);
+		assertEquals(42, nestedResult);
 	}
 }

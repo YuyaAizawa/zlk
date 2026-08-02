@@ -108,10 +108,11 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 | `zlk.test.diagnostic` | コンパイラの診断機能のテスト |
 | `zlk.test.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
 | `zlk.test.runtime` | 生成コードが利用するランタイムの検査 |
-| `zlk.util.fixture` | コンパイラドライバを利用したテスト支援ユーティリティ |
-| `zlk.util.tester` | コンパイルフェーズごとのテスト支援ユーティリティ |
+| `zlk.util.fixture` | `Driver`のコンパイル結果，推論型，および生成bytecodeのload・実行を扱うテスト支援ユーティリティ |
+| `zlk.util.tester` | コンパイルフェーズの内部IRおよびphase固有アルゴリズムを直接検査するテスト支援ユーティリティ |
 
 `Driver`は，コンパイルパイプラインを統括し，構造化diagnosticと`CompilationResult`を返す公開入口である．`Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
+featureテストは`Driver`を公開入口として利用し，phaseテストだけが検査対象のコンパイルフェーズを直接組み立てる．
 
 ## 用語と命名
 

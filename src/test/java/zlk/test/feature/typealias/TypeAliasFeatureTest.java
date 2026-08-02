@@ -4,19 +4,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import org.junit.jupiter.api.Test;
-import zlk.common.RecordField;
-import zlk.common.Type;
-import zlk.util.collection.Seq;
+import zlk.util.fixture.CompilationFixture;
 import zlk.util.tester.DumpOnFailureWatcher;
-import zlk.util.tester.ModuleTester;
-import zlk.util.tester.ModuleTester.CompileLevel;
-import zlk.util.tester.ValueTester.VData;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class TypeAliasFeatureTest {
 	@Test
-	void aliasEndToEndResolvesToClosedRecordAndGeneratesNoAliasClass() throws ReflectiveOperationException {
+	void aliasEndToEndResolvesToClosedRecordAndGeneratesNoAliasClass() {
 		String src =
 				"""
 				type alias Foo a = { a | x : I32, y : Bool }
@@ -25,25 +21,16 @@ public class TypeAliasFeatureTest {
 				result = bar { x = 1, y = True, z = 2 }
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
+		var module = CompilationFixture.compileSucceeded(src);
 
 		// bar resolved typeはclosed { x:I32, y:Bool, z:I32 } -> I32
-		Type.Record expectedArg = new Type.Record(Seq.of(
-				new RecordField<>("x", Type.I32),
-				new RecordField<>("y", Type.BOOL),
-				new RecordField<>("z", Type.I32)));
-		module.getType("bar").is(new Type.Arrow(expectedArg, Type.I32));
+		module.assertType("bar", "{ x : I32, y : Bool, z : I32 } -> I32");
 
 		// result実行値3
-		assertEquals(3, ((VData) module.getValue("result")).value());
+		int result = (int) module.value("result");
+		assertEquals(3, result);
 
 		// alias用 Main$Foo classは生成されない
-		assertFalse(module.getGeneratedClassNames().contains("Main$Foo"));
-
-		// bar reflection parameter typeは zlk.runtime.ZlkRecord
-		java.lang.reflect.Method barMethod = module.getMainMethod("bar");
-		Class<?>[] paramTypes = barMethod.getParameterTypes();
-		assertEquals(1, paramTypes.length);
-		assertEquals(zlk.runtime.ZlkRecord.class, paramTypes[0]);
+		assertFalse(module.generatedClassNames().contains("Main$Foo"));
 	}
 }

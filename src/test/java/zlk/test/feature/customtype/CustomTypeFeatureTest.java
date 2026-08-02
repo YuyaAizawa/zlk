@@ -10,10 +10,8 @@ import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import zlk.runtime.ZlkCustom;
+import zlk.util.fixture.CompilationFixture;
 import zlk.util.tester.DumpOnFailureWatcher;
-import zlk.util.tester.ModuleTester;
-import zlk.util.tester.ModuleTester.CompileLevel;
-import zlk.util.tester.ValueTester.VData;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class CustomTypeFeatureTest {
@@ -30,12 +28,12 @@ public class CustomTypeFeatureTest {
 				otherSome = Some 2 False
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		Object none = ((VData) module.getValue("none")).value();
-		Object sameNone = ((VData) module.getValue("sameNone")).value();
-		Object some = ((VData) module.getValue("some")).value();
-		Object sameSome = ((VData) module.getValue("sameSome")).value();
-		Object otherSome = ((VData) module.getValue("otherSome")).value();
+		var module = CompilationFixture.compileSucceeded(src);
+		Object none = module.value("none");
+		Object sameNone = module.value("sameNone");
+		Object some = module.value("some");
+		Object sameSome = module.value("sameSome");
+		Object otherSome = module.value("otherSome");
 
 		Class<?> noneClass = none.getClass();
 		Class<?> someClass = some.getClass();
@@ -106,9 +104,9 @@ public class CustomTypeFeatureTest {
 				list = Cons 1 (Cons 2 Nil)
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		Object pair = ((VData) module.getValue("pair")).value();
-		Object list = ((VData) module.getValue("list")).value();
+		var module = CompilationFixture.compileSucceeded(src);
+		Object pair = module.value("pair");
+		Object list = module.value("list");
 		assertEquals("Pair_ True False", pair.toString());
 		assertEquals("Cons 1 (Cons 2 Nil)", list.toString());
 	}
@@ -123,8 +121,8 @@ public class CustomTypeFeatureTest {
 				x = A (B (A B0))
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		Object x = ((VData) module.getValue("x")).value();
+		var module = CompilationFixture.compileSucceeded(src);
+		Object x = module.value("x");
 		assertEquals("A (B (A B0))", x.toString());
 	}
 
@@ -141,8 +139,9 @@ public class CustomTypeFeatureTest {
 
 				ans = sum (Cons 3 (Cons 2 (Cons 1 Nil)))
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getValue("ans").is(6);
+		var module = CompilationFixture.compileSucceeded(src);
+		int actual = (int) module.value("ans");
+		assertEquals(6, actual);
 	}
 
 	@Test
@@ -165,18 +164,20 @@ public class CustomTypeFeatureTest {
 
 				oneTrueRight = right oneTrue
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("left").is("Pair a b -> a");
-		module.getType("right").is("Pair a b -> b");
-		module.getType("oneTrueLeft").is("I32");
-		module.getType("oneTrueRight").is("Bool");
-		module.getValue("oneTrueLeft").isWrittenIn("1");
-		module.getValue("oneTrueRight").isWrittenIn("True");
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("left", "Main.Pair a b -> a");
+		module.assertType("right", "Main.Pair a b -> b");
+		module.assertType("oneTrueLeft", "I32");
+		module.assertType("oneTrueRight", "Bool");
+		int left = (int) module.value("oneTrueLeft");
+		boolean right = (boolean) module.value("oneTrueRight");
+		assertEquals(1, left);
+		assertEquals(true, right);
 	}
 
 	@Test
 	void rowParameterizedAdtRunsAtBytecodeLevel() {
-		var module = new ModuleTester(
+		var module = CompilationFixture.compileSucceeded(
 				"""
 				type Foo r = Foo { r | bar : I32 }
 				makeFoo = Foo
@@ -190,9 +191,11 @@ public class CustomTypeFeatureTest {
 				    Foo record -> record.qux
 				boolResult = getBaz foo
 				intResult = getQux other
-				""", CompileLevel.BYTECODE_GEN);
+				""");
 
-		assertEquals(true, ((VData) module.getValue("boolResult")).value());
-		assertEquals(3, ((VData) module.getValue("intResult")).value());
+		boolean boolResult = (boolean) module.value("boolResult");
+		int intResult = (int) module.value("intResult");
+		assertEquals(true, boolResult);
+		assertEquals(3, intResult);
 	}
 }

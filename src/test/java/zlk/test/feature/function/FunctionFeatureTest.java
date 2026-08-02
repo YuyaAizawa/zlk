@@ -1,12 +1,12 @@
 package zlk.test.feature.function;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-
-import zlk.util.tester.DumpOnFailureWatcher;
-import zlk.util.tester.ModuleTester;
-import zlk.util.tester.ModuleTester.CompileLevel;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import zlk.util.fixture.CompilationFixture;
+import zlk.util.tester.DumpOnFailureWatcher;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class FunctionFeatureTest {
@@ -25,10 +25,11 @@ public class FunctionFeatureTest {
 				      mul n (fact nn)
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var fact = module.getValue("fact");
-		fact.apply(0).is(1);
-		fact.apply(5).is(120);
+		var module = CompilationFixture.compileSucceeded(src);
+		int zeroFactorial = (int) module.value("fact", 0);
+		int fiveFactorial = (int) module.value("fact", 5);
+		assertEquals(1, zeroFactorial);
+		assertEquals(120, fiveFactorial);
 	}
 
 	@Test
@@ -45,9 +46,9 @@ public class FunctionFeatureTest {
 				  in
 				    adder
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		var make_adder = module.getValue("make_adder");
-		make_adder.apply(1).apply(2).apply(3).is(6);
+		var module = CompilationFixture.compileSucceeded(src);
+		int actual = (int) module.value("make_adder", 1, 2, 3);
+		assertEquals(6, actual);
 	}
 
 	@Test
@@ -66,8 +67,9 @@ public class FunctionFeatureTest {
 
 				ans = f 1 3
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getValue("ans").is(16);
+		var module = CompilationFixture.compileSucceeded(src);
+		int actual = (int) module.value("ans");
+		assertEquals(16, actual);
 	}
 
 	@Test
@@ -96,9 +98,10 @@ public class FunctionFeatureTest {
 				  in
 				    f 3
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("makeEvenFromOffset").is("I32 -> I32 -> Bool");
-		module.getValue("main").is(true);
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("makeEvenFromOffset", "I32 -> I32 -> Bool");
+		boolean actual = (boolean) module.value("main");
+		assertEquals(true, actual);
 	}
 
 	@Test
@@ -120,9 +123,10 @@ public class FunctionFeatureTest {
 				test =
 				  map isZero_ (Cons 0 (Cons 1 (Cons 2 Nil)))
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("map").is("(a -> b) -> List a -> List b");
-		module.getValue("test").isWrittenIn("Cons True (Cons False (Cons False Nil))");
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("map", "(a -> b) -> Main.List a -> Main.List b");
+		Object actual = module.value("test");
+		assertEquals("Cons True (Cons False (Cons False Nil))", actual.toString());
 	}
 
 	@Test
@@ -140,9 +144,10 @@ public class FunctionFeatureTest {
 				  in
 				    intBoolPair
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("test").is("Pair I32 Bool");
-		module.getValue("test").isWrittenIn("Pair_ 1 True");
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("test", "Main.Pair I32 Bool");
+		Object actual = module.value("test");
+		assertEquals("Pair_ 1 True", actual.toString());
 	}
 
 	@Test
@@ -159,11 +164,13 @@ public class FunctionFeatureTest {
 				a2 = case f2 2 of
 				  Pair_ a b -> add a b
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("f1").is("I32 -> I32");
-		module.getType("f2").is("a -> Pair I32 a");
-		module.getValue("a1").is(3);
-		module.getValue("a2").is(3);
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("f1", "I32 -> I32");
+		module.assertType("f2", "a -> Main.Pair I32 a");
+		int a1 = (int) module.value("a1");
+		int a2 = (int) module.value("a2");
+		assertEquals(3, a1);
+		assertEquals(3, a2);
 	}
 
 	@Test
@@ -179,11 +186,12 @@ public class FunctionFeatureTest {
 				ans =
 				  (\\x -> add x 1) 2
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("id").is("a -> a");
-		module.getType("apply").is("(a -> b) -> a -> b");
-		module.getType("add_").is("I32 -> I32 -> I32");
-		module.getValue("ans").is(3);
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("id", "a -> a");
+		module.assertType("apply", "(a -> b) -> a -> b");
+		module.assertType("add_", "I32 -> I32 -> I32");
+		int actual = (int) module.value("ans");
+		assertEquals(3, actual);
 	}
 
 	@Test
@@ -217,10 +225,12 @@ public class FunctionFeatureTest {
 				  case mapAndUseTwice of
 				    Pair_ a right -> right
 				""";
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getType("mapAndUseTwice").is("Pair (List I32) (List Bool)");
-		module.getValue("mapAndUseTwiceLeft").isWrittenIn("Cons 2 (Cons 3 (Cons 4 Nil))");
-		module.getValue("mapAndUseTwiseRight").isWrittenIn("Cons False (Cons True Nil)");
+		var module = CompilationFixture.compileSucceeded(src);
+		module.assertType("mapAndUseTwice", "Main.Pair (Main.List I32) (Main.List Bool)");
+		Object left = module.value("mapAndUseTwiceLeft");
+		Object right = module.value("mapAndUseTwiseRight");
+		assertEquals("Cons 2 (Cons 3 (Cons 4 Nil))", left.toString());
+		assertEquals("Cons False (Cons True Nil)", right.toString());
 	}
 
 	@Test
@@ -246,8 +256,9 @@ public class FunctionFeatureTest {
 				    res
 				""";
 
-		var module = new ModuleTester(src, CompileLevel.BYTECODE_GEN);
-		module.getValue("rectest").isWrittenIn("Cons 1 (Cons 2 Nil)");
+		var module = CompilationFixture.compileSucceeded(src);
+		Object actual = module.value("rectest");
+		assertEquals("Cons 1 (Cons 2 Nil)", actual.toString());
 	}
 
 	// ===== 透明型エイリアス探索テスト群 =====
