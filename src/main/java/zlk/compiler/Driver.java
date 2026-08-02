@@ -3,6 +3,7 @@ package zlk.compiler;
 import java.util.HashMap;
 import java.util.Map;
 
+import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -11,6 +12,7 @@ import zlk.diagnostic.Diagnostic;
 import zlk.diagnostic.DiagnosticReporter;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
+import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.token.Tokenized;
 import zlk.ir.typing.CaseTyping;
@@ -32,7 +34,16 @@ import zlk.util.collection.SeqBuffer;
 
 public final class Driver {
 
+	/**
+	 * コンパイル時に任意で有効化する診断設定．
+	 */
+	public record CompilationOptions(boolean reportInferredTypes) {
+		public static final CompilationOptions DEFAULT = new CompilationOptions(false);
+	}
+
 	public sealed interface CompilationResult {
+
+		public Seq<Diagnostic> diags();
 
 		public record Succeeded(
 				Map<String, byte[]> clazzes,
@@ -45,6 +56,10 @@ public final class Driver {
 	}
 
 	public static CompilationResult compile(String name, String src) {
+		return compile(name, src, CompilationOptions.DEFAULT);
+	}
+
+	public static CompilationResult compile(String name, String src, CompilationOptions options) {
 
 		DiagnosticCollector diagCollector = new DiagnosticCollector();
 
@@ -55,7 +70,7 @@ public final class Driver {
 
 		// 型推論
 		PhaseResult<TypesAndCaseTypings> reconed =
-				nameEvaled.andThen(icModule -> reconPhase(icModule, diagCollector));
+				nameEvaled.andThen(icModule -> reconPhase(icModule, options, diagCollector));
 
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
@@ -66,8 +81,11 @@ public final class Driver {
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
 				module -> patternChecked.andThen(
 				_ -> reconed.andThen(
-					typesAndcaseTypings -> closurePhase(module, typesAndcaseTypings.types(), diagCollector)
-						.andThen(clcalced -> bytecodePhase(clcalced, typesAndcaseTypings.types(), name, diagCollector)))));
+				typesAndcaseTypings -> {
+					IdMap<Type> types = typesAndcaseTypings.types();
+					return closurePhase(module, types, diagCollector)
+							.andThen(clcalced -> bytecodePhase(clcalced, types, name, diagCollector));
+				})));
 
 		Seq<Diagnostic> diags = diagCollector.collect();
 		return result.fold(
@@ -97,6 +115,7 @@ public final class Driver {
 	) {}
 	private static PhaseResult<TypesAndCaseTypings> reconPhase(
 			IcModule module,
+			CompilationOptions options,
 			DiagnosticReporter sink
 	) {
 		// 共通のフレッシュ変数カウンタ
@@ -130,7 +149,41 @@ public final class Driver {
 						}));
 		reconed.types().forEach(types::put);
 
+		if(options.reportInferredTypes()) {
+			reportInferredTypes(module, types, sink);
+		}
+
 		return PhaseResult.ready(new TypesAndCaseTypings(types, reconed.caseTypings()));
+	}
+
+	private static void reportInferredTypes(
+			IcModule module,
+			IdMap<Type> types,
+			DiagnosticReporter sink
+	) {
+		module.types().forEach(type ->
+				type.ctors().forEach(ctor ->
+					reportInferredType(ctor.loc(), ctor.id(), types, sink)));
+		module.decls().forEach(decl -> {
+			reportInferredType(decl.loc(), decl.id(), types, sink);
+			decl.body().walk(exp -> {
+				if(exp instanceof IcExp.IcLet let) {
+					let.defs().forEach(local ->
+						reportInferredType(local.loc(), local.id(), types, sink));
+				}
+			});
+		});
+	}
+
+	private static void reportInferredType(
+			Location location,
+			Id declaration,
+			IdMap<Type> types,
+			DiagnosticReporter sink
+	) {
+		Type type = types.getOptional(declaration).orElseThrow(() -> new IllegalStateException(
+				"missing reconstructed type for declaration: " + declaration));
+		sink.report(new Diagnostic.InferredType(location, declaration, type));
 	}
 
 	private static Diagnostic toDiagnostic(TypeError error) {

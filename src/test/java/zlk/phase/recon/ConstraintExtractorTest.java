@@ -24,7 +24,8 @@ import zlk.tester.ModuleTester.CompileLevel;
 public class ConstraintExtractorTest {
 	@Test
 	void leafConstraintsRetainSourceProvenanceForFieldAccessAnnotationAndApplication() {
-		var module = new ModuleTester("""
+		var module = new ModuleTester(
+				"""
 				getX : { x : I32 } -> I32
 				getX record = record.x
 				answer = getX { x = 1 }
@@ -77,7 +78,8 @@ public class ConstraintExtractorTest {
 	@Test
 	void reconstructionReportsLeafProvenanceWithUnificationReason() {
 		TypeErrorException exception = assertThrows(TypeErrorException.class, () ->
-				new ModuleTester("""
+				new ModuleTester(
+					"""
 					typed : I32 -> I32
 					typed value = value
 					bad = typed True
@@ -103,17 +105,18 @@ public class ConstraintExtractorTest {
 
 	@Test
 	void selfRecursiveFunction() {
-		String src ="""
-		fact n =
-		  if isZero n then
-		    1
-		  else
-		    let
-		      one = 1
-		      nn = sub n one
-		    in
-		      mul n (fact nn)
-		""";
+		String src =
+				"""
+				fact n =
+				  if isZero n then
+				    1
+				  else
+				    let
+				      one = 1
+				      nn = sub n one
+				    in
+				      mul n (fact nn)
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.TYPE_CINT);
 		String expected =
@@ -241,19 +244,20 @@ public class ConstraintExtractorTest {
 
 	@Test
 	void mutualRecursiveFunction() {
-		String src ="""
-		isEven n =
-		  if isZero n then
-		    True
-		  else
-		    isOdd (sub n 1)
+		String src =
+				"""
+				isEven n =
+				  if isZero n then
+				    True
+				  else
+				    isOdd (sub n 1)
 
-		isOdd n =
-		  if isZero n then
-		    False
-		  else
-		    isEven (sub n 1)
-		""";
+				isOdd n =
+				  if isZero n then
+				    False
+				  else
+				    isEven (sub n 1)
+				""";
 
 		var module = new ModuleTester(src, CompileLevel.TYPE_CINT);
 		String expected =
@@ -372,7 +376,8 @@ public class ConstraintExtractorTest {
 
 	@Test
 	void genericTypeInLetExp() {
-		String src ="""
+		String src =
+				"""
 				type IntList =
 				  | Nil
 				  | Cons I32 IntList
@@ -587,7 +592,8 @@ public class ConstraintExtractorTest {
 
 	@Test
 	void leakOuterStruct() {
-		String src ="""
+		String src =
+				"""
 				pair a b s = s a b
 				fst p = p fst_
 				fst_ x y = x
