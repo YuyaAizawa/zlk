@@ -30,8 +30,10 @@ import zlk.util.collection.Seq;
 
 public class TypeReconstructor {
 	public record Result(
-			IdMap<Type> types,
-			Seq<CaseTyping<Type>> caseTypings) {}
+			IdMap<Type> types,  // 識別子の汎化された型
+			Seq<CaseTyping<Type>> caseTypings,
+			IcExpMap<Type> partExpType  // 部分式の汎化されていない型
+	) {}
 
 	// TODO 型が付かなかったときは例外でなくResultの方が扱いやすそう
 	// TODO 例外が起きたら，それに関する型はダミーの型に確定したとして続けたらいいか？
@@ -65,7 +67,8 @@ public class TypeReconstructor {
 		return new Result(
 				self.result.traverse(Variable::toType),
 				extracted.caseTypings().map(
-						caseTyping -> caseTyping.map(RcType::toType)));
+						caseTyping -> caseTyping.map(RcType::toType)),
+				extracted.partExpType().traverse(RcType::toType));
 	}
 
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {

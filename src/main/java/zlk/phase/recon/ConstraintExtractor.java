@@ -11,9 +11,6 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcExp;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcValDecl;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcExp.IcCnst;
@@ -23,10 +20,12 @@ import zlk.ir.idcalc.IcExp.IcLet;
 import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.idcalc.IcPattern;
+import zlk.ir.idcalc.IcValDecl;
 import zlk.ir.typing.CaseTyping;
 import zlk.ir.typing.PatternTyping;
 import zlk.phase.recon.constraint.Constraint;
-import zlk.phase.recon.constraint.RcType;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
 import zlk.phase.recon.constraint.Constraint.CForeign;
@@ -35,6 +34,7 @@ import zlk.phase.recon.constraint.Constraint.CLocal;
 import zlk.phase.recon.constraint.Constraint.CPhase;
 import zlk.phase.recon.constraint.Constraint.Provenance;
 import zlk.phase.recon.constraint.Context;
+import zlk.phase.recon.constraint.RcType;
 import zlk.phase.recon.constraint.RcType.FunN;
 import zlk.phase.recon.constraint.RcType.VarN;
 import zlk.util.collection.Seq;
@@ -46,12 +46,14 @@ public final class ConstraintExtractor {
 	private IdMap<Seq<Id>> letDependers; // dependee -> dependers
 	private SeqBuffer<CaseTyping<RcType>> caseTypings;
 	private Map<String, Variable> rigidVars;
+	private IcExpMap<RcType> partExpTypes;
 
 	private ConstraintExtractor(IdMap<Seq<Id>> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
 		this.caseTypings = new SeqBuffer<>();
 		this.rigidVars = Map.of();
+		this.partExpTypes = new IcExpMap<>();
 	}
 
 	public static Result extract(IcModule module, FreshFlex freshFlex) {
@@ -64,12 +66,16 @@ public final class ConstraintExtractor {
 				new CExists(  // TODO: main関数のletにする
 						Seq.of(),
 						Seq.of()));
-		return new Result(constraint, extractor.caseTypings.toSeq());
+		return new Result(
+				constraint,
+				extractor.caseTypings.toSeq(),
+				extractor.partExpTypes);
 	}
 
 	public record Result(
 			Constraint constraint,
-			Seq<CaseTyping<RcType>> caseTypings) {}
+			Seq<CaseTyping<RcType>> caseTypings,
+			IcExpMap<RcType> partExpType) {}
 
 	/**
 	 * 指定された式の制約を抽出して返す．
@@ -81,6 +87,7 @@ public final class ConstraintExtractor {
 	}
 
 	private Constraint extract(IcExp exp, RcType expected, Context context) {
+		partExpTypes.put(exp, expected);
 		return switch (exp) {
 
 		case IcCnst(ConstValue value, Location loc) ->

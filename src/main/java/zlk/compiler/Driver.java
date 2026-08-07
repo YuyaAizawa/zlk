@@ -25,6 +25,7 @@ import zlk.phase.parse.Parser;
 import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.IcExpMap;
 import zlk.phase.recon.TypeError;
 import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
@@ -83,8 +84,12 @@ public final class Driver {
 				_ -> reconed.andThen(
 				typesAndcaseTypings -> {
 					IdMap<Type> types = typesAndcaseTypings.types();
-					return closurePhase(module, types, diagCollector)
-							.andThen(clcalced -> bytecodePhase(clcalced, types, name, diagCollector));
+					return closurePhase(
+							module,
+							types,
+							typesAndcaseTypings.partExpTypes(),
+							diagCollector)
+						.andThen(clcalced -> bytecodePhase(clcalced, types, name, diagCollector));
 				})));
 
 		Seq<Diagnostic> diags = diagCollector.collect();
@@ -111,7 +116,8 @@ public final class Driver {
 
 	record TypesAndCaseTypings(
 			IdMap<Type> types,
-			Seq<CaseTyping<Type>> caseTypings
+			Seq<CaseTyping<Type>> caseTypings,
+			IcExpMap<Type> partExpTypes
 	) {}
 	private static PhaseResult<TypesAndCaseTypings> reconPhase(
 			IcModule module,
@@ -153,7 +159,10 @@ public final class Driver {
 			reportInferredTypes(module, types, sink);
 		}
 
-		return PhaseResult.ready(new TypesAndCaseTypings(types, reconed.caseTypings()));
+		return PhaseResult.ready(new TypesAndCaseTypings(
+				types,
+				reconed.caseTypings(),
+				reconed.partExpType()));
 	}
 
 	private static void reportInferredTypes(
@@ -224,10 +233,12 @@ public final class Driver {
 	private static PhaseResult<CcModule> closurePhase(
 			IcModule module,
 			IdMap<Type> types,
+			IcExpMap<Type> partExpTypes,
 			DiagnosticReporter sink
 	) {
 		Seq<Id> builtinIds = Builtin.functions().map(Builtin::id);
-		return PhaseResult.ready(new ClosureConverter(module, types, builtinIds).convert());
+		return PhaseResult.ready(
+				new ClosureConverter(module, types, partExpTypes, builtinIds).convert());
 	}
 
 	private static PhaseResult<Map<String, byte[]>> bytecodePhase(

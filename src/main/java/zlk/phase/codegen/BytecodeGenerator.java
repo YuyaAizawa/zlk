@@ -23,8 +23,6 @@ import zlk.core.Builtin;
 import zlk.ir.clcalc.CcCaseBranch;
 import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
-import zlk.ir.clcalc.CcFunDecl;
-import zlk.ir.clcalc.CcModule;
 import zlk.ir.clcalc.CcExp.CcCase;
 import zlk.ir.clcalc.CcExp.CcClosureApp;
 import zlk.ir.clcalc.CcExp.CcCnst;
@@ -33,6 +31,8 @@ import zlk.ir.clcalc.CcExp.CcIf;
 import zlk.ir.clcalc.CcExp.CcLet;
 import zlk.ir.clcalc.CcExp.CcMkCls;
 import zlk.ir.clcalc.CcExp.CcVar;
+import zlk.ir.clcalc.CcFunDecl;
+import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcPattern;
 import zlk.util.collection.Seq;
@@ -308,14 +308,14 @@ public final class BytecodeGenerator {
 		case CcCnst(ConstValue value, Location _) -> {
 			loadCnst(value);
 		}
-		case CcVar(Id id, Location _) -> {
+		case CcVar(Id id, Type type, Location _) -> {
 			int localIndex = locals.indexOf(id);
 			if(localIndex == -1) {
 				throw new Error("No such locals: "+id);
 			}
-			loadLocal(localIndex, types.get(id));
+			loadLocal(localIndex, type);
 		}
-		case CcDirectApp(Id funId, Seq<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, Seq<CcExp> args, Type _, Location _) -> {
 			Type funTy = types.get(funId);
 			Seq<Type> flattenTys = funTy.flatten();
 
@@ -357,7 +357,7 @@ public final class BytecodeGenerator {
 				checkcastIfNeed(subclass, ubTy);
 			});
 		}
-		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location _) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Type _, Location _) -> {
 			compile(funExp, JavaType.FUNCTION);
 
 			compile(args.head(), JavaType.OBJECT);
@@ -369,7 +369,7 @@ public final class BytecodeGenerator {
 			}
 			checkcastIfNeed(JavaType.OBJECT, ubTy);
 		}
-		case CcMkCls(Id implId, Seq<CcExp> caps, Location _) -> {
+		case CcMkCls(Id implId, Seq<CcExp> caps, Type _, Location _) -> {
 			if(ctors.containsKey(implId)) {  // データ型の初期化確認
 				// 部分適用する前にコンストラクタ用メソッド（<init>とは別）があるか確認
 				ensureCtorOriginal(ctors.get(implId));
@@ -383,10 +383,7 @@ public final class BytecodeGenerator {
 			}
 
 			// 引数が要らない場合戻り値のデータを置く
-			Type implTy = types.getOrNull(implId);
-			if(implTy == null) {
-				throw new RuntimeException(implId.toString());
-			}
+			Type implTy = types.get(implId);
 			if(!implTy.isArrow()) {
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
@@ -411,7 +408,7 @@ public final class BytecodeGenerator {
 			}
 			checkcastIfNeed(JavaType.OBJECT, ubTy);
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type _, Location _) -> {
 			Label l1 = new Label();
 			Label l2 = new Label();
 			compile(cond, toJavaType(Type.BOOL));
@@ -424,14 +421,14 @@ public final class BytecodeGenerator {
 			compile(elseExp, ubTy);
 			mv.visitLabel(l2);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Type _, Location _) -> {
 			Type varTy = types.get(varName);
 			compile(boundExp, toJavaType(varTy));
 			locals.add(varName);
 			storeLocal(locals.size() - 1, varTy);
 			compile(body, ubTy);
 		}
-		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type _, Location _) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）
 			// invokedynamic #0:typeSwitch, 0 2つ目の引数は型リストの前半を無視するとき使う
@@ -482,7 +479,7 @@ public final class BytecodeGenerator {
 			}
 			mv.visitLabel(neck);
 		}
-		case CcExp.CcRecord(Seq<CcExp.CcRecordField> fields, Location _) -> {
+		case CcExp.CcRecord(Seq<CcExp.CcRecordField> fields, Type _, Location _) -> {
 			// 計算順序は記述順に（この制限は外してもよい）
 			record StoredField(CcExp.CcRecordField field, int localIndex) {}
 			SeqBuffer<StoredField> canonicalFields = new SeqBuffer<>(fields.size());
@@ -512,7 +509,7 @@ public final class BytecodeGenerator {
 					encodedNames.toString());
 			checkcastIfNeed(JavaType.RECORD, ubTy);
 		}
-		case CcExp.CcRecordAccess(CcExp target, String field, Location _) -> {
+		case CcExp.CcRecordAccess(CcExp target, String field, Type _, Location _) -> {
 			compile(target, JavaType.RECORD);
 			mv.visitLdcInsn(field);
 			mv.visitMethodInsn(
@@ -523,7 +520,7 @@ public final class BytecodeGenerator {
 					true);
 			checkcastIfNeed(JavaType.OBJECT, ubTy);
 		}
-		case CcExp.CcRecordUpdate(CcExp target, Seq<CcExp.CcRecordField> fields, Location _) -> {
+		case CcExp.CcRecordUpdate(CcExp target, Seq<CcExp.CcRecordField> fields, Type _, Location _) -> {
 			compile(target, JavaType.RECORD);
 			for(CcExp.CcRecordField field : fields) {
 				mv.visitLdcInsn(field.name());

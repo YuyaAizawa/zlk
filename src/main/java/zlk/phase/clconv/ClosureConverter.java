@@ -14,9 +14,6 @@ import zlk.common.id.IdMap;
 import zlk.ir.clcalc.CcCaseBranch;
 import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
-import zlk.ir.clcalc.CcFunDecl;
-import zlk.ir.clcalc.CcModule;
-import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.clcalc.CcExp.CcCase;
 import zlk.ir.clcalc.CcExp.CcClosureApp;
 import zlk.ir.clcalc.CcExp.CcCnst;
@@ -29,13 +26,12 @@ import zlk.ir.clcalc.CcExp.CcRecordAccess;
 import zlk.ir.clcalc.CcExp.CcRecordField;
 import zlk.ir.clcalc.CcExp.CcRecordUpdate;
 import zlk.ir.clcalc.CcExp.CcVar;
+import zlk.ir.clcalc.CcFunDecl;
+import zlk.ir.clcalc.CcModule;
+import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcTypeDecl;
-import zlk.ir.idcalc.IcValDecl;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcExp.IcCnst;
@@ -49,7 +45,12 @@ import zlk.ir.idcalc.IcExp.IcRecordUpdate;
 import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.idcalc.IcPattern;
 import zlk.ir.idcalc.IcPattern.Var;
+import zlk.ir.idcalc.IcTypeDecl;
+import zlk.ir.idcalc.IcValDecl;
+import zlk.phase.recon.IcExpMap;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -61,15 +62,22 @@ public final class ClosureConverter {
 
 	private final IcModule src;
 	private final IdMap<Type> type;  // 変換後のIdの型を追加
+	private final IcExpMap<Type> partExpTypes;
 	private final Set<Id> knowns;
 	private final IdMap<Integer> arities;  // その時点で直接呼出し可能であることが確定した関数の引数の数
 
 	private final SeqBuffer<CcFunDecl> toplevels;
 	private final AtomicInteger closureCount;
 
-	public ClosureConverter(IcModule src, IdMap<Type> type, Seq<Id> builtins) {
+	public ClosureConverter(
+			IcModule src,
+			IdMap<Type> type,
+			IcExpMap<Type> partExpTypes,
+			Seq<Id> builtins
+	) {
 		this.src = src;
 		this.type = type;
+		this.partExpTypes = partExpTypes;
 
 		this.knowns = new HashSet<>();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
@@ -120,12 +128,13 @@ public final class ClosureConverter {
 			knowns.add(closureFunc.id());
 			return Optional.of(new CcMkCls(
 					closureFunc.id(),
-					frees.map(id_ -> (CcExp) new CcVar(id_, Location.noLocation())),
+					frees.map(id_ -> (CcExp) new CcVar(id_, type.get(id_), Location.noLocation())),
+					type.get(id),
 					closureFunc.loc()));
 		}
 	}
 
-	private CcMkCls compileLambda(Id id, Seq<IcPattern> args, IcExp body) {
+	private CcMkCls compileLambda(Id id, Seq<IcPattern> args, IcExp body, Type lambdaType) {
 		CcExp ccBody = compile(body);
 		Seq<Id> frees = fvFunc(ccBody, args);
 		CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, body.loc());
@@ -133,7 +142,8 @@ public final class ClosureConverter {
 		knowns.add(closureFunc.id());
 		return new CcMkCls(
 				closureFunc.id(),
-				frees.map(id_ -> (CcExp) new CcVar(id_, Location.noLocation())),
+				frees.map(id_ -> (CcExp) new CcVar(id_, type.get(id_), Location.noLocation())),
+				lambdaType,
 				closureFunc.loc());
 	}
 
@@ -174,7 +184,7 @@ public final class ClosureConverter {
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
 			clsArgs.add(new Var(newId, Location.noLocation()));
-			caps.add(new CcVar(newId, Location.noLocation()));
+			caps.add(new CcVar(newId, type.get(free), Location.noLocation()));
 			type.put(newId, type.get(free));
 		}
 		clsArgs.addAll(args_);
@@ -190,101 +200,112 @@ public final class ClosureConverter {
 		case CcCnst _ ->
 			target;
 
-		case CcVar(Id id, Location loc) ->
-			new CcVar(idMap.getOrDefault(id, id), loc);
+		case CcVar(Id id, Type expType, Location loc) ->
+			new CcVar(idMap.getOrDefault(id, id), expType, loc);
 
-		case CcDirectApp(Id funId, Seq<CcExp> args, Location loc) ->
+		case CcDirectApp(Id funId, Seq<CcExp> args, Type expType, Location loc) ->
 			funId.equals(origId) ?
 				new CcDirectApp(
 						clsId,
 						Seq.concat(caps, args.map(go)),  // キャプチャした変数が明示的に引数に
+						expType,
 						loc) :
 				new CcDirectApp(
 					funId,
 					args.map(go),
+					expType,
 					loc);
 
-		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location loc) ->
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Type expType, Location loc) ->
 			new CcClosureApp(
 					go.apply(funExp),
 					args.map(go),
+					expType,
 					loc);
 
-		case CcMkCls(Id clsFunc, Seq<CcExp> caps_, Location loc) ->
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps_, Type expType, Location loc) ->
 			clsFunc.equals(origId) ?
 				new CcMkCls(
 						clsId,
 						Seq.concat(caps, caps_.map(go)),  // 部分適用の前にキャプチャした変数を含める
+						expType,
 						loc) :
 				new CcMkCls(
 					clsFunc,
 					caps_.map(go),
+					expType,
 					loc);
 
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) ->
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type expType, Location loc) ->
 			new CcIf(
 					go.apply(cond),
 					go.apply(thenExp),
 					go.apply(elseExp),
+					expType,
 					loc);
 
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location loc) ->
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Type expType, Location loc) ->
 			new CcLet(
 					varName,
 					go.apply(boundExp),
 					go.apply(body),
+					expType,
 					loc);
 
-		case CcCase(CcExp cond, Seq<CcCaseBranch> branches, Location loc) ->
+		case CcCase(CcExp cond, Seq<CcCaseBranch> branches, Type expType, Location loc) ->
 			new CcCase(
 					go.apply(cond),
 					branches.map(branch -> new CcCaseBranch(
 							branch.pattern(),
 							go.apply(branch.body()),
 							branch.loc())),
+					expType,
 					loc);
 
-		case CcRecord(Seq<CcRecordField> fields, Location loc) ->
+		case CcRecord(Seq<CcRecordField> fields, Type expType, Location loc) ->
 			new CcRecord(
 					fields.map(field -> new CcRecordField(
 							field.name(), go.apply(field.value()), field.loc())),
+					expType,
 					loc);
-		case CcRecordAccess(CcExp recordTarget, String field, Location loc) ->
-			new CcRecordAccess(go.apply(recordTarget), field, loc);
-		case CcRecordUpdate(CcExp recordTarget, Seq<CcRecordField> fields, Location loc) ->
+		case CcRecordAccess(CcExp recordTarget, String field, Type expType, Location loc) ->
+			new CcRecordAccess(go.apply(recordTarget), field, expType, loc);
+		case CcRecordUpdate(CcExp recordTarget, Seq<CcRecordField> fields, Type expType, Location loc) ->
 			new CcRecordUpdate(
 					go.apply(recordTarget),
 					fields.map(field -> new CcRecordField(
 							field.name(), go.apply(field.value()), field.loc())),
+					expType,
 					loc);
 		};
 	}
 
 	private CcExp compile(IcExp exp) {
+		Type expType = partExpTypes.get(exp);
 		return switch (exp) {
 		case IcCnst(ConstValue value, Location loc) -> {
 			yield new CcCnst(value, loc);
 		}
 		case IcVarLocal(Id id, Location loc) -> {
 			if(arities.containsKey(id)) {  // IcApp以外の形で関数がでてくる場合
-				yield new CcMkCls(id, Seq.of(), loc);
+				yield new CcMkCls(id, Seq.of(), expType, loc);
 			}
-			yield new CcVar(id, loc);
+			yield new CcVar(id, expType, loc);
 		}
 		case IcVarForeign(Id id, Type ty, Location loc) -> {
 			if(arities.containsKey(id) && !ty.isArrow()) {  // 組込みへの対処 TODO 分離
-				yield new CcDirectApp(id, Seq.of(), loc);
+				yield new CcDirectApp(id, Seq.of(), expType, loc);
 			}
-			yield new CcMkCls(id, Seq.of(), loc);
+			yield new CcMkCls(id, Seq.of(), expType, loc);
 		}
 		case IcVarCtor(Id id, Type ty, Location loc) -> {
 			if(!ty.isArrow()) {  // 引数をとらない場合
-				yield new CcDirectApp(id, Seq.of(), loc);
+				yield new CcDirectApp(id, Seq.of(), expType, loc);
 			}
-			yield new CcMkCls(id, Seq.of(), loc);
+			yield new CcMkCls(id, Seq.of(), expType, loc);
 		}
 		case IcLamb(Id id, Seq<IcPattern> args, IcExp body, Location _) -> {
-			yield compileLambda(id, args, body);
+			yield compileLambda(id, args, body, expType);
 		}
 		case IcApp(IcExp fun, Seq<IcExp> args, Location loc) -> {
 			// 直接呼び出せて引数が揃っていればCcDirectApp
@@ -304,16 +325,17 @@ public final class ClosureConverter {
 						: type.get(callableId).flatten().size() - 1;  // TODO: 組込み関数のアリティを求めるまともな方法
 
 				if(arity > args.size()) {
-					yield new CcMkCls(callableId, ccArgs, loc);
+					yield new CcMkCls(callableId, ccArgs, expType, loc);
 				} else {
-					CcExp result = new CcDirectApp(callableId, ccArgs.take(arity), loc);
+					Type directType = partExpTypes.get(fun).dropArgs(arity);
+					CcExp result = new CcDirectApp(callableId, ccArgs.take(arity), directType, loc);
 					if(arity < args.size()) {
-						result = new CcClosureApp(result, ccArgs.drop(arity), loc);
+						result = new CcClosureApp(result, ccArgs.drop(arity), expType, loc);
 					}
 					yield result;
 				}
 			} else {
-				yield new CcClosureApp(compile(fun), ccArgs, loc);
+				yield new CcClosureApp(compile(fun), ccArgs, expType, loc);
 			}
 		}
 		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location loc) -> {
@@ -321,6 +343,7 @@ public final class ClosureConverter {
 					compile(cond),
 					compile(thenExp),
 					compile(elseExp),
+					expType,
 					loc);
 		}
 		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) -> {
@@ -350,11 +373,11 @@ public final class ClosureConverter {
 			for(IcValDecl decl : decls.reversed()) {
 				Id id = decl.id();
 				if(decl.args().isEmpty()) {
-					result = new CcLet(id, valRhs.get(id), result, decl.loc());
+					result = new CcLet(id, valRhs.get(id), result, expType, decl.loc());
 				} else {
 					CcExp cap = result;
 					result = closures.get(id)
-							.map(cls -> (CcExp)new CcLet(id, cls, cap, decl.loc()))
+							.map(cls -> (CcExp)new CcLet(id, cls, cap, expType, decl.loc()))
 							.orElse(cap);
 				}
 			}
@@ -367,20 +390,22 @@ public final class ClosureConverter {
 									branch.pattern(),
 									compile(branch.body()),
 									branch.loc()));
-			yield new CcCase(ccTarget, compiledBranches, loc);
+			yield new CcCase(ccTarget, compiledBranches, expType, loc);
 		}
 		case IcRecord(Seq<IcRecordField> fields, Location loc) ->
 			new CcRecord(
 					fields.map(field -> new CcRecordField(
 							field.name(), compile(field.value()), field.loc())),
+					expType,
 					loc);
 		case IcRecordAccess(IcExp target, String field, Location loc) ->
-			new CcRecordAccess(compile(target), field, loc);
+			new CcRecordAccess(compile(target), field, expType, loc);
 		case IcRecordUpdate(IcExp target, Seq<IcRecordField> fields, Location loc) ->
 			new CcRecordUpdate(
 					compile(target),
 					fields.map(field -> new CcRecordField(
 							field.name(), compile(field.value()), field.loc())),
+					expType,
 					loc);
 		};
 	}
@@ -397,49 +422,49 @@ public final class ClosureConverter {
 		switch (exp) {
 		case CcCnst _ -> {
 		}
-		case CcVar(Id id, Location _) -> {
+		case CcVar(Id id, Type _, Location _) -> {
 			if (!bounded.contains(id) && !free.contains(id)) {
 				free.add(id);
 			}
 		}
-		case CcDirectApp(Id funId, Seq<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, Seq<CcExp> args, Type _, Location _) -> {
 			if (!bounded.contains(funId) && !free.contains(funId)) {
 				free.add(funId);
 			}
 			args.forEach(arg -> fv(arg, bounded, free));
 		}
-		case CcClosureApp(CcExp fun, Seq<CcExp> args, Location _) -> {
+		case CcClosureApp(CcExp fun, Seq<CcExp> args, Type _, Location _) -> {
 			fv(fun, bounded, free);
 			args.forEach(arg -> fv(arg, bounded, free));
 		}
-		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Location _) -> {
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Type _, Location _) -> {
 			if (!bounded.contains(clsFunc)) {
 				throw new AssertionError();
 			}
 			caps.forEach(exp_ -> fv(exp_, bounded, free));
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type _, Location _) -> {
 			fv(cond, bounded, free);
 			fv(thenExp, bounded, free);
 			fv(elseExp, bounded, free);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Type _, Location _) -> {
 			bounded.add(varName);
 			fv(boundExp, bounded, free);
 			fv(body, bounded, free);
 		}
-		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type _, Location _) -> {
 			fv(target, bounded, free);
 			for (CcCaseBranch branch : branches) {
 				branch.pattern().accumulateVars(bounded);
 				fv(branch.body(), bounded, free);
 			}
 		}
-		case CcRecord(Seq<CcRecordField> fields, Location _) ->
+		case CcRecord(Seq<CcRecordField> fields, Type _, Location _) ->
 			fields.forEach(field -> fv(field.value(), bounded, free));
-		case CcRecordAccess(CcExp target, String _, Location _) ->
+		case CcRecordAccess(CcExp target, String _, Type _, Location _) ->
 			fv(target, bounded, free);
-		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location _) -> {
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Type _, Location _) -> {
 			fv(target, bounded, free);
 			fields.forEach(field -> fv(field.value(), bounded, free));
 		}

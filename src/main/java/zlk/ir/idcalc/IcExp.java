@@ -8,33 +8,15 @@ import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
-import zlk.ir.idcalc.IcExp.IcApp;
-import zlk.ir.idcalc.IcExp.IcCase;
-import zlk.ir.idcalc.IcExp.IcCnst;
-import zlk.ir.idcalc.IcExp.IcIf;
-import zlk.ir.idcalc.IcExp.IcLamb;
-import zlk.ir.idcalc.IcExp.IcLet;
-import zlk.ir.idcalc.IcExp.IcRecord;
-import zlk.ir.idcalc.IcExp.IcRecordAccess;
-import zlk.ir.idcalc.IcExp.IcRecordUpdate;
-import zlk.ir.idcalc.IcExp.IcVarCtor;
-import zlk.ir.idcalc.IcExp.IcVarForeign;
-import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcExp extends PrettyPrintable, LocationHolder
-permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet, IcCase,
-		IcRecord, IcRecordAccess, IcRecordUpdate {
+public sealed interface IcExp extends PrettyPrintable, LocationHolder {
 
 	record IcCnst(
 			ConstValue value,
-			Location loc) implements IcExp {
-		Type type() {
-			return value.type();
-		}
-	}
+			Location loc) implements IcExp {}
 
 	record IcVarLocal(
 			Id id,
@@ -78,12 +60,15 @@ permits IcCnst, IcVarLocal, IcVarForeign, IcVarCtor, IcLamb, IcApp, IcIf, IcLet,
 			Location loc) implements IcExp {}
 
 	record IcRecordField(String name, IcExp value, Location loc) implements LocationHolder {}
-
 	record IcRecord(
 			Seq<IcRecordField> fields,
 			Location loc) implements IcExp {}
 
-	record IcRecordAccess(IcExp target, String field, Location loc) implements IcExp {}
+	record IcRecordAccess(
+			IcExp target,
+			String field,
+			Location loc) implements IcExp {}
+
 	record IcRecordUpdate(
 			IcExp target,
 			Seq<IcRecordField> fields,
