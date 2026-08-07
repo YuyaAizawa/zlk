@@ -14,7 +14,7 @@ import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public class IdMap<V> implements PrettyPrintable, Cloneable {
+public final class IdMap<V> implements PrettyPrintable, Cloneable {
 
 	public Map<Id, V> impl;
 

@@ -37,7 +37,7 @@ import zlk.util.ConsumerIndexed;
 ///
 /// @param <E>
 
-public final class SeqBuffer<E> implements Iterable<E> {
+public final class SeqBuffer<E> implements Accumulator<E>, Iterable<E> {
 
 	static final int DEFAULT_CHUNK_SIZE = 10;
 	static final int MAX_CHUNK_SIZE = 4000;
@@ -111,6 +111,7 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		return totalSize == 0;
 	}
 
+	@Override
 	public void add(E element) {
 		if(tailSize == tailChunk.data.length) {
 			grow();
@@ -355,6 +356,17 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		}
 
 		return new ArraySeq<>(array);
+	}
+
+	public Accumulator<E> uniqueAcc() {
+		return new Accumulator<E>() {
+			@Override
+			public void add(E element) {
+				if(!contains(element)) {
+					SeqBuffer.this.add(element);
+				}
+			}
+		};
 	}
 
 	@Override

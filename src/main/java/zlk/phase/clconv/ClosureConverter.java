@@ -1,8 +1,6 @@
 package zlk.phase.clconv;
 
-import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -11,6 +9,7 @@ import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.common.id.IdSet;
 import zlk.ir.clcalc.CcCaseBranch;
 import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
@@ -28,6 +27,7 @@ import zlk.ir.clcalc.CcExp.CcRecordUpdate;
 import zlk.ir.clcalc.CcExp.CcVar;
 import zlk.ir.clcalc.CcFunDecl;
 import zlk.ir.clcalc.CcModule;
+import zlk.ir.clcalc.CcPattern;
 import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcCtor;
@@ -47,10 +47,9 @@ import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcPattern.Var;
 import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
-import zlk.phase.recon.IcExpMap;
+import zlk.phase.recon.ExpOrPatternMap;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -62,8 +61,8 @@ public final class ClosureConverter {
 
 	private final IcModule src;
 	private final IdMap<Type> type;  // 変換後のIdの型を追加
-	private final IcExpMap<Type> partExpTypes;
-	private final Set<Id> knowns;
+	private final ExpOrPatternMap<Type> partExpTypes;
+	private final IdSet knowns;
 	private final IdMap<Integer> arities;  // その時点で直接呼出し可能であることが確定した関数の引数の数
 
 	private final SeqBuffer<CcFunDecl> toplevels;
@@ -72,14 +71,14 @@ public final class ClosureConverter {
 	public ClosureConverter(
 			IcModule src,
 			IdMap<Type> type,
-			IcExpMap<Type> partExpTypes,
+			ExpOrPatternMap<Type> partExpTypes,
 			Seq<Id> builtins
 	) {
 		this.src = src;
 		this.type = type;
 		this.partExpTypes = partExpTypes;
 
-		this.knowns = new HashSet<>();
+		this.knowns = new IdSet();
 		src.decls().forEach(decl -> knowns.add(decl.id()));
 		src.types().forEach(union -> union.ctors().forEach(ctor -> knowns.add(ctor.id())));
 		builtins.forEach(knowns::add);
@@ -117,12 +116,13 @@ public final class ClosureConverter {
 		knowns.add(id);
 		CcExp ccBody = compile(body);
 		Seq<Id> frees = fvFunc(ccBody, args);
+		Seq<CcPattern> args_ = args.map(arg -> convert(arg));
 
 		if(frees.isEmpty()) {
-			toplevels.add(new CcFunDecl(id, args, ccBody, body.loc()));
+			toplevels.add(new CcFunDecl(id, args_, ccBody, body.loc()));
 			return Optional.empty();
 		} else {
-			CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, body.loc());
+			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, body.loc());
 			toplevels.add(closureFunc);
 			arities.remove(id);  // 直接呼出し出来なかったので取り除く
 			knowns.add(closureFunc.id());
@@ -137,7 +137,14 @@ public final class ClosureConverter {
 	private CcMkCls compileLambda(Id id, Seq<IcPattern> args, IcExp body, Type lambdaType) {
 		CcExp ccBody = compile(body);
 		Seq<Id> frees = fvFunc(ccBody, args);
-		CcFunDecl closureFunc = makeClosure(id, frees, args, ccBody, body.loc());
+		CcFunDecl closureFunc =
+				makeClosure(
+						id,
+						frees,
+						args.map(arg -> convert(arg)),
+						ccBody,
+						body.loc());
+
 		toplevels.add(closureFunc);
 		knowns.add(closureFunc.id());
 		return new CcMkCls(
@@ -159,7 +166,7 @@ public final class ClosureConverter {
 	private CcFunDecl makeClosure(
 			Id origId,
 			Seq<Id> frees,
-			Seq<IcPattern> args_,
+			Seq<CcPattern> args_,
 			CcExp body,
 			Location loc
 	) {
@@ -179,13 +186,14 @@ public final class ClosureConverter {
 		// 自己再帰のために元の関数名も置換対象
 		idMap.put(origId, clsId);
 
-		SeqBuffer<IcPattern> clsArgs = new SeqBuffer<>();
+		SeqBuffer<CcPattern> clsArgs = new SeqBuffer<>();
 		SeqBuffer<CcVar> caps = new SeqBuffer<>();
 		for(Id free : frees) {
 			Id newId = idMap.get(free);
-			clsArgs.add(new Var(newId, Location.noLocation()));
-			caps.add(new CcVar(newId, type.get(free), Location.noLocation()));
-			type.put(newId, type.get(free));
+			Type ty = type.get(free);
+			clsArgs.add(new CcPattern.Var(newId, ty, Location.noLocation()));
+			caps.add(new CcVar(newId, ty, Location.noLocation()));
+			type.put(newId, ty);
 		}
 		clsArgs.addAll(args_);
 
@@ -387,7 +395,7 @@ public final class ClosureConverter {
 			CcExp ccTarget = compile(target);
 			Seq<CcCaseBranch> compiledBranches =
 					branches.map(branch -> new CcCaseBranch(
-									branch.pattern(),
+									convert(branch.pattern()),
 									compile(branch.body()),
 									branch.loc()));
 			yield new CcCase(ccTarget, compiledBranches, expType, loc);
@@ -412,13 +420,13 @@ public final class ClosureConverter {
 
 	private Seq<Id> fvFunc(CcExp body, Seq<IcPattern> args) {
 		SeqBuffer<Id> free = new SeqBuffer<>();
-		Set<Id> bounded = new HashSet<>(knowns);
+		IdSet bounded = new IdSet(knowns);
 		args.forEach(arg -> arg.accumulateVars(bounded));
 		fv(body, bounded, free);
 		return free.toSeq();
 	}
 
-	private void fv(CcExp exp, Set<Id> bounded, SeqBuffer<Id> free) {
+	private void fv(CcExp exp, IdSet bounded, SeqBuffer<Id> free) {
 		switch (exp) {
 		case CcCnst _ -> {
 		}
@@ -492,5 +500,22 @@ public final class ClosureConverter {
 
 	private CcCtor convert(IcCtor icCtor) {
 		return new CcCtor(icCtor.id(), icCtor.args(), icCtor.loc());
+	}
+
+	private CcPattern convert(IcPattern pat) {
+		return switch(pat) {
+		case IcPattern.Wildcard(Location loc) ->
+			new CcPattern.Wildcard(loc);
+		case IcPattern.Var(Id id, Location loc) ->
+			new CcPattern.Var(id, partExpTypes.get(pat), loc);
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern> args, Location loc) ->
+			new CcPattern.Dector(ctor, args.map(arg -> convert(arg)), partExpTypes.get(pat), loc);
+		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location loc) ->
+			new CcPattern.Record(fields.map(f -> convert(f)), partExpTypes.get(pat), loc);
+		};
+	}
+
+	private CcPattern.RecordField convert(IcPattern.RecordField rf) {
+		return new CcPattern.RecordField(rf.name(), convert(rf.pattern()), rf.loc());
 	}
 }

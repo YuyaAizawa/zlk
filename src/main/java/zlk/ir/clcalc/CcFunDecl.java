@@ -3,7 +3,6 @@ package zlk.ir.clcalc;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
-import zlk.ir.idcalc.IcPattern;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -15,7 +14,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record CcFunDecl(
 		Id id,
-		Seq<IcPattern> args,
+		Seq<CcPattern> args,
 		CcExp body,
 		Location loc)
 implements PrettyPrintable, LocationHolder {

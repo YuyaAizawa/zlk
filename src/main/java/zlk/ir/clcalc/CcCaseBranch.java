@@ -1,17 +1,14 @@
 package zlk.ir.clcalc;
 
-import java.util.HashSet;
-import java.util.Set;
-
 import zlk.common.Location;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.ir.idcalc.IcPattern;
+import zlk.util.collection.SeqBuffer;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcCaseBranch(
-		IcPattern pattern,
+		CcPattern pattern,
 		CcExp body,
 		Location loc)
 implements PrettyPrintable {
@@ -25,8 +22,8 @@ implements PrettyPrintable {
 	}
 
 	CcCaseBranch substId(IdMap<Id> map) {
-		Set<Id> ids = new HashSet<>();
-		pattern.accumulateVars(ids);
+		SeqBuffer<Id> ids = new SeqBuffer<Id>();
+		pattern.accumulateVars(ids.uniqueAcc());
 		ids.forEach(id -> {
 			if(map.containsKey(id)) {
 				throw new RuntimeException(""+id);

@@ -1,8 +1,8 @@
 package zlk.phase.nameeval;
 
-import java.util.Optional;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import zlk.common.ConstValue;
 import zlk.common.Location;
@@ -14,14 +14,12 @@ import zlk.diagnostic.Diagnostic;
 import zlk.diagnostic.DiagnosticReporter;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Decl;
-import zlk.ir.ast.Exp;
-import zlk.ir.ast.Module;
-import zlk.ir.ast.Pattern;
 import zlk.ir.ast.Decl.TypeAlias;
 import zlk.ir.ast.Decl.TypeDecl;
 import zlk.ir.ast.Decl.TypeErr;
 import zlk.ir.ast.Decl.ValDecl;
 import zlk.ir.ast.Decl.ValErr;
+import zlk.ir.ast.Exp;
 import zlk.ir.ast.Exp.App;
 import zlk.ir.ast.Exp.Case;
 import zlk.ir.ast.Exp.Cnst;
@@ -30,14 +28,11 @@ import zlk.ir.ast.Exp.If;
 import zlk.ir.ast.Exp.Lamb;
 import zlk.ir.ast.Exp.Let;
 import zlk.ir.ast.Exp.Var;
+import zlk.ir.ast.Module;
+import zlk.ir.ast.Pattern;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcTypeDecl;
-import zlk.ir.idcalc.IcValDecl;
-import zlk.phase.PhaseResult;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcExp.IcCnst;
@@ -47,7 +42,11 @@ import zlk.ir.idcalc.IcExp.IcLet;
 import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
-import zlk.ir.idcalc.IcPattern.Arg;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.idcalc.IcPattern;
+import zlk.ir.idcalc.IcTypeDecl;
+import zlk.ir.idcalc.IcValDecl;
+import zlk.phase.PhaseResult;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -322,8 +321,7 @@ public final class NameEvaluator {
 			if (args.size() != expected) {
 				throw new ResolutionException(new Diagnostic.ConstructorArityMismatch(loc, name, expected, args.size()));
 			}
-			Seq<Arg> dectorArgs = Seq.zip(args, ctorType.flatten().take(args.size()))
-					.map((arg, argTy) -> new IcPattern.Arg(eval(arg), argTy));
+			Seq<IcPattern> dectorArgs = args.map(arg -> eval(arg));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
 		}
 		case Pattern.Record(Seq<Pattern.RecordField> fields, Location loc): {
