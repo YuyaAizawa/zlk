@@ -157,7 +157,12 @@ public class Main {
 		Builtin.functions().forEach(b -> types.put(b.id(), b.type()));
 
 		System.out.println("-- CL CONV --");
-		CcModule clconv = new ClosureConverter(idcalc, types, builtinIds).convert();
+		CcModule clconv = new ClosureConverter(
+				idcalc,
+				types,
+				reconed.partExpType(),
+				builtinIds
+		).convert();
 		clconv.pp(System.out);
 		System.out.println();
 

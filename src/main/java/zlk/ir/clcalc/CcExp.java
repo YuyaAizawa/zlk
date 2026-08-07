@@ -15,60 +15,74 @@ import zlk.util.pp.PrettyPrinter;
  */
 public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 
+	Type type();
+
 	record CcCnst(
 			ConstValue value,
 			Location loc) implements CcExp {
-		Type type() {
-			return value.type();
-		}
+		@Override
+		public Type type() { return value.type(); }
 	}
 
 	record CcVar(  // 変数の参照
 			Id id,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcDirectApp(  // invokeになる部分
 			Id funId,
 			Seq<CcExp> args,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcClosureApp(  // Function.applyになる部分
 			CcExp funExp,
 			Seq<CcExp> args,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcMkCls(
 			Id implId,  // メソッド定義
 			Seq<CcExp> caps,  // キャプチャする式
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcIf(
 			CcExp cond,
 			CcExp thenExp,
 			CcExp elseExp,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcLet(  // ローカル変数になる部分
 			Id var,
 			CcExp boundExp,
 			CcExp body,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcCase(
 			CcExp target,
 			Seq<CcCaseBranch> branches,
+			Type type,
 			Location loc) implements CcExp {}
 
 	record CcRecordField(String name, CcExp value, Location loc) implements LocationHolder {}
-
 	record CcRecord(
 			Seq<CcRecordField> fields,
+			Type type,
 			Location loc) implements CcExp {}
 
-	record CcRecordAccess(CcExp target, String field, Location loc) implements CcExp {}
+	record CcRecordAccess(
+			CcExp target,
+			String field,
+			Type type,
+			Location loc) implements CcExp {}
+
 	record CcRecordUpdate(
 			CcExp target,
 			Seq<CcRecordField> fields,
+			Type type,
 			Location loc) implements CcExp {}
 
 	default CcExp substId(IdMap<Id> map) {
@@ -76,59 +90,67 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 		case CcCnst _ -> {
 			yield this;
 		}
-		case CcVar(Id id, Location loc) -> {
-			yield new CcVar(map.getOrDefault(id, id), loc);
+		case CcVar(Id id, Type type, Location loc) -> {
+			yield new CcVar(map.getOrDefault(id, id), type, loc);
 		}
-		case CcDirectApp(Id funid, Seq<CcExp> args, Location loc) -> {
+		case CcDirectApp(Id funid, Seq<CcExp> args, Type type, Location loc) -> {
 			yield new CcDirectApp(
 					map.getOrDefault(funid, funid),
 					args.map(arg -> arg.substId(map)),
+					type,
 					loc);
 		}
-		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location loc) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Type type, Location loc) -> {
 			yield new CcClosureApp(
 					funExp.substId(map),
 					args.map(arg -> arg.substId(map)),
+					type,
 					loc);
 		}
-		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Location loc) -> {
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Type type, Location loc) -> {
 			yield new CcMkCls(
 					map.getOrDefault(clsFunc, clsFunc),
 					caps.map(cap -> cap.substId(map)),
+					type,
 					loc);
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location loc) -> {
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type type, Location loc) -> {
 			yield new CcIf(
 					cond.substId(map),
 					thenExp.substId(map),
 					elseExp.substId(map),
+					type,
 					loc);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location loc) -> {
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Type type, Location loc) -> {
 			yield new CcLet(
 					varName,
 					boundExp.substId(map),
 					body.substId(map),
+					type,
 					loc);
 		}
-		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location loc) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type type, Location loc) -> {
 			yield new CcCase(
 					target.substId(map),
 					branches.map(branch -> branch.substId(map)),
+					type,
 					loc);
 		}
-		case CcRecord(Seq<CcRecordField> fields, Location loc) ->
+		case CcRecord(Seq<CcRecordField> fields, Type type, Location loc) ->
 			new CcRecord(
 					fields.map(field -> new CcRecordField(
 							field.name(), field.value().substId(map), field.loc())),
+					type,
 					loc);
-		case CcRecordAccess(CcExp target, String field, Location loc) ->
-			new CcRecordAccess(target.substId(map), field, loc);
-		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location loc) ->
+		case CcRecordAccess(CcExp target, String field, Type type, Location loc) ->
+			new CcRecordAccess(target.substId(map), field, type, loc);
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Type type, Location loc) ->
 			new CcRecordUpdate(
 					target.substId(map),
 					fields.map(field -> new CcRecordField(
 							field.name(), field.value().substId(map), field.loc())),
+					type,
 					loc);
 		};
 	}
@@ -139,10 +161,10 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 		case CcCnst(ConstValue value, Location _) -> {
 			pp.append("const: ").append(value);
 		}
-		case CcVar(Id id, Location _) -> {
+		case CcVar(Id id, Type _, Location _) -> {
 			pp.append("var: ").append(id);
 		}
-		case CcDirectApp(Id funId, Seq<CcExp> args, Location _) -> {
+		case CcDirectApp(Id funId, Seq<CcExp> args, Type _, Location _) -> {
 			pp.append("directApp:").endl();
 			pp.indent(() -> {
 				pp.append("funId: ").append(funId).endl();
@@ -154,7 +176,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Location _) -> {
+		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Type _, Location _) -> {
 			pp.append("closureApp:").endl();
 			pp.indent(() -> {
 				pp.append("funExp:").endl();
@@ -169,7 +191,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Location _) -> {
+		case CcMkCls(Id clsFunc, Seq<CcExp> caps, Type _, Location _) -> {
 			pp.append("mkCls:").endl();
 			pp.indent(() -> {
 				pp.append("clsFunc: ").append(clsFunc).endl();
@@ -180,7 +202,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 					});
 				});			});
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Location _) -> {
+		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type _, Location _) -> {
 			pp.append("if:").endl();
 			pp.indent(() -> {
 				pp.append("cond:").endl();
@@ -197,7 +219,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Location _) -> {
+		case CcLet(Id varName, CcExp boundExp, CcExp body, Type _, Location _) -> {
 			pp.append("let:").endl();
 			pp.indent(() -> {
 				pp.append("var: ").append(varName).endl();
@@ -211,7 +233,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Location _) -> {
+		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type _, Location _) -> {
 			pp.append("case:").endl();
 			pp.indent(() -> {
 				pp.append("target:").endl();
@@ -226,12 +248,12 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 				});
 			});
 		}
-		case CcRecord(Seq<CcRecordField> fields, Location _) -> {
+		case CcRecord(Seq<CcRecordField> fields, Type _, Location _) -> {
 			pp.append("record:");
 			pp.indent(() -> fields.forEach(field ->
 					pp.endl().append(field.name()).append(": ").append(field.value())));
 		}
-		case CcRecordAccess(CcExp target, String field, Location _) -> {
+		case CcRecordAccess(CcExp target, String field, Type _, Location _) -> {
 			switch(target) {
 			case CcCnst _, CcVar _, CcMkCls _, CcRecord _, CcRecordAccess _, CcRecordUpdate _ ->
 				pp.append(target);
@@ -240,7 +262,7 @@ public sealed interface CcExp extends PrettyPrintable, LocationHolder {
 			}
 			pp.append(".").append(field);
 		}
-		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Location _) -> {
+		case CcRecordUpdate(CcExp target, Seq<CcRecordField> fields, Type _, Location _) -> {
 			pp.append("record-update ").append(target);
 			pp.indent(() -> fields.forEach(field -> pp.endl()
 					.append(field.name()).append(": ").append(field.value())));
