@@ -27,8 +27,7 @@ permits Wildcard, Var, Dector, Record {
 			Seq<IcPattern> args,
 			Location loc) implements IcPattern {}
 
-	record RecordField(String name, IcPattern pattern, Location loc) implements LocationHolder {}
-	record Record(Seq<RecordField> fields, Location loc) implements IcPattern {}
+	record Record(Seq<Var> fields, Location loc) implements IcPattern {}
 
 	public default void accumulateVars(Accumulator<Id> known) {
 		switch(this) {
@@ -39,8 +38,8 @@ permits Wildcard, Var, Dector, Record {
 		case Dector(IcExp.IcVarCtor _, Seq<IcPattern> args, Location _) -> {
 			args.forEach(arg -> arg.accumulateVars(known));
 		}
-		case Record(Seq<RecordField> fields, Location _) ->
-			fields.forEach(field -> field.pattern().accumulateVars(known));
+		case Record(Seq<Var> fields, Location _) ->
+			fields.forEach(field -> known.add(field.id()));
 		}
 	}
 
@@ -59,13 +58,12 @@ permits Wildcard, Var, Dector, Record {
 				pp.append(" ").append(arg);
 			}
 		}
-		case Record(Seq<RecordField> fields, Location _) -> {
+		case Record(Seq<Var> fields, Location _) -> {
 			pp.append("{");
 			fields.forEachIndexed((i, field) -> pp
 					.append(i == 0 ? " " : ", ")
-					.append(field.name()).append(" = ").append(field.pattern()));
-			if(!fields.isEmpty()) pp.append(" ");
-			pp.append("}");
+					.append(field.id().simpleName()));
+			pp.append(" }");
 		}
 		}
 	}

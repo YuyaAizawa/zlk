@@ -12,7 +12,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public sealed interface CcPattern
 extends PrettyPrintable, LocationHolder {
-	
+
 	Type type();
 
 	record Wildcard(Location loc) implements CcPattern {
@@ -33,9 +33,8 @@ extends PrettyPrintable, LocationHolder {
 			Type type,
 			Location loc) implements CcPattern {}
 
-	record RecordField(String name, CcPattern pattern, Location loc) implements LocationHolder {}
 	record Record(
-			Seq<RecordField> fields,
+			Seq<Var> fields,
 			Type type,
 			Location loc) implements CcPattern {}
 
@@ -48,8 +47,8 @@ extends PrettyPrintable, LocationHolder {
 		case Dector(IcExp.IcVarCtor _, Seq<CcPattern> args, Type _, Location _) -> {
 			args.forEach(arg -> arg.accumulateVars(known));
 		}
-		case Record(Seq<RecordField> fields, Type _, Location _) ->
-			fields.forEach(field -> field.pattern().accumulateVars(known));
+		case Record(Seq<Var> fields, Type _, Location _) ->
+			fields.forEach(field -> known.add(field.id()));
 		}
 	}
 
@@ -68,13 +67,12 @@ extends PrettyPrintable, LocationHolder {
 				pp.append(" ").append(arg);
 			}
 		}
-		case Record(Seq<RecordField> fields, Type _, Location _) -> {
+		case Record(Seq<Var> fields, Type _, Location _) -> {
 			pp.append("{");
 			fields.forEachIndexed((i, field) -> pp
 					.append(i == 0 ? " " : ", ")
-					.append(field.name()).append(" = ").append(field.pattern()));
-			if(!fields.isEmpty()) pp.append(" ");
-			pp.append("}");
+					.append(field.id()));
+			pp.append(" }");
 		}
 		}
 	}

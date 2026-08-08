@@ -71,16 +71,13 @@ public class PatternCheckerTest {
 	}
 
 
-	// ===== open rowパターンマッチ回帰テスト群 =====
-
 	@Test
-	void openRecordBoolFieldCaseIsExhaustive() {
+	void recordPatternIsIrrefutable() {
 		String src =
 				"""
 				classify record =
 				  case record of
-				    { flag = False } -> 0
-				    { flag = True } -> 1
+				    { flag } -> 0
 				""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);
@@ -89,20 +86,18 @@ public class PatternCheckerTest {
 		assertNoErrors(errors);
 	}
 
-
 	@Test
-	void openRecordWithNestedMaybeBoolCaseIsExhaustive() {
+	void recordPatternInsideConstructorIsIrrefutable() {
 		String src =
 				"""
 				type Maybe a =
 				  | Nothing
 				  | Just a
 
-				classify record =
-				  case record of
-				    { value = Nothing } -> 0
-				    { value = Just False } -> 1
-				    { value = Just True } -> 2
+				classify maybe =
+				  case maybe of
+				    Nothing -> 0
+				    Just { value } -> value
 				""";
 
 		var module = new ModuleTester(src, CompileLevel.PATTERN_CHECK);

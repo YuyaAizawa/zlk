@@ -110,41 +110,18 @@ public class PatternTest {
 	}
 
 	@Test
-	void emptyRecordPatternOnOpenRowIsIrrefutableAndMakesLaterRecordBranchRedundant() {
+	void recordPatternIsIrrefutableAndMakesLaterRecordBranchRedundant() {
 		String src =
 				"""
 				classify record =
 				  case record of
-				    {} -> 0
-				    { flag = True } -> 1
+				    { flag } -> 0
+				    { flag } -> 1
 				""";
 
 		assertInstanceOf(Diagnostic.RedundantPattern.class, onlyDiagnostic(src));
 	}
 
-	@Test
-	void openRecordWithNestedMaybeBoolReportsMissingJustFalse() {
-		String src =
-				"""
-				type Maybe a =
-				  | Nothing
-				  | Just a
-				classify record =
-				  case record of
-				    { value = Nothing } -> 0
-				    { value = Just True } -> 1
-				""";
-
-		Diagnostic.IncompletePattern incomplete = onlyIncomplete(src);
-		Seq<PatternWitness> witness = incomplete.examples();
-		assertEquals(1, witness.size());
-
-		PatternWitness.Record product = assertInstanceOf(PatternWitness.Record.class, witness.head());
-		assertEquals(1, product.fields().size());
-		assertEquals("value", product.fields().head().name());
-		PatternWitness.Ctor just = assertCtor(product.fields().head().pattern(), "Main.Maybe.Just", 1);
-		assertCtor(just.args().head(), "Basic.False", 0);
-	}
 
 	private static Diagnostic onlyDiagnostic(String src) {
 		Driver.CompilationResult result = Driver.compile(

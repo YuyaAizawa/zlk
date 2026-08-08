@@ -75,7 +75,7 @@ public final class Driver {
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
 				reconResult -> nameEvaled.andThen(
-				module -> patternPhase(module, reconResult.partExpTypes(), diagCollector)));
+				module -> patternPhase(module, diagCollector)));
 
 		// 閉包変換からバイトコード生成まで
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
@@ -215,10 +215,9 @@ public final class Driver {
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
-			ExpOrPatternMap<Type> patternTypes,
 			DiagnosticReporter diagCollector
 	) {
-		Seq<Diagnostic> result = PatternChecker.check(module, patternTypes);
+		Seq<Diagnostic> result = PatternChecker.check(module);
 		result.forEach(diagCollector::report);
 		return result.anyMatch(Diagnostic::isError)
 				? PhaseResult.blocked()

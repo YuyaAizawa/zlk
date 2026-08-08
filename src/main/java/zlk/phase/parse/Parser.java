@@ -19,13 +19,13 @@ import zlk.ir.ast.AnType;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Constructor;
 import zlk.ir.ast.Decl;
+import zlk.ir.ast.Decl.TypeDecl;
 import zlk.ir.ast.Exp;
 import zlk.ir.ast.Module;
 import zlk.ir.ast.Pattern;
-import zlk.ir.ast.Decl.TypeDecl;
 import zlk.ir.token.Token;
-import zlk.ir.token.Tokenized;
 import zlk.ir.token.Token.Kind;
+import zlk.ir.token.Tokenized;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -293,6 +293,8 @@ public final class Parser {
 
 	static final Peg<Token> BLACK = kind(Kind::isBlack);
 	static final Peg<Token> WORD = kind(Kind::isWord);
+	static final Peg<Token> BLACK_EXCEPT_BRACES =
+			kind(k -> k.isBlack() && k != Kind.LBRACE && k != Kind.RBRACE);
 
 	/* 型注釈
 	 * <tyVar>           ::= <lcid>
@@ -387,22 +389,19 @@ public final class Parser {
 	 *                | <lcid>
 	 *                | <ctorHead>
 	 *                | ( <pattern> )
+	 *                | { <lcid> (, <lcid>)* }
 	 *
 	 * <pattern>    ::= <ctorHead> <aPattern>+
 	 *                | <aPattern>
 	 */
-	static final Peg<Pattern.RecordField> recordPatternField = choice(
-			sequence(LCID, EQUAL, lazy(() -> pattern()),
-					(name, _, pat) -> new Pattern.RecordField(
-							name.str(), pat, false, locRange(name, pat))),
-			LCID.map(name -> new Pattern.RecordField(
-					name.str(), new Pattern.Var(name.str(), name.loc()), true, name.loc())));
+	static final Peg<Pattern.Var> varPattern =
+			LCID.map(t -> new Pattern.Var(t.str(), t.loc()));
 
 	static final Peg<Pattern.Record> recordPattern = sequence(
 			LBRACE,
-			optional(join(recordPatternField, COMMA)),
+			join(varPattern, COMMA),
 			RBRACE,
-			(s, fields, e) -> new Pattern.Record(fields.orElse(Seq.of()), locRange(s, e)));
+			(s, fields, e) -> new Pattern.Record(fields, locRange(s, e)));
 
 	static final Peg<Pattern> aPattern = choice(
 			WILDCARD.map(t -> new Pattern.Wildcard(t.loc())),
@@ -425,7 +424,7 @@ public final class Parser {
 	 * <literal>        ::= <digits>
 	 *
 	 * <recordField>    ::= <lcid> = <exp>
-	 * <recordLiteral>  ::= { (<recordField> (, <recordField>)*)? }
+	 * <recordLiteral>  ::= { <recordField> (, <recordField>)* }
 	 * <recordUpdate>   ::= { <lcid> | <recordField> (, <recordField>)* }
 	 * <recordExp>      ::= <recordUpdate>
 	 *                    | <recordLiteral>
@@ -477,9 +476,9 @@ public final class Parser {
 
 	static final Peg<Exp.Record> recordLiteral = sequence(
 			LBRACE,
-			optional(join(recordField, COMMA)),
+			join(recordField, COMMA),
 			RBRACE,
-			(s, fields, e) -> new Exp.Record(fields.orElse(Seq.of()), locRange(s, e)));
+			(s, fields, e) -> new Exp.Record(fields, locRange(s, e)));
 
 	static final Peg<Exp.RecordUpdate> recordUpdate = sequence(
 			LBRACE,
@@ -630,9 +629,22 @@ public final class Parser {
 				return new Decl.ValDecl(name.str(), Optional.empty(), args, e, locRange(name, e));
 			});
 
+	private static final Peg<Pattern> invalidRecordPattern = sequence(
+			LBRACE,
+			star(choice(
+					BLACK_EXCEPT_BRACES.map(token -> new Panic(token.loc())),
+					lazy(() -> invalidRecordPattern()).map(pattern -> new Panic(pattern.loc())))),
+			RBRACE,
+			(open, _, close) -> new Pattern.Err(open, locRange(open, close)));
+
+	private static Peg<Pattern> invalidRecordPattern() {
+		return invalidRecordPattern;
+	}
+
 	private static final Peg<Pattern> patternOrWord =
 			choice(
 					pattern,
+					invalidRecordPattern,
 					WORD.map(token -> new Pattern.Err(token, token.loc()))
 			);
 	// TODO: tyAnnoエラーの復帰

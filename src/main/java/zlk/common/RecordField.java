@@ -24,12 +24,16 @@ public record RecordField<T>(String name, T value) {
 	 * @return
 	 */
 	public static <T extends PrettyPrintable> Seq<RecordField<T>> canonicalize(Seq<RecordField<T>> fields) {
+		if(fields.size() < 2) {
+			return fields;
+		}
 
 		// 辞書順にならんで
 		Seq<RecordField<T>> sorted = fields.sorted(Comparator.comparing(RecordField::name));
 
 		// 重複が無い
-		int dupIdx = Seq.zip(sorted.dropLast(), sorted.drop(1)).findFirstIndex((n, m) -> n == m);
+		int dupIdx = Seq.zip(sorted.dropLast(), sorted.drop(1))
+				.findFirstIndex((left, right) -> left.name().equals(right.name()));
 		if(0 <= dupIdx) {
 			throw new IllegalArgumentException(
 					"duplicate record field: " + sorted.at(dupIdx).name());

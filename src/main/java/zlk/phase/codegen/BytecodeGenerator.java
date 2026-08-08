@@ -254,6 +254,7 @@ public final class BytecodeGenerator {
 			locals.add(id);
 		}
 		case CcPattern.Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
+			CcCtor ctorDecl = ctors.get(ctor.id());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
 			// stackの数を調整
 			if(args.size() == 0) {
@@ -264,30 +265,28 @@ public final class BytecodeGenerator {
 				mv.visitInsn(Opcodes.DUP);
 			}
 
-			for(int fieldIdx = 0; fieldIdx < args.size(); fieldIdx++) {
-				CcPattern ctorArg = args.at(fieldIdx);
+			Seq.zip(args, ctorDecl.args()).forEachIndexed((fieldIdx, ctorArg, declArgType) -> {
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						javaClasses.get(ctor.id()).toClassName(),
 						CustomType.componentName(fieldIdx),
-						toDesc(ctorArg.type()));
+						toDesc(declArgType));
 				registerArgRec(ctorArg);
-			}
+			});
 		}
-		case CcPattern.Record(Seq<CcPattern.RecordField> fields, Type _, Location _) -> {
+		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
-			if(fields.isEmpty()) mv.visitInsn(Opcodes.POP);
 			for(int i = 0; i < fields.size(); i++) {
 				if(i < fields.size() - 1) mv.visitInsn(Opcodes.DUP);
-				CcPattern.RecordField field = fields.at(i);
-				mv.visitLdcInsn(field.name());
+				CcPattern.Var field = fields.at(i);
+				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
 						Opcodes.INVOKEINTERFACE,
 						JavaType.RECORD.toClassName(),
 						"get",
 						"(Ljava/lang/String;)Ljava/lang/Object;",
 						true);
-				registerArgRec(field.pattern());
+				registerArgRec(field);
 			}
 		}
 		}
@@ -590,21 +589,21 @@ public final class BytecodeGenerator {
 				checkMatchAndStoreLocals(arg, ctorArg, next);
 			});
 		}
-		case CcPattern.Record(Seq<CcPattern.RecordField> fields, Type _, Location _) -> {
+		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
 			int recordLocal = locals.size();
 			locals.add(LOCAL_DUMMY_ID);
 			mv.visitVarInsn(Opcodes.ASTORE, recordLocal);
-			for(CcPattern.RecordField field : fields) {
+			for(CcPattern.Var field : fields) {
 				mv.visitVarInsn(Opcodes.ALOAD, recordLocal);
-				mv.visitLdcInsn(field.name());
+				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
 						Opcodes.INVOKEINTERFACE,
 						JavaType.RECORD.toClassName(),
 						"get",
 						"(Ljava/lang/String;)Ljava/lang/Object;",
 						true);
-				checkMatchAndStoreLocals(field.pattern(), null, next);
+				checkMatchAndStoreLocals(field, null, next);
 			}
 		}
 		};

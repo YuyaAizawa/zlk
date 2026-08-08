@@ -12,6 +12,16 @@ import zlk.diagnostic.Diagnostic;
 public class SyntaxTest {
 
 	@Test
+	void rejectsEmptyRecordLiteral() {
+		assertSyntaxError(
+				"""
+				module Main
+				empty = {}
+				""");
+	}
+
+
+	@Test
 	void reportsSingleSyntaxErrorAndFailsCompilation() {
 		Driver.CompilationResult result = Driver.compile("Main.zlk",
 				"""
@@ -45,5 +55,12 @@ public class SyntaxTest {
 		Diagnostic.SyntaxError second = assertInstanceOf(Diagnostic.SyntaxError.class, failed.diags().at(1));
 		assertEquals(3, first.location().startLine());
 		assertEquals(5, second.location().startLine());
+	}
+
+	private static void assertSyntaxError(String source) {
+		Driver.CompilationResult result = Driver.compile("Main.zlk", source);
+		Driver.CompilationResult.Failed failed = assertInstanceOf(Driver.CompilationResult.Failed.class, result);
+		assertEquals(1, failed.diags().size());
+		assertInstanceOf(Diagnostic.SyntaxError.class, failed.diags().head());
 	}
 }

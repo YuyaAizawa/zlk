@@ -27,9 +27,7 @@ final class PatternBinder {
 		switch(pat) {
 		case IcPattern.Wildcard(_) -> Seq.of();
 		// TODO: リテラル
-		case IcPattern.Var(Id id, _) -> {
-			headers.put(id, expected);
-		}
+		case IcPattern.Var(Id id, _) -> headers.put(id, expected);
 
 		case IcPattern.Dector(IcVarCtor ctor, Seq<IcPattern> args, _) -> {
 			RcType.Inst ctorInfo = RcType.instantiate(ctor.type(), freshFlex);
@@ -43,20 +41,17 @@ final class PatternBinder {
 			Seq.zip(args, ctorInfo.argTys()).forEach(
 				(arg, argTy) -> bind(arg, argTy, freshFlex, patternBinds));
 		}
-		case IcPattern.Record(Seq<IcPattern.RecordField> fields, _) -> {
-			// fresh TYPE fieldsとfresh ROW tail rを生成．
-			// expected = RecordN(RowN([fields..., tail r])) のCEqualを生成．
-			// 空patternもRecordN(RowN([], r))で任意recordを要求．
-			// tailをvarsへ含める．各subpattern bindはfield型へ．
+		case IcPattern.Record(Seq<IcPattern.Var> fields, _) -> {
 			Variable tailVar = freshFlex.getVariable(Variable.Kind.ROW);
 			vars.add(tailVar);
 			SeqBuffer<RecordField<RcType>> fieldTypes = new SeqBuffer<>(fields.size());
-			for(IcPattern.RecordField field : fields) {
+			for(IcPattern.Var field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
 				RcType fieldType = new RcType.VarN(fieldVar);
 				vars.add(fieldVar);
-				bind(field.pattern(), fieldType, freshFlex, patternBinds);
-				fieldTypes.add(new RecordField<>(field.name(), fieldType));
+				headers.put(field.id(), fieldType);
+				patternBinds.put(field, fieldType);
+				fieldTypes.add(new RecordField<>(field.id().simpleName(), fieldType));
 			}
 			RcType requiredRecord = new RcType.RecordN(
 					new RcType.RowN(fieldTypes.toSeq(), Optional.of(tailVar)));

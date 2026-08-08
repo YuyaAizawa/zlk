@@ -225,17 +225,13 @@ extends ExpOrPattern, PrettyPrintable, LocationHolder {
 			});
 		}
 		case IcRecord(Seq<IcRecordField> fields, Location _) -> {
-			if(fields.isEmpty()) {
-				pp.append("{}");
-			} else {
-				pp.append("{ ");
-				IcRecordField head = fields.head();
-				pp.append(head.name).append(" = ").append(head.value);
-				fields.tail().forEach(field -> {
-					pp.append(", ").append(field.name).append(" = ").append(field.value);
-				});
-				pp.append(" }");
-			}
+			pp.append("{ ");
+			IcRecordField head = fields.head();
+			pp.append(head.name).append(" = ").append(head.value);
+			fields.tail().forEach(field -> {
+				pp.append(", ").append(field.name).append(" = ").append(field.value);
+			});
+			pp.append(" }");
 		}
 		case IcRecordAccess(IcExp target, String field, Location _) -> {
 			switch(target) {

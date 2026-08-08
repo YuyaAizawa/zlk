@@ -303,16 +303,7 @@ public final class NameEvaluator {
 		case Pattern.Wildcard(Location loc): {
 			return new IcPattern.Wildcard(loc);
 		}
-		case Pattern.Var(String name, Location loc): {
-			Id id;
-			try {
-				id = env.register(name);
-			} catch (DuplicatedNameException e) {
-				throw duplicateName(loc, Diagnostic.NameNamespace.VALUE, name, e);
-			}
-			nameLocations.put(id, loc);
-			return new IcPattern.Var(id, loc);
-		}
+		case Pattern.Var var: return eval(var);
 		case Pattern.Ctor(String name, Seq<Pattern> args, Location loc): {
 			Id ctor = getName(name, loc);
 			Type ctorType = getConstructorType(ctor);
@@ -324,16 +315,26 @@ public final class NameEvaluator {
 			Seq<IcPattern> dectorArgs = args.map(arg -> eval(arg));
 			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
 		}
-		case Pattern.Record(Seq<Pattern.RecordField> fields, Location loc): {
-			return new IcPattern.Record(
-					fields.map(field -> new IcPattern.RecordField(
-							field.name(), eval(field.pattern()), field.loc())),
-					loc);
+		case Pattern.Record(Seq<Pattern.Var> fields, Location loc): {
+			return new IcPattern.Record(fields.map(this::eval), loc);
 		}
 		case Pattern.Err _: {
 			throw new IllegalArgumentException();
 		}
 		}
+	}
+
+	private IcPattern.Var eval(Pattern.Var var) {
+		String name = var.name();
+		Location loc = var.loc();
+		Id id;
+		try {
+			id = env.register(name);
+		} catch (DuplicatedNameException e) {
+			throw duplicateName(loc, Diagnostic.NameNamespace.VALUE, name, e);
+		}
+		nameLocations.put(id, loc);
+		return new IcPattern.Var(id, loc);
 	}
 
 	private Type getConstructorTypeOrNull(Id id) {

@@ -9,7 +9,7 @@ public class PatternTypingFeatureTest {
 	void partialRecordPatternIsRowPolymorphic() {
 		var module = CompilationFixture.compileSucceeded(
 				"""
-				pick { x = x } = x
+				pick { x } = x
 				int = pick { x = 1, y = True }
 				bool = pick { x = False, z = 2 }
 				""");
@@ -18,15 +18,4 @@ public class PatternTypingFeatureTest {
 		module.assertType("bool", "Bool");
 	}
 
-	@Test
-	void emptyRecordPatternInfersAnOpenRecord() {
-		var module = CompilationFixture.compileSucceeded(
-				"""
-				ignore {} = 1
-				result = ignore { x = True }
-				""");
-
-		module.assertType("ignore", "{ a |  } -> I32");
-		module.assertType("result", "I32");
-	}
 }
