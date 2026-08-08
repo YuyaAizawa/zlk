@@ -8,7 +8,6 @@ import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
-import zlk.ir.typing.CaseTyping;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
@@ -31,8 +30,7 @@ import zlk.util.collection.Seq;
 public class TypeReconstructor {
 	public record Result(
 			IdMap<Type> types,  // 識別子の汎化された型
-			Seq<CaseTyping<Type>> caseTypings,
-			IcExpMap<Type> partExpType  // 部分式の汎化されていない型
+			ExpOrPatternMap<Type> partExpType  // 部分式の汎化されていない型
 	) {}
 
 	// TODO 型が付かなかったときは例外でなくResultの方が扱いやすそう
@@ -66,8 +64,6 @@ public class TypeReconstructor {
 
 		return new Result(
 				self.result.traverse(Variable::toType),
-				extracted.caseTypings().map(
-						caseTyping -> caseTyping.map(RcType::toType)),
 				extracted.partExpType().traverse(RcType::toType));
 	}
 

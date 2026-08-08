@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+
 import zlk.common.id.Id;
 import zlk.phase.recon.Mismatch;
 import zlk.phase.recon.TypeError;
@@ -20,9 +21,9 @@ import zlk.phase.recon.constraint.Constraint.CForeign;
 import zlk.phase.recon.constraint.Constraint.CLet;
 import zlk.phase.recon.constraint.Constraint.CLocal;
 import zlk.phase.recon.constraint.Constraint.CPattern;
+import zlk.phase.recon.constraint.Context;
 import zlk.util.tester.ModuleTester;
 import zlk.util.tester.ModuleTester.CompileLevel;
-import zlk.phase.recon.constraint.Context;
 
 public class ConstraintExtractorTest {
 	@Test

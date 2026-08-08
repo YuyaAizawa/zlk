@@ -9,6 +9,37 @@ import zlk.util.tester.ModuleTester.CompileLevel;
 
 public class ParserRecoveryTest {
 	@Test
+	void emptyRecordPatternIsRejectedAndNextDeclarationIsKept() {
+		var module = new ModuleTester(
+				"""
+				ignore {} = 1
+				after = 2
+				""", CompileLevel.PARSE);
+
+		assertEquals(1, module.getParseErrors().size());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
+	void explicitRecordFieldPatternIsRejectedAndNextDeclarationIsKept() {
+		assertInvalidRecordPattern("{ x = x }");
+		assertInvalidRecordPattern("{ x = _ }");
+		assertInvalidRecordPattern("{ x = True }");
+		assertInvalidRecordPattern("{ x = Just value }");
+		assertInvalidRecordPattern("{ x = { y } }");
+	}
+
+	private static void assertInvalidRecordPattern(String pattern) {
+		var module = new ModuleTester(
+				"pick " + pattern + " = 1" + System.lineSeparator()
+						+ "after = 2",
+				CompileLevel.PARSE);
+
+		assertEquals(1, module.getParseErrors().size());
+		assertEquals(2, module.getAst().decls().size());
+	}
+
+	@Test
 	void panicBlockBodyConsumesNestedIndentBlocks() {
 		String src =
 				"""

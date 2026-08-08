@@ -15,7 +15,6 @@ import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.token.Tokenized;
-import zlk.ir.typing.CaseTyping;
 import zlk.phase.PhaseResult;
 import zlk.phase.clconv.ClosureConverter;
 import zlk.phase.codegen.BytecodeGenerator;
@@ -24,8 +23,8 @@ import zlk.phase.parse.Lexer;
 import zlk.phase.parse.Parser;
 import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
+import zlk.phase.recon.ExpOrPatternMap;
 import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.IcExpMap;
 import zlk.phase.recon.TypeError;
 import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
@@ -70,26 +69,25 @@ public final class Driver {
 				.andThen(module -> nameEvalPhase(module, diagCollector));
 
 		// 型推論
-		PhaseResult<TypesAndCaseTypings> reconed =
+		PhaseResult<ReconResult> reconed =
 				nameEvaled.andThen(icModule -> reconPhase(icModule, options, diagCollector));
 
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
-				typesAndcaseTypings -> nameEvaled.andThen(
-				module -> patternPhase(module, typesAndcaseTypings.caseTypings(), diagCollector)));
+				reconResult -> nameEvaled.andThen(
+				module -> patternPhase(module, diagCollector)));
 
 		// 閉包変換からバイトコード生成まで
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
 				module -> patternChecked.andThen(
 				_ -> reconed.andThen(
-				typesAndcaseTypings -> {
-					IdMap<Type> types = typesAndcaseTypings.types();
+				inffered -> {
 					return closurePhase(
 							module,
-							types,
-							typesAndcaseTypings.partExpTypes(),
+							inffered.types(),
+							inffered.partExpTypes(),
 							diagCollector)
-						.andThen(clcalced -> bytecodePhase(clcalced, types, name, diagCollector));
+						.andThen(clcalced -> bytecodePhase(clcalced, inffered.types(), name, diagCollector));
 				})));
 
 		Seq<Diagnostic> diags = diagCollector.collect();
@@ -114,12 +112,11 @@ public final class Driver {
 		return new NameEvaluator(module).eval(sink);
 	}
 
-	record TypesAndCaseTypings(
+	record ReconResult(
 			IdMap<Type> types,
-			Seq<CaseTyping<Type>> caseTypings,
-			IcExpMap<Type> partExpTypes
+			ExpOrPatternMap<Type> partExpTypes
 	) {}
-	private static PhaseResult<TypesAndCaseTypings> reconPhase(
+	private static PhaseResult<ReconResult> reconPhase(
 			IcModule module,
 			CompilationOptions options,
 			DiagnosticReporter sink
@@ -159,10 +156,8 @@ public final class Driver {
 			reportInferredTypes(module, types, sink);
 		}
 
-		return PhaseResult.ready(new TypesAndCaseTypings(
-				types,
-				reconed.caseTypings(),
-				reconed.partExpType()));
+		return PhaseResult.ready(
+				new ReconResult(types, reconed.partExpType()));
 	}
 
 	private static void reportInferredTypes(
@@ -220,10 +215,9 @@ public final class Driver {
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
-			Seq<CaseTyping<Type>> caseTypings,
 			DiagnosticReporter diagCollector
 	) {
-		Seq<Diagnostic> result = PatternChecker.check(module, caseTypings);
+		Seq<Diagnostic> result = PatternChecker.check(module);
 		result.forEach(diagCollector::report);
 		return result.anyMatch(Diagnostic::isError)
 				? PhaseResult.blocked()
@@ -233,7 +227,7 @@ public final class Driver {
 	private static PhaseResult<CcModule> closurePhase(
 			IcModule module,
 			IdMap<Type> types,
-			IcExpMap<Type> partExpTypes,
+			ExpOrPatternMap<Type> partExpTypes,
 			DiagnosticReporter sink
 	) {
 		Seq<Id> builtinIds = Builtin.functions().map(Builtin::id);

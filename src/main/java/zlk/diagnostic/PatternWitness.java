@@ -16,12 +16,4 @@ public sealed interface PatternWitness {
 			Seq<PatternWitness> args
 	) implements PatternWitness {}
 
-	record Record(
-			Seq<Field> fields
-	) implements PatternWitness {}
-
-	record Field(
-			String name,
-			PatternWitness pattern
-	) {}
 }

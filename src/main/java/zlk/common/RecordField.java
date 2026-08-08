@@ -12,7 +12,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record RecordField<T>(String name, T value) {
 	public RecordField(String name, T value) {
-		this.name = Objects.requireNonNull(name);  // TODO: 名前の妥当性検査
+		this.name = Objects.requireNonNull(name).intern();  // TODO: 名前の妥当性検査
 		this.value = Objects.requireNonNull(value);
 	}
 
@@ -24,14 +24,19 @@ public record RecordField<T>(String name, T value) {
 	 * @return
 	 */
 	public static <T extends PrettyPrintable> Seq<RecordField<T>> canonicalize(Seq<RecordField<T>> fields) {
+		if(fields.size() < 2) {
+			return fields;
+		}
+
+		// 辞書順にならんで
 		Seq<RecordField<T>> sorted = fields.sorted(Comparator.comparing(RecordField::name));
 
-		// 重複がないことを確認
-		for (int i = 1; i < sorted.size(); i++) {
-			if(sorted.at(i - 1).name().equals(sorted.at(i).name())) {
-				throw new IllegalArgumentException(
-						"duplicate record field: " + sorted.at(i - 1).name());
-			}
+		// 重複が無い
+		int dupIdx = Seq.zip(sorted.dropLast(), sorted.drop(1))
+				.findFirstIndex((left, right) -> left.name().equals(right.name()));
+		if(0 <= dupIdx) {
+			throw new IllegalArgumentException(
+					"duplicate record field: " + sorted.at(dupIdx).name());
 		}
 
 		return sorted;

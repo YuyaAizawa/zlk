@@ -3,7 +3,6 @@ package zlk.test.feature.record;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import zlk.runtime.ZlkRecord;
@@ -12,15 +11,6 @@ import zlk.util.tester.DumpOnFailureWatcher;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class RecordFeatureTest {
-	@Test
-	void emptyRecordLiteral() {
-		var module = CompilationFixture.compileSucceeded("empty = {}");
-		Object value = module.value("empty");
-
-		assertTrue(value instanceof ZlkRecord);
-		assertEquals("{}", value.toString());
-	}
-
 	@Test
 	void recordLiteralUsesCanonicalFieldOrder() {
 		var module = CompilationFixture.compileSucceeded("record = { y = True, x = 1 }");
@@ -118,18 +108,6 @@ public class RecordFeatureTest {
 		assertEquals(7, actual);
 	}
 
-	@Test
-	void distinguishesEmptyRecordTypeFromUnit() {
-		var module = CompilationFixture.compileSucceeded(
-				"""
-				empty : {}
-				empty = {}
-				""");
-
-		module.assertType("empty", "{  }");
-		ZlkRecord actual = (ZlkRecord) module.value("empty");
-		assertEquals("{}", actual.toString());
-	}
 
 	@Test
 	void inferredAccessorAcceptsWiderShapesAtBytecodeLevel() {

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import zlk.ir.ast.AnType;
 import zlk.ir.ast.Decl;
+import zlk.ir.ast.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -17,6 +18,36 @@ import zlk.util.tester.ModuleTester.CompileLevel;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class ParserSyntaxTest {
+	@Test
+	void parsesNonEmptyFlatRecordPattern() {
+		var module = new ModuleTester("pick { x, y } = x", CompileLevel.PARSE);
+
+		Decl.ValDecl decl = assertInstanceOf(Decl.ValDecl.class, module.getAst().decls().head());
+		Pattern.Record pattern = assertInstanceOf(Pattern.Record.class, decl.args().head());
+		assertEquals(Seq.of("x", "y"), pattern.fields().map(field -> field.name()));
+		assertEquals("{ x, y }", pattern.buildString());
+	}
+
+	@Test
+	void preservesEmptyAndNestedRecordTypes() {
+		var module = new ModuleTester(
+				"""
+				empty : {}
+				empty = value
+				nested : { outer : { value : I32 } }
+				nested = value
+				""", CompileLevel.PARSE);
+
+		Decl.ValDecl empty = assertInstanceOf(Decl.ValDecl.class, module.getAst().decls().head());
+		AnType.Record emptyType = assertInstanceOf(AnType.Record.class, empty.anno().orElseThrow());
+		assertTrue(emptyType.fields().isEmpty());
+		assertTrue(emptyType.extension().isEmpty());
+
+		Decl.ValDecl nested = assertInstanceOf(Decl.ValDecl.class, module.getAst().decls().at(1));
+		AnType.Record nestedType = assertInstanceOf(AnType.Record.class, nested.anno().orElseThrow());
+		assertInstanceOf(AnType.Record.class, nestedType.fields().head().type());
+	}
+
 	@Test
 	void parsesTypeAliasWithOpenRecordBody() {
 		var module = new ModuleTester(

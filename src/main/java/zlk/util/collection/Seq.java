@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -165,6 +166,12 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 	 * @return
 	 */
 	abstract int absIdx(int idx);
+
+	/**
+	 * 実体の配列がこのSeqと同順なら1，そうでなければ-1を返す．
+	 * @return
+	 */
+	abstract int step(); // TODO: 最適化効く？
 
 	public boolean contains(E element) {
 		Object[] data = array();
@@ -328,16 +335,11 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 		A result = initialValue;
 
 		Object[] data = array();
-		int from = absIdx(0);
-		int to = absIdx(size());
-		if(from <= to) {
-			for(int idx = 0, jdx = from; jdx < to; idx++, jdx++) {
-				result = accumulator.accumulate(idx, (E) data[jdx], result);
-			}
-		} else {
-			for(int idx = 0, jdx = from; to < jdx; idx++, jdx--) {
-				result = accumulator.accumulate(idx, (E) data[jdx], result);
-			}
+		int size = size();
+		int start = absIdx(0);
+		int step = step();
+		for(int idx = 0, jdx = start; idx < size; idx++, jdx+=step) {
+			result = accumulator.apply(idx, (E) data[jdx], result);
 		}
 		return finisher.apply(result);
 	}
@@ -367,16 +369,11 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 		SeqBuffer<R> result = new SeqBuffer<>(size());
 
 		Object[] data = array();
-		int from = absIdx(0);
-		int to = absIdx(size());
-		if(from <= to) {
-			for(int idx = 0, jdx = from; jdx < to; idx++, jdx++) {
-				result.add(mapper.apply(idx, (E) data[jdx]));
-			}
-		} else {
-			for(int idx = 0, jdx = from; to < jdx; idx++, jdx--) {
-				result.add(mapper.apply(idx, (E) data[jdx]));
-			}
+		int size = size();
+		int start = absIdx(0);
+		int step = step();
+		for(int idx = 0, jdx = start; idx < size; idx++, jdx+=step) {
+			result.add(mapper.apply(idx, (E) data[jdx]));
 		}
 
 		return result.toSeq();
@@ -395,42 +392,30 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 
 	@SuppressWarnings("unchecked")
 	public Seq<E> filter(Predicate<? super E> predicate) {
-		SeqBuffer<E> result = new SeqBuffer<>();
+		SeqBuffer<E> result = new SeqBuffer<>(size());
 
 		Object[] data = array();
-		int from = absIdx(0);
-		int to = absIdx(size());
-		if(from <= to) {
-			for(int idx = from; idx < to; idx++) {
-				E e = (E) data[idx];
-				if(predicate.test(e)) {
-					result.add(e);
-				}
-			}
-		} else {
-			for(int jdx = from; to < jdx; jdx--) {
-				E e = (E) data[jdx];
-				if(predicate.test(e)) {
-					result.add(e);
-				}
+		int size = size();
+		int start = absIdx(0);
+		int step = step();
+		for(int idx = 0, jdx = start; idx < size; idx++, jdx+=step) {
+			E e = (E) data[jdx];
+			if(predicate.test(e)) {
+				result.add(e);
 			}
 		}
+
 		return result.toSeq();
 	}
 
 	@SuppressWarnings("unchecked")
 	public void forEachIndexed(ConsumerIndexed<? super E> action) {
 		Object[] data = array();
-		int from = absIdx(0);
-		int to = absIdx(size());
-		if(from <= to) {
-			for(int idx = 0, jdx = from; jdx < to; idx++, jdx++) {
-				action.accept(idx, (E) data[jdx]);
-			}
-		} else {
-			for(int idx = 0, jdx = from; to < jdx; idx++, jdx--) {
-				action.accept(idx, (E) data[jdx]);
-			}
+		int size = size();
+		int start = absIdx(0);
+		int step = step();
+		for(int idx = 0, jdx = start; idx < size; idx++, jdx+=step) {
+			action.accept(idx, (E) data[jdx]);
 		}
 	}
 
@@ -544,23 +529,34 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 			this.right = right;
 		}
 
-		public <R> Seq<R> map(BiFunction<? super E, ? super F, ? extends R> mapper) {
+		@SuppressWarnings("unchecked")
+		public <R> Seq<R> mapIndexed(BiFunctionIndexed<? super E, ? super F, ? extends R> mapper) {
 			int size = left.size();
 			switch(size) {
 			case 0:
 				return Seq.of();
 			case 1:
-				return Seq.of(mapper.apply(left.head(), right.head()));
+				return Seq.of(mapper.apply(0, left.head(), right.head()));
 			}
+
 			SeqBuffer<R> result = new SeqBuffer<>(size);
-			Iterator<E> li = left.iterator();
-			Iterator<F> ri = right.iterator();
-			while(li.hasNext()) {
-				result.add(mapper.apply(li.next(), ri.next()));
+			Object[] ldata = left.array();
+			Object[] rdata = right.array();
+			int lstart = left.absIdx(0);
+			int lstep = left.step();
+			int rstart = right.absIdx(0);
+			int rstep = right.step();
+			for(int i = 0, li = lstart, ri = rstart; i < size; i++, li += lstep, ri += rstep) {
+				result.add(mapper.apply(i, (E) ldata[li], (F) rdata[ri]));
 			}
 			return result.toSeq();
 		}
 
+		public <R> Seq<R> map(BiFunction<? super E, ? super F, ? extends R> mapper) {
+			return mapIndexed((_, e, f) -> mapper.apply(e, f));
+		}
+
+		@SuppressWarnings("unchecked")
 		public void forEachIndexed(BiConsumerIndexed<? super E, ? super F> action) {
 			int size = left.size();
 			switch(size) {
@@ -570,19 +566,51 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 				action.accept(0, left.head(), right.head());
 				return;
 			}
-			Iterator<E> li = left.iterator();
-			Iterator<F> ri = right.iterator();
-			for(int idx = 0; idx < size; idx++) {
-				action.accept(idx, li.next(), ri.next());
+
+			Object[] ldata = left.array();
+			Object[] rdata = right.array();
+			int lstart = left.absIdx(0);
+			int lstep = left.step();
+			int rstart = right.absIdx(0);
+			int rstep = right.step();
+			for(int i = 0, li = lstart, ri = rstart; i < size; i++, li += lstep, ri += rstep) {
+				action.accept(i, (E) ldata[li], (F) rdata[ri]);
 			}
 		}
 
 		public void forEach(BiConsumer<? super E, ? super F> action) {
-			Iterator<E> li = left.iterator();
-			Iterator<F> ri = right.iterator();
-			while(li.hasNext()) {
-				action.accept(li.next(), ri.next());
+			forEachIndexed((_, e, f) -> action.accept(e, f));
+		}
+
+		@SuppressWarnings("unchecked")
+		public int findFirstIndex(BiPredicate<E, F> predicate) {
+			int size = left.size();
+			switch(size) {
+			case 0:
+				return -1;
+			case 1:
+				return predicate.test(left.head(), right.head()) ? 0 : -1;
 			}
+			Object[] ldata = left.array();
+			Object[] rdata = right.array();
+			int lstart = left.absIdx(0);
+			int lstep = left.step();
+			int rstart = right.absIdx(0);
+			int rstep = right.step();
+			for(int i = 0, li = lstart, ri = rstart; i < size; i++, li += lstep, ri += rstep) {
+				if(predicate.test((E) ldata[li], (F) rdata[ri])) {
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		public boolean anyMatch(BiPredicate<E, F> predicate) {
+			return findFirstIndex(predicate) >= 0;
+		}
+
+		public boolean allMatch(BiPredicate<E, F> predicate) {
+			return findFirstIndex(predicate.negate()) < 0;
 		}
 	}
 }
@@ -594,9 +622,11 @@ final class EmptySeq<E> extends Seq<E> {
 	@Override
 	public int size() { return 0; }
 	@Override
+	Object[] array() { throw new IllegalStateException(); }
+	@Override
 	int absIdx(int idx) { return idx; }
 	@Override
-	Object[] array() { throw new IllegalStateException(); }
+	int step() { return 1; }
 	@Override
 	public boolean contains(E element) { return false; }
 	@Override
@@ -662,13 +692,18 @@ final class SingletonSeq<E> extends Seq<E> {
 	}
 
 	@Override
+	Object[] array() {
+		throw new IllegalStateException();
+	}
+
+	@Override
 	int absIdx(int idx) {
 		return idx;
 	}
 
 	@Override
-	Object[] array() {
-		throw new IllegalStateException();
+	int step() {
+		return 1;
 	}
 
 	@Override
@@ -715,7 +750,7 @@ final class SingletonSeq<E> extends Seq<E> {
 			A initialValue,
 			Function<? super A, ? extends R> finisher
 	) {
-		A acc = accumulator.accumulate(0, element, initialValue);
+		A acc = accumulator.apply(0, element, initialValue);
 		return finisher.apply(acc);
 	}
 
@@ -808,6 +843,11 @@ final class ArraySeq<E> extends Seq<E> {
 	}
 
 	@Override
+	int step() {
+		return 1;
+	}
+
+	@Override
 	public Seq<E> reversed() {
 		return new SliceSeq<E>(data, 0, size()).reversed();
 	}
@@ -875,6 +915,11 @@ final class SliceSeq<E> extends Seq<E> {
 	}
 
 	@Override
+	int step() {
+		return 1;
+	}
+
+	@Override
 	public Seq<E> reversed() {
 		return new ReversedSeq<>(this);
 	}
@@ -935,6 +980,11 @@ final class ReversedSeq<E> extends Seq<E> {
 	@Override
 	int absIdx(int idx) {
 		return ref.from - idx + size() - 1 ;
+	}
+
+	@Override
+	int step() {
+		return -1;
 	}
 
 	@Override

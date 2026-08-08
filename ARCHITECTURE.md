@@ -19,13 +19,13 @@ flowchart TD
         Extracted --> Reconstructor["TypeReconstruct<br/>phase.recon.TypeReconstructor"]
     end
     Reconstructor --> Types(["types<br/>IdMap&lt;Type&gt;"])
-    Reconstructor --> CaseTypings(["caseTypings<br/>CaseTyping&lt;Type&gt;"])
+    Reconstructor --> PartExpTypes(["partExpTypes<br/>ExpOrPatternMap&lt;Type&gt;"])
 
     IC --> PatternChecker["PatternChecker<br/>phase.patterncheck.PatternChecker"]
-    CaseTypings --> PatternChecker
 
     IC --> ClosureConverter["ClosureConverter<br/>phase.clconv.ClosureConverter"]
     Types --> ClosureConverter
+    PartExpTypes --> ClosureConverter
     ClosureConverter --> CC(["clcalc.CcModule"])
 
     CC --> BytecodeGenerator["BytecodeGenerator<br/>phase.codegen.BytecodeGenerator"]
@@ -38,20 +38,23 @@ flowchart TD
 
 parser，nameeval，recon，patterncheckの各経路で得られた公開`Diagnostic`は，`Driver`がreportする．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
 
-`PatternChecker`は，名前解決後の`IcModule`とcase式ごとの解決済み`CaseTyping<Type>`を検査し，診断を返す．レコードパターンでは，省略されたフィールドを補って完全な積型として検査するため，対象レコードの解決済みの全フィールド型を必要とする．このため，`PatternChecker`は型再構築とcase pattern型の解決後に実行する．
+`PatternChecker`は，名前解決後の`IcModule`を検査し，診断を返す．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のパターン行列ではwildcard相当として扱う．このため，`PatternChecker`は型再構築結果に依存しない．ただし，`Driver`では型エラーを先に報告し，従来の診断順序を維持するため，型再構築後に実行する．
 
 `NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
 
-`ConstraintExtractor.Result.caseTypings`内の`PatternTyping<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`とcase branchの`PatternTyping<Type>`をまとめて返す．未解決のcase pattern型を`PatternChecker`へ渡す経路は持たない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．式全体の型対応表は保持しない．
+`ConstraintExtractor.Result.partExpType`内の`ExpOrPatternMap<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`と部分式およびパターンの`ExpOrPatternMap<Type>`をまとめて返す．この対応表は`ClosureConverter`が後段IRへ解決済み型を付与するために利用し，`PatternChecker`には渡さない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
 
 ## レコード型
 
 ZLKのレコード型は，行多相を持つ構造的型である．重要な設計は次のとおり．
 
+レコードリテラル/パターンは1個以上のフィールドを必要とする．パターンはフィールド名と同名の変数を束縛する事ことのみ可能．
+型はネスト可能で，レコード多相のRowは空も許容する．
+
 - **RecordとRowの分離**：安定層では`Type.Record`が`Type.Row`を包み，row tailの`Type.RowVar`は値型`Type`を実装しない．制約層の`RcType.RecordN`／`RowN`，flat層の`FlatType.Record1`／`Row1`も同じ境界を保つ．union-find rootはTYPE／ROW kindを持ち，rank，generalize，instantiateの機構を共有する．
 - **open rowによる一様な型推論**：アクセス，更新，レコードパターンは`ConstraintExtractor`でopen rowを含む`CEqual`へlowerする．solverはrowのlabel差分をtailへ束縛し，lacks制約で重複labelを防ぐため，個別構文向けの特例を必要としない．
 - **宣言全体でのkind解決と透明alias**：`TypeResolver`は前方参照や相互再帰を含む全型宣言からparameter kindを解決する．型aliasはkind確定後に展開され，alias identityやkind情報をbackendへ持ち越さない．
-- **後段では既知shapeだけを利用**：`PatternChecker`は解決済みrowのknown fieldsを積型として扱い，unknown tailを暗黙のwildcardとする．runtimeではopen／closedの区別を消去し，全レコード値をpublic `ZlkRecord` interfaceへ統一する．
+- **後段では型のopen／closedを消去**：record patternは`PatternChecker`では反駁不能なbinderとして扱う．runtimeではopen／closedの区別を消去し，全レコード値をpublic `ZlkRecord` interfaceへ統一する．
 
 ## `Id`とクラスファイル中の名前
 

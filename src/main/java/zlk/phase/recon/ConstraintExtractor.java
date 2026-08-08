@@ -23,8 +23,6 @@ import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
 import zlk.ir.idcalc.IcValDecl;
-import zlk.ir.typing.CaseTyping;
-import zlk.ir.typing.PatternTyping;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
@@ -44,16 +42,14 @@ public final class ConstraintExtractor {
 
 	private FreshFlex freshFlex;
 	private IdMap<Seq<Id>> letDependers; // dependee -> dependers
-	private SeqBuffer<CaseTyping<RcType>> caseTypings;
 	private Map<String, Variable> rigidVars;
-	private IcExpMap<RcType> partExpTypes;
+	private ExpOrPatternMap<RcType> partExpTypes;
 
 	private ConstraintExtractor(IdMap<Seq<Id>> dependers, FreshFlex freshFlex) {
 		this.letDependers = dependers;
 		this.freshFlex = freshFlex;
-		this.caseTypings = new SeqBuffer<>();
 		this.rigidVars = Map.of();
-		this.partExpTypes = new IcExpMap<>();
+		this.partExpTypes = new ExpOrPatternMap<>();
 	}
 
 	public static Result extract(IcModule module, FreshFlex freshFlex) {
@@ -68,14 +64,12 @@ public final class ConstraintExtractor {
 						Seq.of()));
 		return new Result(
 				constraint,
-				extractor.caseTypings.toSeq(),
 				extractor.partExpTypes);
 	}
 
 	public record Result(
 			Constraint constraint,
-			Seq<CaseTyping<RcType>> caseTypings,
-			IcExpMap<RcType> partExpType) {}
+			ExpOrPatternMap<RcType> partExpType) {}
 
 	/**
 	 * 指定された式の制約を抽出して返す．
@@ -184,9 +178,8 @@ public final class ConstraintExtractor {
 		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) ->
 			extractFromDef(decls, extract(body, expected));
 
-		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location loc) -> {
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
 			SeqBuffer<Constraint> cons = new SeqBuffer<>();
-			SeqBuffer<PatternTyping<RcType>> patterns = new SeqBuffer<>(branches.size());
 
 			Variable patVar = freshFlex.getVariable();
 			RcType patTy = new VarN(patVar);
@@ -196,12 +189,10 @@ public final class ConstraintExtractor {
 			Variable branchVar = freshFlex.getVariable();
 			RcType branchTy = new VarN(branchVar);
 			for(IcCaseBranch branch : branches) {
-				BranchExtraction extracted = extractFromCaseBranch(branch, patTy, branchTy);
-				cons.add(extracted.constraint());  // TODO Reason系
-				patterns.add(extracted.pattern());
+				Constraint constraint = extractFromCaseBranch(branch, patTy, branchTy);
+				cons.add(constraint);  // TODO Reason系
 			}
 			cons.add(new CEqual(branchTy, expected));
-			caseTypings.add(new CaseTyping<>(loc, patterns.toSeq()));
 
 			yield new CExists(Seq.of(patVar, branchVar), cons.toSeq());
 		}
@@ -416,7 +407,7 @@ public final class ConstraintExtractor {
 			Variable v = freshFlex.getVariable();
 			RcType.VarN ty = new RcType.VarN(v);
 			pb.vars.add(v);  // パターン内と関数のアリティ由来を分けるならpb.varsにpushせず外側で保持
-			pb.bind(arg, ty, freshFlex);
+			pb.bind(arg, ty, freshFlex, partExpTypes);
 			argTys.add(ty);
 		}
 
@@ -438,29 +429,24 @@ public final class ConstraintExtractor {
 		);
 	}
 
-	private record BranchExtraction(
-			Constraint constraint,
-			PatternTyping<RcType> pattern) {}
-
-	private BranchExtraction extractFromCaseBranch(
+	private Constraint extractFromCaseBranch(
 			IcCaseBranch branch,
 			RcType patExpected,
 			RcType branchExpected) {
 		PatternBinder pb = new PatternBinder();
-		PatternTyping<RcType> pattern = pb.bind(branch.pattern(), patExpected, freshFlex);
+		pb.bind(branch.pattern(), patExpected, freshFlex, partExpTypes);
 		Constraint bodyCon = extract(branch.body(), branchExpected);
 
 		SeqBuffer<Constraint> cons = new SeqBuffer<>(pb.cons.size()+1);
 		cons.addAll(pb.cons);
 		cons.add(bodyCon);
-		Constraint constraint = new CLet(
+		return new CLet(
 				Seq.of(),
 				pb.vars.toSeq(),
 				pb.headers,
 				Seq.of(new CPhase(cons.toSeq(), Seq.of())),  // case branchは一般化する対象なし
 				new CEqual(branchExpected, branchExpected)  // TODO: 特に制約がないことを表せた方が良いか？
 		);
-		return new BranchExtraction(constraint, pattern);
 	}
 
 	// let内での依存を関係を取得する

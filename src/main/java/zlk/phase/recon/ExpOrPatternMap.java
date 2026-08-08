@@ -5,16 +5,16 @@ import java.util.NoSuchElementException;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
-import zlk.ir.idcalc.IcExp;
+import zlk.ir.idcalc.ExpOrPattern;
 
-public final class IcExpMap<V> {
-	private final IdentityHashMap<IcExp, V> impl;
+public final class ExpOrPatternMap<V> {
+	private final IdentityHashMap<ExpOrPattern, V> impl;
 
-	public IcExpMap() {
+	public ExpOrPatternMap() {
 		this.impl = new IdentityHashMap<>();
 	}
 
-	public V get(IcExp exp) {
+	public V get(ExpOrPattern exp) {
 		V result = impl.get(exp);
 		if(result == null) {
 			throw new NoSuchElementException("exp: "+exp.buildString());
@@ -22,7 +22,7 @@ public final class IcExpMap<V> {
 		return result;
 	}
 
-	public void put(IcExp exp, V value) {
+	public void put(ExpOrPattern exp, V value) {
 		V old = impl.put(exp, value);
 		if(old != null) {
 			throw new IllegalArgumentException(
@@ -30,12 +30,12 @@ public final class IcExpMap<V> {
 		}
 	}
 
-	public void forEach(BiConsumer<? super IcExp, ? super V> action) {
+	public void forEach(BiConsumer<? super ExpOrPattern, ? super V> action) {
 		impl.forEach(action);
 	}
 
-	public <R> IcExpMap<R> traverse(Function<? super V, ? extends R> mapper) {
-		IcExpMap<R> result = new IcExpMap<>();
+	public <R> ExpOrPatternMap<R> traverse(Function<? super V, ? extends R> mapper) {
+		ExpOrPatternMap<R> result = new ExpOrPatternMap<>();
 		forEach((id, v) -> result.put(id, mapper.apply(v)));
 		return result;
 	}

@@ -195,10 +195,7 @@ public sealed interface Exp extends PrettyPrintable, LocationHolder {
 				pp.append(i == 0 ? " " : ", ");
 				pp.append(field.name()).append(" = ").append(field.value());
 			});
-			if(!fields.isEmpty()) {
-				pp.append(" ");
-			}
-			pp.append("}");
+			pp.append(" }");
 		}
 		case RecordAccess(Exp target, String field, _) -> {
 			switch(target) {

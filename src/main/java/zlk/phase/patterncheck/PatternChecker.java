@@ -9,32 +9,32 @@ import zlk.common.id.IdMap;
 import zlk.diagnostic.Diagnostic;
 import zlk.diagnostic.PatternWitness;
 import zlk.ir.idcalc.IcExp;
+import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
-import zlk.ir.typing.CaseTyping;
-import zlk.ir.typing.PatternTyping;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
 // http://moscova.inria.fr/~maranget/papers/warn/warn.pdf
 
 public final class PatternChecker {
-	public static Seq<Diagnostic> check(
-			IcModule module,
-			Seq<CaseTyping<Type>> caseTypings) {
+	public static Seq<Diagnostic> check(IcModule module) {
 		PatternChecker checker = new PatternChecker(module);
-		caseTypings.forEach(checker::check);
+		module.decls().forEach(
+				decl -> decl.body().walk(exp -> {
+					if (exp instanceof IcExp.IcCase caseExp) {
+						checker.check(caseExp);
+					}
+				}));
 		return checker.errors.toSeq();
 	}
 
 	private final IdMap<UnionInfo> unionInfos;
 	private final IdMap<Id> ctorToUnion;
-	private final IdMap<Seq<String>> recordFields;
 	private final SeqBuffer<Diagnostic> errors;
 	private PatternChecker(IcModule module) {
 		this.unionInfos = new IdMap<>();
 		this.ctorToUnion = new IdMap<>();
-		this.recordFields = new IdMap<>();
 		// 組込み
 		Id boolId = Type.BOOL.id();
 		UnionInfo boolInfo = new UnionInfo(
@@ -70,21 +70,21 @@ public final class PatternChecker {
 
 	/**
 	 * ケース式のパターンの冗長性と網羅性を検査しエラーに記録する
-	 * @param caseTyping case式のbranch patternと解決済み型
+	 * @param caseExp case式のbranch patternと解決済み型
 	 */
-	private void check(CaseTyping<Type> caseTyping) {
-		Location overallLoc = caseTyping.loc();
+	private void check(IcCase caseExp) {
+		Location overallLoc = caseExp.loc();
 		SeqBuffer<Seq<Pattern>> usefulRows = new SeqBuffer<>();
 
 
 		// 冗長パターンチェック
-		caseTyping.patterns().forEachIndexed((caseIdx, pattern) -> {
+		caseExp.branches().map(b -> b.pattern()).forEachIndexed((caseIdx, pattern) -> {
 			Seq<Pattern> row = Seq.of(toPcPattern(pattern));
 
 			// 上の行まで完全に覆われている行は冗長
 			if(findWitness(row, usefulRows).isEmpty()) {
 				errors.add(new Diagnostic.RedundantPattern(
-						overallLoc, pattern.pattern().loc(), caseIdx));
+						overallLoc, pattern.loc(), caseIdx));
 			} else {
 				usefulRows.add(row);
 			}
@@ -95,74 +95,28 @@ public final class PatternChecker {
 			errors.add(new Diagnostic.IncompletePattern(overallLoc, missing.map(this::toWitness))));
 	}
 
-	private Pattern toPcPattern(PatternTyping<Type> typing) {
-		IcPattern pattern = typing.pattern();
+	private Pattern toPcPattern(IcPattern pat) {
+		IcPattern pattern = pat;
 		return switch(pattern) {
 		case IcPattern.Wildcard(Location _) -> Pattern.Anything.SINGLETON;
 		case IcPattern.Var(Id _, Location _) -> Pattern.Anything.SINGLETON;
-		case IcPattern.Dector(IcExp.IcVarCtor ctor, _, Location _) -> {
+		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern> args, Location _) -> {
 			Id ctorId = ctor.id();
 			Id unionId = ctorToUnion.get(ctorId);
 			yield new Pattern.Ctor(
 					unionId,
 					ctorId,
-					typing.children().map(this::toPcPattern));
+					args.map(this::toPcPattern));
 		}
-		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
-			if(!(typing.type() instanceof Type.Record(Type.Row row))) {
-				throw new IllegalArgumentException(
-						"record pattern has non-record type: " + typing.type());
-			}
-			StringBuilder key = new StringBuilder("$record$");
-			row.fields().forEach(field -> key
-					.append(field.name().length()).append('$').append(field.name()));
-			Id productId = Id.intern(key.toString());
-			CtorInfo product = new CtorInfo(productId, productId, row.fields().size());
-			if(!unionInfos.containsKey(productId)) {
-				unionInfos.put(productId, new UnionInfo(productId, Seq.of(product)));
-				recordFields.put(productId, row.fields().map(field -> field.name()));
-			}
-			Seq<Pattern> productArgs = row.fields().map(shapeField ->
-					toPcRecordField(shapeField.name(), fields, typing.children()));
-			if(productArgs.size() != row.fields().size()) {
-				throw new IllegalStateException(
-						"record product arity mismatch: " + row.fields().size() + " vs " + productArgs.size());
-			}
-			yield new Pattern.Ctor(productId, productId, productArgs);
-		}
+		case IcPattern.Record _ -> Pattern.Anything.SINGLETON;
 		};
-	}
-
-	private Pattern toPcRecordField(
-			String name,
-			Seq<IcPattern.RecordField> fields,
-			Seq<PatternTyping<Type>> children) {
-		for(int i = 0; i < fields.size(); i++) {
-			if(fields.at(i).name().equals(name)) {
-				return toPcPattern(children.at(i));
-			}
-		}
-		return Pattern.Anything.SINGLETON;
 	}
 
 	private PatternWitness toWitness(Pattern pattern) {
 		return switch(pattern) {
 		case Pattern.Anything _ -> PatternWitness.Anything.SINGLETON;
-		case Pattern.Ctor(Id _, Id ctorId, Seq<Pattern> args) -> {
-			Seq<String> names = recordFields.getOrNull(ctorId);
-			if(names == null) {
-				yield new PatternWitness.Ctor(ctorId.canonicalName(), args.map(this::toWitness));
-			}
-			if(names.size() != args.size()) {
-				throw new IllegalStateException(
-						"record witness arity mismatch: " + names.size() + " vs " + args.size());
-			}
-			SeqBuffer<PatternWitness.Field> fields = new SeqBuffer<>();
-			for(int i = 0; i < names.size(); i++) {
-				fields.add(new PatternWitness.Field(names.at(i), toWitness(args.at(i))));
-			}
-			yield new PatternWitness.Record(fields.toSeq());
-		}
+		case Pattern.Ctor(Id _, Id ctorId, Seq<Pattern> args) ->
+			new PatternWitness.Ctor(ctorId.canonicalName(), args.map(this::toWitness));
 		};
 	}
 

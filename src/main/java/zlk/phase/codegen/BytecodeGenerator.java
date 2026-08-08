@@ -33,8 +33,8 @@ import zlk.ir.clcalc.CcExp.CcMkCls;
 import zlk.ir.clcalc.CcExp.CcVar;
 import zlk.ir.clcalc.CcFunDecl;
 import zlk.ir.clcalc.CcModule;
+import zlk.ir.clcalc.CcPattern;
 import zlk.ir.idcalc.IcExp;
-import zlk.ir.idcalc.IcPattern;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Stack;
@@ -221,9 +221,9 @@ public final class BytecodeGenerator {
 	 * 関数の引数をlocalsに登録する
 	 * @param args 引数
 	 */
-	private void registerArgs(Seq<IcPattern> args) {
+	private void registerArgs(Seq<CcPattern> args) {
 		args.forEach(arg -> {
-			if(arg instanceof IcPattern.Var var) {
+			if(arg instanceof CcPattern.Var var) {
 				locals.add(var.id());
 			} else {
 				locals.add(LOCAL_DUMMY_ID);
@@ -231,30 +231,30 @@ public final class BytecodeGenerator {
 		});
 
 		for (int i = 0; i < args.size(); i++) {
-			if(args.at(i) instanceof IcPattern.Dector ctor) {
+			if(args.at(i) instanceof CcPattern.Dector ctor) {
 				Type subClassTy = types.get(ctor.ctor().id());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
-			} else if(args.at(i) instanceof IcPattern.Record record) {
+			} else if(args.at(i) instanceof CcPattern.Record record) {
 				mv.visitVarInsn(Opcodes.ALOAD, i);
 				registerArgRec(record);
 			}
 		}
 	}
-	private void registerArgRec(IcPattern pat) {
+	private void registerArgRec(CcPattern pat) {
 		// 事前条件：パターンに対応する値がstackのトップに乗っている
 		// 事後条件：パターンに対応する値をstackから消費
 		switch(pat) {
-		case IcPattern.Wildcard(Location _) -> {
+		case CcPattern.Wildcard(Location _) -> {
 			mv.visitInsn(Opcodes.POP);  // TODO: 最適化 フィールドからとらないように
 		}
-		case IcPattern.Var(Id id, Location _) -> {
-			Type varType = types.get(id);
-			checkcastIfNeed(JavaType.OBJECT, toJavaType(varType));
-			storeLocal(locals.size(), varType);
+		case CcPattern.Var(Id id, Type type, Location _) -> {
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(type));
+			storeLocal(locals.size(), type);
 			locals.add(id);
 		}
-		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
+		case CcPattern.Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
+			CcCtor ctorDecl = ctors.get(ctor.id());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
 			// stackの数を調整
 			if(args.size() == 0) {
@@ -265,30 +265,28 @@ public final class BytecodeGenerator {
 				mv.visitInsn(Opcodes.DUP);
 			}
 
-			for(int fieldIdx = 0; fieldIdx < args.size(); fieldIdx++) {
-				IcPattern.Arg ctorArg = args.at(fieldIdx);
+			Seq.zip(args, ctorDecl.args()).forEachIndexed((fieldIdx, ctorArg, declArgType) -> {
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
 						javaClasses.get(ctor.id()).toClassName(),
 						CustomType.componentName(fieldIdx),
-						toDesc(ctorArg.type()));
-				registerArgRec(ctorArg.pattern());
-			}
+						toDesc(declArgType));
+				registerArgRec(ctorArg);
+			});
 		}
-		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
+		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
-			if(fields.isEmpty()) mv.visitInsn(Opcodes.POP);
 			for(int i = 0; i < fields.size(); i++) {
 				if(i < fields.size() - 1) mv.visitInsn(Opcodes.DUP);
-				IcPattern.RecordField field = fields.at(i);
-				mv.visitLdcInsn(field.name());
+				CcPattern.Var field = fields.at(i);
+				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
 						Opcodes.INVOKEINTERFACE,
 						JavaType.RECORD.toClassName(),
 						"get",
 						"(Ljava/lang/String;)Ljava/lang/Object;",
 						true);
-				registerArgRec(field.pattern());
+				registerArgRec(field);
 			}
 		}
 		}
@@ -555,18 +553,17 @@ public final class BytecodeGenerator {
 	 * @param declTy
 	 * @param next 次のラベル
 	 */
-	private void checkMatchAndStoreLocals(IcPattern pat, Type declTy, Label next) {
+	private void checkMatchAndStoreLocals(CcPattern pat, Type declTy, Label next) {
 		switch(pat) {
-		case IcPattern.Wildcard(Location _) -> {
+		case CcPattern.Wildcard(Location _) -> {
 			mv.visitInsn(Opcodes.POP);
 		}
-		case IcPattern.Var(Id id, Location _) -> {
-			Type expTy = types.get(id);
-			checkcastIfNeed(JavaType.OBJECT, toJavaType(expTy));
-			storeLocal(locals.size(), expTy);
+		case CcPattern.Var(Id id, Type type, Location _) -> {
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(type));
+			storeLocal(locals.size(), type);
 			locals.add(id);
 		}
-		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern.Arg> args, Location _) -> {
+		case CcPattern.Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
 			CcCtor ctorDecl = ctors.get(ctor.id());
 			String subClassName = javaClasses.get(ctor.id()).toClassName();
 			if(next != null) {
@@ -589,24 +586,24 @@ public final class BytecodeGenerator {
 						subClassName,
 						"val"+idx,
 						toDesc(ctorArg));
-				checkMatchAndStoreLocals(arg.pattern(), ctorArg, next);
+				checkMatchAndStoreLocals(arg, ctorArg, next);
 			});
 		}
-		case IcPattern.Record(Seq<IcPattern.RecordField> fields, Location _) -> {
+		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
 			int recordLocal = locals.size();
 			locals.add(LOCAL_DUMMY_ID);
 			mv.visitVarInsn(Opcodes.ASTORE, recordLocal);
-			for(IcPattern.RecordField field : fields) {
+			for(CcPattern.Var field : fields) {
 				mv.visitVarInsn(Opcodes.ALOAD, recordLocal);
-				mv.visitLdcInsn(field.name());
+				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
 						Opcodes.INVOKEINTERFACE,
 						JavaType.RECORD.toClassName(),
 						"get",
 						"(Ljava/lang/String;)Ljava/lang/Object;",
 						true);
-				checkMatchAndStoreLocals(field.pattern(), null, next);
+				checkMatchAndStoreLocals(field, null, next);
 			}
 		}
 		};

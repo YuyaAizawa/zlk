@@ -12,7 +12,8 @@ import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
-public sealed interface IcExp extends PrettyPrintable, LocationHolder {
+public sealed interface IcExp
+extends ExpOrPattern, PrettyPrintable, LocationHolder {
 
 	record IcCnst(
 			ConstValue value,
@@ -224,17 +225,13 @@ public sealed interface IcExp extends PrettyPrintable, LocationHolder {
 			});
 		}
 		case IcRecord(Seq<IcRecordField> fields, Location _) -> {
-			if(fields.isEmpty()) {
-				pp.append("{}");
-			} else {
-				pp.append("{ ");
-				IcRecordField head = fields.head();
-				pp.append(head.name).append(" = ").append(head.value);
-				fields.tail().forEach(field -> {
-					pp.append(", ").append(field.name).append(" = ").append(field.value);
-				});
-				pp.append(" }");
-			}
+			pp.append("{ ");
+			IcRecordField head = fields.head();
+			pp.append(head.name).append(" = ").append(head.value);
+			fields.tail().forEach(field -> {
+				pp.append(", ").append(field.name).append(" = ").append(field.value);
+			});
+			pp.append(" }");
 		}
 		case IcRecordAccess(IcExp target, String field, Location _) -> {
 			switch(target) {

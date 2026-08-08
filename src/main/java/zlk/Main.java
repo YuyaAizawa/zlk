@@ -140,7 +140,7 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");
-		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc, reconed.caseTypings());
+		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc);
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()
