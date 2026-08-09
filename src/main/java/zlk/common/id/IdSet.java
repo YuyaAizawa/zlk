@@ -4,11 +4,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import zlk.util.collection.Accumulator;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
-public final class IdSet implements Accumulator<Id> {
+public final class IdSet {
 
 	private Map<Id, Id> impl;
 
@@ -24,7 +23,6 @@ public final class IdSet implements Accumulator<Id> {
 		return impl.containsKey(id);
 	}
 
-	@Override
 	public void add(Id id) {
 		impl.putIfAbsent(id, id);
 	}

@@ -9,9 +9,6 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcExp;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcValDecl;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcExp.IcCnst;
@@ -21,6 +18,9 @@ import zlk.ir.idcalc.IcExp.IcLet;
 import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
+import zlk.ir.idcalc.IcModule;
+import zlk.ir.idcalc.IcPattern;
+import zlk.ir.idcalc.IcValDecl;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -52,7 +52,7 @@ public class LetDependencyExtractor {
 			accIncluded(decl.body(), revRel, partial);
 			revRel.put(decl.id(), partial.toSeq());
 			if(acc != null) {
-				acc.addAll(partial.filter(id -> !acc.contains(id)));
+				partial.forEach(acc::addIfNotContains);
 			}
 		}
 	}

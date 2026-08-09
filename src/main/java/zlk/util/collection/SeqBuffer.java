@@ -37,7 +37,7 @@ import zlk.util.ConsumerIndexed;
 ///
 /// @param <E>
 
-public final class SeqBuffer<E> implements Accumulator<E>, Iterable<E> {
+public final class SeqBuffer<E> implements Iterable<E> {
 
 	static final int DEFAULT_CHUNK_SIZE = 10;
 	static final int MAX_CHUNK_SIZE = 4000;
@@ -111,7 +111,6 @@ public final class SeqBuffer<E> implements Accumulator<E>, Iterable<E> {
 		return totalSize == 0;
 	}
 
-	@Override
 	public void add(E element) {
 		if(tailSize == tailChunk.data.length) {
 			grow();
@@ -197,17 +196,17 @@ public final class SeqBuffer<E> implements Accumulator<E>, Iterable<E> {
 		modCount++;
 	}
 
-	public void addAll(Seq<E> elements) {
+	public void addAll(Seq<? extends E> elements) {
 		if(elements.isEmpty()) {
 			return;
 		}
 
 		Object[] data;
 		int srcIndex;
-		if(elements instanceof ArraySeq<E> arraySeq) {
+		if(elements instanceof ArraySeq<? extends E> arraySeq) {
 			data = arraySeq.data;
 			srcIndex = 0;
-		} else if(elements instanceof SliceSeq<E> sliceSeq) {
+		} else if(elements instanceof SliceSeq<? extends E> sliceSeq) {
 			data = sliceSeq.ref;
 			srcIndex = sliceSeq.from;
 		} else {
@@ -356,17 +355,6 @@ public final class SeqBuffer<E> implements Accumulator<E>, Iterable<E> {
 		}
 
 		return new ArraySeq<>(array);
-	}
-
-	public Accumulator<E> uniqueAcc() {
-		return new Accumulator<E>() {
-			@Override
-			public void add(E element) {
-				if(!contains(element)) {
-					SeqBuffer.this.add(element);
-				}
-			}
-		};
 	}
 
 	@Override
