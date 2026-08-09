@@ -25,6 +25,7 @@ import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.ExpOrPatternMap;
 import zlk.phase.recon.FreshFlex;
+import zlk.phase.recon.Mismatch;
 import zlk.phase.recon.TypeError;
 import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
@@ -75,7 +76,7 @@ public final class Driver {
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
 				reconResult -> nameEvaled.andThen(
-				module -> patternPhase(module, diagCollector)));
+				module -> patternPhase(module, reconResult.partExpTypes(), diagCollector)));
 
 		// 閉包変換からバイトコード生成まで
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
@@ -132,7 +133,7 @@ public final class Driver {
 		try {
 			reconed = TypeReconstructor.recon(extracted, freshFlex);
 		} catch(TypeErrorException error) {
-			sink.report(toDiagnostic(error.error()));
+			sink.report(toDiagnostic(error.error(), module));
 			return PhaseResult.blocked();
 		}
 
@@ -190,14 +191,38 @@ public final class Driver {
 		sink.report(new Diagnostic.InferredType(location, declaration, type));
 	}
 
-	private static Diagnostic toDiagnostic(TypeError error) {
+	private static Diagnostic toDiagnostic(TypeError error, IcModule module) {
 		return switch(error) {
 		case TypeError.InfiniteType(var location, var id) ->
 			new Diagnostic.InfiniteType(location, id.simpleName());
-		case TypeError.UnificationFailure(var provenance, var reason) ->
-			new Diagnostic.TypeMismatch(provenance.location(), toDiagnosticContext(provenance.context()),
+		case TypeError.UnificationFailure(var provenance, var reason, var detail) -> {
+			if(provenance.context() instanceof Context.CtorPattern(
+					var constructor, var actualFamily, var inferredFamily)
+					&& inferredFamily
+					&& detail instanceof Mismatch.Detail.ConstructorFamily(var left, var right)) {
+				Id expectedFamily;
+				if(actualFamily == left) {
+					expectedFamily = right;
+				} else if(actualFamily == right) {
+					expectedFamily = left;
+				} else {
+					// Ctor patternのresult型と不一致詳細が対応しないため，型推論の内部契約違反
+					throw new IllegalStateException(
+							"constructor family mismatch does not include pattern family: " + actualFamily);
+				}
+				if(isAdtFamily(module, expectedFamily)) {
+					yield new Diagnostic.ConstructorFamilyMismatch(
+							provenance.location(), constructor, actualFamily, expectedFamily);
+				}
+			}
+			yield new Diagnostic.TypeMismatch(provenance.location(), toDiagnosticContext(provenance.context()),
 					Diagnostic.TypeMismatchReason.valueOf(reason.name()));
+		}
 		};
+	}
+
+	private static boolean isAdtFamily(IcModule module, Id id) {
+		return id == Type.BOOL.id() || module.types().anyMatch(type -> type.id() == id);
 	}
 
 	private static Diagnostic.TypingContext toDiagnosticContext(Context context) {
@@ -207,6 +232,7 @@ public final class Driver {
 			new Diagnostic.TypingContext.CallArgument(maybeId.map(id -> id.simpleName()).orElse(""), index);
 		case Context.CallArity(var maybeId, var length) ->
 			new Diagnostic.TypingContext.CallArity(maybeId.map(id -> id.simpleName()).orElse(""), length);
+		case Context.CtorPattern _ -> new Diagnostic.TypingContext.None();
 		case Context.FieldAccess(var field) -> new Diagnostic.TypingContext.FieldAccess(field);
 		case Context.IfCondition _ -> new Diagnostic.TypingContext.IfCondition();
 		case Context.None _ -> new Diagnostic.TypingContext.None();
@@ -215,9 +241,10 @@ public final class Driver {
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
+			ExpOrPatternMap<Type> patternTypes,
 			DiagnosticReporter diagCollector
 	) {
-		Seq<Diagnostic> result = PatternChecker.check(module);
+		Seq<Diagnostic> result = PatternChecker.check(module, patternTypes);
 		result.forEach(diagCollector::report);
 		return result.anyMatch(Diagnostic::isError)
 				? PhaseResult.blocked()

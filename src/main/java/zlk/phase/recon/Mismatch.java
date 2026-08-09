@@ -1,5 +1,7 @@
 package zlk.phase.recon;
 
+import zlk.common.id.Id;
+
 /**
  * 単一化できない二つの推論型が与えられたことを表す．
  */
@@ -13,26 +15,47 @@ public final class Mismatch extends RuntimeException {
 		RECURSIVE_ROW
 	}
 
+	public sealed interface Detail {
+		Detail NONE = new None();
+
+		record None() implements Detail {}
+		record ConstructorFamily(Id left, Id right) implements Detail {}
+	}
+
 	private final Reason reason;
+	private final Detail detail;
 
 	public Mismatch() {
-		this(Reason.INCOMPATIBLE, null);
+		this(Reason.INCOMPATIBLE, Detail.NONE, null);
 	}
 
 	public Mismatch(String message) {
-		this(Reason.INCOMPATIBLE, message);
+		this(Reason.INCOMPATIBLE, Detail.NONE, message);
+	}
+
+	public Mismatch(Detail detail) {
+		this(Reason.INCOMPATIBLE, detail, null);
 	}
 
 	public Mismatch(Reason reason) {
-		this(reason, null);
+		this(reason, Detail.NONE, null);
 	}
 
 	public Mismatch(Reason reason, String message) {
+		this(reason, Detail.NONE, message);
+	}
+
+	private Mismatch(Reason reason, Detail detail, String message) {
 		super(message);
 		this.reason = reason;
+		this.detail = detail;
 	}
 
 	public Reason reason() {
 		return reason;
+	}
+
+	public Detail detail() {
+		return detail;
 	}
 }

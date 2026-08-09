@@ -74,7 +74,7 @@ public class ModuleTester {
 			return;
 		}
 
-		this.patternErrors = PatternChecker.check(module);
+		this.patternErrors = PatternChecker.check(module, reconed.partExpType());
 		if(this.compileLevel == CompileLevel.PATTERN_CHECK) {
 			return;
 		}

@@ -46,7 +46,7 @@ ZLK は，実験的な関数型プログラミング言語である．本リポ�
 | 3 | `NameEvaluator` | 2 |
 | 4 | `ConstraintExtractor` | 3 |
 | 5 | `TypeReconstructor` | 4 |
-| 6 | `PatternChecker` | 3 |
+| 6 | `PatternChecker` | 3，5 |
 | 7 | `ClosureConverter` | 3，5 |
 | 8 | `BytecodeGenerator` | 5，7 |
 

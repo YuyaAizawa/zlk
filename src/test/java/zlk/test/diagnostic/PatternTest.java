@@ -1,17 +1,105 @@
 package zlk.test.diagnostic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
 import zlk.compiler.Driver;
+import zlk.common.id.Id;
 import zlk.diagnostic.Diagnostic;
 import zlk.diagnostic.PatternWitness;
 import zlk.util.collection.Seq;
+import zlk.util.fixture.CompilationFixture;
 
 public class PatternTest {
+	@Test
+	void differentConstructorFamiliesReportPatternDiagnostic() {
+		Diagnostic.ConstructorFamilyMismatch mismatch = onlyConstructorFamilyMismatch(
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+
+				bad value =
+				  case value of
+				    True -> 1
+				    Nothing -> 0
+				""");
+
+		assertEquals(Id.intern("Main.Maybe.Nothing"), mismatch.constructor());
+		assertEquals(Id.intern("Main.Maybe"), mismatch.actualFamily());
+		assertEquals(Id.intern("Bool"), mismatch.expectedFamily());
+		assertEquals(9, mismatch.location().startLine());
+		assertTrue(mismatch.isError());
+	}
+
+	@Test
+	void constructorFamilyDifferentFromExplicitCaseTargetReportsPatternDiagnostic() {
+		Diagnostic.ConstructorFamilyMismatch mismatch = onlyConstructorFamilyMismatch(
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+
+				bad : Maybe a -> I32
+				bad value =
+				  case value of
+				    True -> 1
+				""");
+
+		assertEquals(Id.intern("Basic.True"), mismatch.constructor());
+		assertEquals(Id.intern("Bool"), mismatch.actualFamily());
+		assertEquals(Id.intern("Main.Maybe"), mismatch.expectedFamily());
+		assertEquals(9, mismatch.location().startLine());
+	}
+
+	@Test
+	void nestedConstructorFamilyMismatchReportsNestedPattern() {
+		Diagnostic.ConstructorFamilyMismatch mismatch = onlyConstructorFamilyMismatch(
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+
+				type Box a = Box a
+
+				bad value =
+				  case value of
+				    Box True -> 1
+				    Box Nothing -> 0
+				""");
+
+		assertEquals(Id.intern("Main.Maybe.Nothing"), mismatch.constructor());
+		assertEquals(Id.intern("Main.Maybe"), mismatch.actualFamily());
+		assertEquals(Id.intern("Bool"), mismatch.expectedFamily());
+		assertEquals(11, mismatch.location().startLine());
+	}
+
+	@Test
+	void constructorFamilyMismatchInLaterArgumentReportsOffendingPattern() {
+		Diagnostic.ConstructorFamilyMismatch mismatch = onlyConstructorFamilyMismatch(
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+
+				type Pair a b = Pair a b
+
+				bad value =
+				  case value of
+				    Pair True Nothing -> 1
+				    Pair False True -> 0
+				""");
+
+		assertEquals(Id.intern("Basic.True"), mismatch.constructor());
+		assertEquals(Id.intern("Bool"), mismatch.actualFamily());
+		assertEquals(Id.intern("Main.Maybe"), mismatch.expectedFamily());
+		assertEquals(11, mismatch.location().startLine());
+	}
+
 	@Test
 	void incompleteBoolCaseReportsMissingConstructor() {
 		String src =
@@ -137,6 +225,17 @@ public class PatternTest {
 
 	private static Diagnostic.IncompletePattern onlyIncomplete(String src) {
 		return assertInstanceOf(Diagnostic.IncompletePattern.class, onlyDiagnostic(src));
+	}
+
+	private static Diagnostic.ConstructorFamilyMismatch onlyConstructorFamilyMismatch(String src) {
+		CompilationFixture module = assertDoesNotThrow(() -> CompilationFixture.compile(src));
+		assertInstanceOf(Driver.CompilationResult.Failed.class, module.result());
+		var diagnostics = module.diagnostics(Diagnostic.ConstructorFamilyMismatch.class);
+		assertEquals(1, diagnostics.size());
+		assertTrue(module.diagnostics(Diagnostic.TypeMismatch.class).isEmpty());
+		Diagnostic.ConstructorFamilyMismatch mismatch = diagnostics.head();
+		assertTrue(mismatch.isError());
+		return mismatch;
 	}
 
 	private static PatternWitness.Ctor assertCtor(

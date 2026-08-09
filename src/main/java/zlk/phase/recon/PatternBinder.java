@@ -2,6 +2,7 @@ package zlk.phase.recon;
 
 import java.util.Optional;
 
+import zlk.common.Location;
 import zlk.common.RecordField;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
@@ -9,6 +10,8 @@ import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcPattern;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.phase.recon.constraint.Constraint.CEqual;
+import zlk.phase.recon.constraint.Constraint.Provenance;
+import zlk.phase.recon.constraint.Context;
 import zlk.phase.recon.constraint.RcType;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -29,14 +32,23 @@ final class PatternBinder {
 		// TODO: リテラル
 		case IcPattern.Var(Id id, _) -> headers.put(id, expected);
 
-		case IcPattern.Dector(IcVarCtor ctor, Seq<IcPattern> args, _) -> {
+		case IcPattern.Dector(IcVarCtor ctor, Seq<IcPattern> args, Location loc) -> {
 			RcType.Inst ctorInfo = RcType.instantiate(ctor.type(), freshFlex);
 			vars.addAll(ctorInfo.flexes());
 
 			if (args.size() != ctorInfo.argTys().size()) {
 				throw new IllegalStateException("constructor arity must be validated during name evaluation");
 			}
-			cons.add(new CEqual(ctorInfo.resultTy(), expected));
+			Id family = switch(ctorInfo.resultTy()) {
+			case RcType.AppN(Id id, _) -> id;
+			default -> throw new IllegalStateException(
+					"constructor result must be an ADT type after name evaluation: " + ctorInfo.resultTy());
+			};
+			cons.add(new CEqual(
+					ctorInfo.resultTy(),
+					expected,
+					new Provenance(loc, new Context.CtorPattern(
+							ctor.id(), family, expected instanceof RcType.VarN))));
 
 			Seq.zip(args, ctorInfo.argTys()).forEach(
 				(arg, argTy) -> bind(arg, argTy, freshFlex, patternBinds));

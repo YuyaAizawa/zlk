@@ -3,20 +3,13 @@ package zlk.phase.recon.constraint;
 import java.util.Optional;
 
 import zlk.common.id.Id;
-import zlk.phase.recon.constraint.Context.Annotation;
-import zlk.phase.recon.constraint.Context.CallArg;
-import zlk.phase.recon.constraint.Context.CallArity;
-import zlk.phase.recon.constraint.Context.FieldAccess;
-import zlk.phase.recon.constraint.Context.IfCondition;
-import zlk.phase.recon.constraint.Context.None;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 /**
  * 型が期待される理由のうち文脈が関係するもの
  */
-public sealed interface Context extends PrettyPrintable
-permits Annotation, CallArg, CallArity, FieldAccess, IfCondition, None {
+public sealed interface Context extends PrettyPrintable {
 
 	public static final Context NONE = new None();
 	public static final Context IF_CONDITION = new IfCondition();
@@ -47,6 +40,13 @@ permits Annotation, CallArg, CallArity, FieldAccess, IfCondition, None {
 	record CallArity(Optional<Id> maybeName, int length) implements Context {}
 
 	/**
+	 * Constructor patternが要求するADT．
+	 *
+	 * @param inferredFamily familyを共有する推論変数に対する制約か
+	 */
+	record CtorPattern(Id constructor, Id family, boolean inferredFamily) implements Context {}
+
+	/**
 	 * ifの条件部分
 	 */
 	record IfCondition() implements Context {}
@@ -67,6 +67,8 @@ permits Annotation, CallArg, CallArity, FieldAccess, IfCondition, None {
 					.orElse(p -> p.append("(no id)"));
 			pp.append("callee: ").append(name).append(", arity: ").append(length);
 		}
+		case CtorPattern(Id constructor, Id family, boolean _) ->
+			pp.append("constructor pattern: ").append(constructor).append(", family: ").append(family);
 		case IfCondition() -> {
 			pp.append("if condition");
 		}

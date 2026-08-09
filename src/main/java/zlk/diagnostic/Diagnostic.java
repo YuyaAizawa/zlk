@@ -263,4 +263,24 @@ public sealed interface Diagnostic {
 			return Severity.ERROR;
 		}
 	}
+
+	/**
+	 * Constructor patternのfamilyが期待されたADTと異なる．
+	 *
+	 * @param location 不一致を起こしたconstructor patternの位置
+	 * @param constructor 不一致を起こしたconstructor
+	 * @param actualFamily constructorが属するADT
+	 * @param expectedFamily pattern位置で期待されたADT
+	 */
+	record ConstructorFamilyMismatch(
+			Location location,
+			Id constructor,
+			Id actualFamily,
+			Id expectedFamily
+	) implements Diagnostic {
+		@Override
+		public Severity severity() {
+			return Severity.ERROR;
+		}
+	}
 }

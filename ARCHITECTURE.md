@@ -15,17 +15,16 @@ flowchart TD
 
     IC --> Extractor["ConstraintExtract<br/>phase.recon.ConstraintExtractor"]
     subgraph Recon
-        Extractor --> Extracted(["ConstraintExtractor.Result<br/>Constraint + CaseTyping&lt;RcType&gt;"])
+        Extractor --> Extracted(["recon.ConstraintExtractor.Result"])
         Extracted --> Reconstructor["TypeReconstruct<br/>phase.recon.TypeReconstructor"]
     end
-    Reconstructor --> Types(["types<br/>IdMap&lt;Type&gt;"])
-    Reconstructor --> PartExpTypes(["partExpTypes<br/>ExpOrPatternMap&lt;Type&gt;"])
+    Reconstructor --> Types(["recon.TypeReconstructor.Result"])
 
     IC --> PatternChecker["PatternChecker<br/>phase.patterncheck.PatternChecker"]
+    Types --> PatternChecker
 
     IC --> ClosureConverter["ClosureConverter<br/>phase.clconv.ClosureConverter"]
     Types --> ClosureConverter
-    PartExpTypes --> ClosureConverter
     ClosureConverter --> CC(["clcalc.CcModule"])
 
     CC --> BytecodeGenerator["BytecodeGenerator<br/>phase.codegen.BytecodeGenerator"]
@@ -36,13 +35,9 @@ flowchart TD
 `Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
 `reconPhase`は`Driver`内では1つのフェーズのように記述してあるが，内部は`ConstraintExtractor`と`TypeReconstructor`という概念上異なるフェーズを含む．
 
+`PatternChecker`は，名前解決後の`IcModule`と型再構築後の`ExpOrPatternMap<Type>`を検査する．型再構築済みのpattern型からconstructor familyを取得するため，well-typedなpattern matrixを前提として冗長性と網羅性の検査に専念する．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のpattern matrixではwildcard相当として扱う．
+
 parser，nameeval，recon，patterncheckの各経路で得られた公開`Diagnostic`は，`Driver`がreportする．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
-
-`PatternChecker`は，名前解決後の`IcModule`を検査し，診断を返す．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のパターン行列ではwildcard相当として扱う．このため，`PatternChecker`は型再構築結果に依存しない．ただし，`Driver`では型エラーを先に報告し，従来の診断順序を維持するため，型再構築後に実行する．
-
-`NameEvaluator`フェーズは，値名前解決と型解決を行う．名前を解決し`Id`に変換するのは`NameEvaluator`が，型変数やaliasを解決して`Type`に変換するのは`TypeResolver`が担う．
-
-`ConstraintExtractor.Result.partExpType`内の`ExpOrPatternMap<RcType>`は，制約と型変数を共有する．`TypeReconstructor`はこの抽出結果全体を受け取り，制約解決に成功した場合だけ，宣言型の`IdMap<Type>`と部分式およびパターンの`ExpOrPatternMap<Type>`をまとめて返す．この対応表は`ClosureConverter`が後段IRへ解決済み型を付与するために利用し，`PatternChecker`には渡さない．型再構築に失敗した場合は，後続の`PatternChecker`を実行しない．
 
 ## レコード型
 

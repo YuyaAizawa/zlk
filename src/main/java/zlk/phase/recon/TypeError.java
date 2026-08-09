@@ -12,5 +12,9 @@ permits InfiniteType, UnificationFailure {
 	record InfiniteType(Location location, Id id) implements TypeError {}
 
 	/** 制約を満たす単一化が無い */
-	record UnificationFailure(Provenance provenance, Mismatch.Reason reason) implements TypeError {}
+	record UnificationFailure(
+			Provenance provenance,
+			Mismatch.Reason reason,
+			Mismatch.Detail detail
+	) implements TypeError {}
 }

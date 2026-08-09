@@ -145,7 +145,8 @@ public class TypeReconstructor {
 						Id id = declarationLocations.keys().head();
 						throw new TypeErrorException(new TypeError.UnificationFailure(
 								new Provenance(declarationLocations.get(id), new zlk.phase.recon.constraint.Context.Annotation(id)),
-								Mismatch.Reason.INCOMPATIBLE), null);
+								Mismatch.Reason.INCOMPATIBLE,
+								Mismatch.Detail.NONE), null);
 					}
 				}
 			}
@@ -200,7 +201,7 @@ public class TypeReconstructor {
 			Unify.unify(actual, expected, freshFlex, letRank);
 		} catch(Mismatch mismatch) {
 			throw new TypeErrorException(
-					new TypeError.UnificationFailure(provenance, mismatch.reason()), mismatch);
+					new TypeError.UnificationFailure(provenance, mismatch.reason(), mismatch.detail()), mismatch);
 		}
 	}
 
