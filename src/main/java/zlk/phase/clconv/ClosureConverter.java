@@ -505,10 +505,10 @@ public final class ClosureConverter {
 	private CcPattern convert(IcPattern pat) {
 		return switch(pat) {
 		case IcPattern.Wildcard(Location loc) ->
-			new CcPattern.Wildcard(loc);
+			new CcPattern.Wildcard(partExpTypes.get(pat), loc);
 		case IcPattern.Var var -> convert(var);
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern> args, Location loc) ->
-			new CcPattern.Dector(ctor, args.map(arg -> convert(arg)), partExpTypes.get(pat), loc);
+			new CcPattern.Ctor(ctor, args.map(arg -> convert(arg)), partExpTypes.get(pat), loc);
 		case IcPattern.Record(Seq<IcPattern.Var> fields, Location loc) ->
 			new CcPattern.Record(fields.map(this::convert), partExpTypes.get(pat), loc);
 		};

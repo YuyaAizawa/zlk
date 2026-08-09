@@ -16,19 +16,14 @@ extends PrettyPrintable, LocationHolder {
 
 	Type type();
 
-	record Wildcard(Location loc) implements CcPattern {
-		@Override
-		public Type type() {
-			throw new IllegalStateException();
-		}
-	}
+	record Wildcard(Type type, Location loc) implements CcPattern {}
 
 	record Var(
 			Id id,
 			Type type,
 			Location loc) implements CcPattern {}
 
-	record Dector(
+	record Ctor(
 			IcExp.IcVarCtor ctor,
 			Seq<CcPattern> args,
 			Type type,
@@ -41,11 +36,11 @@ extends PrettyPrintable, LocationHolder {
 
 	public default void walkVars(Consumer<Id> action) {
 		switch(this) {
-		case Wildcard(Location _) -> {}
+		case Wildcard(Type _, Location _) -> {}
 		case Var(Id id, Type _, Location _) -> {
 			action.accept(id);
 		}
-		case Dector(IcExp.IcVarCtor _, Seq<CcPattern> args, Type _, Location _) -> {
+		case Ctor(IcExp.IcVarCtor _, Seq<CcPattern> args, Type _, Location _) -> {
 			args.forEach(arg -> arg.walkVars(action));
 		}
 		case Record(Seq<Var> fields, Type _, Location _) ->
@@ -56,13 +51,13 @@ extends PrettyPrintable, LocationHolder {
 	@Override
 	default void mkString(PrettyPrinter pp) {
 		switch(this) {
-		case Wildcard(Location _) -> {
+		case Wildcard(Type _, Location _) -> {
 			pp.append("_");
 		}
 		case Var(Id id, Type _, Location _) -> {
 			pp.append(id);
 		}
-		case Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
+		case Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
 			pp.append(ctor);
 			for(CcPattern arg: args) {
 				pp.append(" ").append(arg);

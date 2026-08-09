@@ -231,7 +231,7 @@ public final class BytecodeGenerator {
 		});
 
 		for (int i = 0; i < args.size(); i++) {
-			if(args.at(i) instanceof CcPattern.Dector ctor) {
+			if(args.at(i) instanceof CcPattern.Ctor ctor) {
 				Type subClassTy = types.get(ctor.ctor().id());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
@@ -245,7 +245,7 @@ public final class BytecodeGenerator {
 		// 事前条件：パターンに対応する値がstackのトップに乗っている
 		// 事後条件：パターンに対応する値をstackから消費
 		switch(pat) {
-		case CcPattern.Wildcard(Location _) -> {
+		case CcPattern.Wildcard(Type _, Location _) -> {
 			mv.visitInsn(Opcodes.POP);  // TODO: 最適化 フィールドからとらないように
 		}
 		case CcPattern.Var(Id id, Type type, Location _) -> {
@@ -253,7 +253,7 @@ public final class BytecodeGenerator {
 			storeLocal(locals.size(), type);
 			locals.add(id);
 		}
-		case CcPattern.Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
+		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
 			CcCtor ctorDecl = ctors.get(ctor.id());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
 			// stackの数を調整
@@ -555,7 +555,7 @@ public final class BytecodeGenerator {
 	 */
 	private void checkMatchAndStoreLocals(CcPattern pat, Type declTy, Label next) {
 		switch(pat) {
-		case CcPattern.Wildcard(Location _) -> {
+		case CcPattern.Wildcard(Type _, Location _) -> {
 			mv.visitInsn(Opcodes.POP);
 		}
 		case CcPattern.Var(Id id, Type type, Location _) -> {
@@ -563,7 +563,7 @@ public final class BytecodeGenerator {
 			storeLocal(locals.size(), type);
 			locals.add(id);
 		}
-		case CcPattern.Dector(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
+		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
 			CcCtor ctorDecl = ctors.get(ctor.id());
 			String subClassName = javaClasses.get(ctor.id()).toClassName();
 			if(next != null) {

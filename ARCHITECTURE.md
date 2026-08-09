@@ -35,6 +35,8 @@ flowchart TD
 `Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
 `reconPhase`は`Driver`内では1つのフェーズのように記述してあるが，内部は`ConstraintExtractor`と`TypeReconstructor`という概念上異なるフェーズを含む．
 
+`AnfConverter`は，後続の所有権解析とレコード再利用計画の前段として，`CcModule`を`AnfModule`へ変換する．`AnfModule`では式の評価順序と局所変数を明示し，関数引数およびcase式のpatternを自己完結したnested `AnfPattern`として保持する．pattern compilationはANF変換後の別フェーズの責務とする．現時点では`Driver`と`BytecodeGenerator`へ未接続であるため，上図は現在の通常コンパイル経路だけを示す．
+
 `PatternChecker`は，名前解決後の`IcModule`と型再構築後の`ExpOrPatternMap<Type>`を検査する．型再構築済みのpattern型からconstructor familyを取得するため，well-typedなpattern matrixを前提として冗長性と網羅性の検査に専念する．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のpattern matrixではwildcard相当として扱う．
 
 parser，nameeval，recon，patterncheckの各phaseは，`Driver`から渡されたreporterへ公開`Diagnostic`をreportする．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
@@ -94,6 +96,7 @@ M.f._case2_1._case1_1.y
 | `ir.idcalc` | 名前解決後のIR |
 | `ir.typing` | 型再構築後に後続フェーズが利用する型情報 |
 | `ir.clcalc` | クロージャ変換後のIR |
+| `ir.anf` | A正規形変換後のIR |
 | `phase` | コンパイルフェーズ共通の結果表現 |
 | `phase.parse` | 字句解析と構文解析 |
 | `phase.nameeval` | 名前解決と型名解決 |
@@ -101,6 +104,7 @@ M.f._case2_1._case1_1.y
 | `phase.recon.constraint` | 型制約IRと型再構築中の型表現 |
 | `phase.patterncheck` | パターンマッチの冗長性および網羅性の検査 |
 | `phase.clconv` | クロージャ変換 |
+| `phase.anfconv` | A正規形変換と`CcPattern`から`AnfPattern`への変換 |
 | `phase.codegen` | JVMバイトコード生成 |
 | `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
 | `util`，`util.collection`，`util.pp` | `Result`，コレクション，Pretty Printerなどの汎用部品 |
