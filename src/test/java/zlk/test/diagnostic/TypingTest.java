@@ -110,8 +110,8 @@ public class TypingTest {
 	}
 
 	@Test
-	void concreteUserAdtConstructorPatternArgumentMismatchRemainsTypeMismatch() {
-		Diagnostic.TypeMismatch error = only(Diagnostic.TypeMismatch.class,
+	void constructorPatternWithDifferentDeclaredAdtFamilyHasDedicatedDiagnostic() {
+		Diagnostic.ConstructorFamilyMismatch error = only(Diagnostic.ConstructorFamilyMismatch.class,
 				"""
 				type Maybe a =
 				  | Nothing
@@ -124,8 +124,9 @@ public class TypingTest {
 				    Box True -> 1
 				""");
 
-		assertEquals(Diagnostic.TypeMismatchReason.INCOMPATIBLE, error.reason());
-		assertInstanceOf(Diagnostic.TypingContext.None.class, error.context());
+		assertEquals(zlk.common.id.Id.intern("Basic.True"), error.constructor());
+		assertEquals(zlk.common.id.Id.intern("Bool"), error.actualFamily());
+		assertEquals(zlk.common.id.Id.intern("Main.Maybe"), error.expectedFamily());
 		assertEquals(10, error.location().startLine());
 	}
 

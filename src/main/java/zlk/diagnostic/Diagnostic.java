@@ -80,6 +80,9 @@ public sealed interface Diagnostic {
 	public sealed interface TypingContext
 	permits TypingContext.Annotation, TypingContext.CallArgument, TypingContext.CallArity,
 			TypingContext.FieldAccess, TypingContext.IfCondition, TypingContext.None {
+		TypingContext NONE = new None();
+		TypingContext IF_CONDITION = new IfCondition();
+
 		/** 型注釈の検査中． */
 		record Annotation(String declaration) implements TypingContext {}
 		/** 関数呼び出しの引数を検査中． */
@@ -241,6 +244,29 @@ public sealed interface Diagnostic {
 		}
 	}
 
+	/**
+	 * Constructor patternのfamilyが期待されたADTと異なる．
+	 *
+	 * 型再構築が検出する診断だが，利用者がpatternに関する問題として
+	 * 他の型不一致と区別できるように独立したvariantとする．
+	 *
+	 * @param location 不一致を起こしたconstructor patternの位置
+	 * @param constructor 不一致を起こしたconstructor
+	 * @param actualFamily constructorが属するADT
+	 * @param expectedFamily pattern位置で期待されたADT
+	 */
+	record ConstructorFamilyMismatch(
+			Location location,
+			Id constructor,
+			Id actualFamily,
+			Id expectedFamily
+	) implements Diagnostic {
+		@Override
+		public Severity severity() {
+			return Severity.ERROR;
+		}
+	}
+
 	// ================== patterncheck ==================
 
 	record IncompletePattern(
@@ -264,23 +290,4 @@ public sealed interface Diagnostic {
 		}
 	}
 
-	/**
-	 * Constructor patternのfamilyが期待されたADTと異なる．
-	 *
-	 * @param location 不一致を起こしたconstructor patternの位置
-	 * @param constructor 不一致を起こしたconstructor
-	 * @param actualFamily constructorが属するADT
-	 * @param expectedFamily pattern位置で期待されたADT
-	 */
-	record ConstructorFamilyMismatch(
-			Location location,
-			Id constructor,
-			Id actualFamily,
-			Id expectedFamily
-	) implements Diagnostic {
-		@Override
-		public Severity severity() {
-			return Severity.ERROR;
-		}
-	}
 }

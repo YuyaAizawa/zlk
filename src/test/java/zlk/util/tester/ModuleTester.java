@@ -12,6 +12,7 @@ import zlk.phase.recon.TypeReconstructor;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 public class ModuleTester {
 
@@ -69,7 +70,12 @@ public class ModuleTester {
 			return;
 		}
 
-		var reconed = TypeReconstructor.recon(result, freshFlex);
+		SeqBuffer<Diagnostic> reconDiagnostics = new SeqBuffer<>();
+		var reconed = TypeReconstructor.recon(result, freshFlex, reconDiagnostics::add).fold(
+				reconstructed -> reconstructed,
+				() -> {
+					throw new IllegalStateException("type reconstruction failed: " + reconDiagnostics.toSeq());
+				});
 		if(this.compileLevel == CompileLevel.TYPE_RECON) {
 			return;
 		}

@@ -25,11 +25,7 @@ import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.ExpOrPatternMap;
 import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.Mismatch;
-import zlk.phase.recon.TypeError;
-import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
-import zlk.phase.recon.constraint.Context;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -129,36 +125,30 @@ public final class Driver {
 		ConstraintExtractor.Result extracted = ConstraintExtractor.extract(module, freshFlex);
 
 		// 型推論部
-		TypeReconstructor.Result reconed;
-		try {
-			reconed = TypeReconstructor.recon(extracted, freshFlex);
-		} catch(TypeErrorException error) {
-			sink.report(toDiagnostic(error.error(), module));
-			return PhaseResult.blocked();
-		}
+		return TypeReconstructor.recon(extracted, freshFlex, sink).andThen(reconed -> {
+			// 組込み型とコンストラクタを追加
+			IdMap<Type> types = new IdMap<>();
+			Builtin.functions().forEach(builtin -> types.put(builtin.id(), builtin.type()));
+			module.types().forEach(
+					union -> union.ctors().forEach(
+							ctor -> {
+								Type ctorApp = new Type.CtorApp(union.id(), union.vars());
+								types.put(
+										ctor.id(),
+										ctor.args().isEmpty()
+											? ctorApp
+											: Type.arrow(ctor.args(), ctorApp)
+								);
+							}));
+			reconed.types().forEach(types::put);
 
-		// 組込み型とコンストラクタを追加
-		IdMap<Type> types = new IdMap<>();
-		Builtin.functions().forEach(builtin -> types.put(builtin.id(), builtin.type()));
-		module.types().forEach(
-				union -> union.ctors().forEach(
-						ctor -> {
-							Type ctorApp = new Type.CtorApp(union.id(), union.vars());
-							types.put(
-									ctor.id(),
-									ctor.args().isEmpty()
-										? ctorApp
-										: Type.arrow(ctor.args(), ctorApp)
-							);
-						}));
-		reconed.types().forEach(types::put);
+			if(options.reportInferredTypes()) {
+				reportInferredTypes(module, types, sink);
+			}
 
-		if(options.reportInferredTypes()) {
-			reportInferredTypes(module, types, sink);
-		}
-
-		return PhaseResult.ready(
-				new ReconResult(types, reconed.partExpType()));
+			return PhaseResult.ready(
+					new ReconResult(types, reconed.partExpType()));
+		});
 	}
 
 	private static void reportInferredTypes(
@@ -191,53 +181,6 @@ public final class Driver {
 		sink.report(new Diagnostic.InferredType(location, declaration, type));
 	}
 
-	private static Diagnostic toDiagnostic(TypeError error, IcModule module) {
-		return switch(error) {
-		case TypeError.InfiniteType(var location, var id) ->
-			new Diagnostic.InfiniteType(location, id.simpleName());
-		case TypeError.UnificationFailure(var provenance, var reason, var detail) -> {
-			if(provenance.context() instanceof Context.CtorPattern(
-					var constructor, var actualFamily, var inferredFamily)
-					&& inferredFamily
-					&& detail instanceof Mismatch.Detail.ConstructorFamily(var left, var right)) {
-				Id expectedFamily;
-				if(actualFamily == left) {
-					expectedFamily = right;
-				} else if(actualFamily == right) {
-					expectedFamily = left;
-				} else {
-					// Ctor patternのresult型と不一致詳細が対応しないため，型推論の内部契約違反
-					throw new IllegalStateException(
-							"constructor family mismatch does not include pattern family: " + actualFamily);
-				}
-				if(isAdtFamily(module, expectedFamily)) {
-					yield new Diagnostic.ConstructorFamilyMismatch(
-							provenance.location(), constructor, actualFamily, expectedFamily);
-				}
-			}
-			yield new Diagnostic.TypeMismatch(provenance.location(), toDiagnosticContext(provenance.context()),
-					Diagnostic.TypeMismatchReason.valueOf(reason.name()));
-		}
-		};
-	}
-
-	private static boolean isAdtFamily(IcModule module, Id id) {
-		return id == Type.BOOL.id() || module.types().anyMatch(type -> type.id() == id);
-	}
-
-	private static Diagnostic.TypingContext toDiagnosticContext(Context context) {
-		return switch(context) {
-		case Context.Annotation(var id) -> new Diagnostic.TypingContext.Annotation(id.simpleName());
-		case Context.CallArg(var maybeId, var index) ->
-			new Diagnostic.TypingContext.CallArgument(maybeId.map(id -> id.simpleName()).orElse(""), index);
-		case Context.CallArity(var maybeId, var length) ->
-			new Diagnostic.TypingContext.CallArity(maybeId.map(id -> id.simpleName()).orElse(""), length);
-		case Context.CtorPattern _ -> new Diagnostic.TypingContext.None();
-		case Context.FieldAccess(var field) -> new Diagnostic.TypingContext.FieldAccess(field);
-		case Context.IfCondition _ -> new Diagnostic.TypingContext.IfCondition();
-		case Context.None _ -> new Diagnostic.TypingContext.None();
-		};
-	}
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,

@@ -9,9 +9,8 @@ import zlk.common.id.IdMap;
 import zlk.ir.idcalc.IcExp.IcVarCtor;
 import zlk.ir.idcalc.IcPattern;
 import zlk.phase.recon.constraint.Constraint;
+import zlk.phase.recon.constraint.Constraint.CPattern;
 import zlk.phase.recon.constraint.Constraint.CEqual;
-import zlk.phase.recon.constraint.Constraint.Provenance;
-import zlk.phase.recon.constraint.Context;
 import zlk.phase.recon.constraint.RcType;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -44,11 +43,7 @@ final class PatternBinder {
 			default -> throw new IllegalStateException(
 					"constructor result must be an ADT type after name evaluation: " + ctorInfo.resultTy());
 			};
-			cons.add(new CEqual(
-					ctorInfo.resultTy(),
-					expected,
-					new Provenance(loc, new Context.CtorPattern(
-							ctor.id(), family, expected instanceof RcType.VarN))));
+			cons.add(new CPattern(ctor.id(), family, ctorInfo.resultTy(), expected, loc));
 
 			Seq.zip(args, ctorInfo.argTys()).forEach(
 				(arg, argTy) -> bind(arg, argTy, freshFlex, patternBinds));
