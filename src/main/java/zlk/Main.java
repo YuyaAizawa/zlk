@@ -33,6 +33,7 @@ import zlk.phase.recon.FreshFlex;
 import zlk.phase.recon.TypeReconstructor;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
 
 /**
  * 各コンパイルフェーズの中間結果と生成bytecodeを表示して実行する手動サンプル．
@@ -134,13 +135,18 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- TYPE RECONSTRUCTION --");
-		var reconed = TypeReconstructor.recon(extractResult, freshFlex);
+		SeqBuffer<Diagnostic> reconDiagnostics = new SeqBuffer<>();
+		var reconed = TypeReconstructor.recon(extractResult, freshFlex, reconDiagnostics::add).fold(
+				reconstructed -> reconstructed,
+				() -> {
+					throw new IllegalStateException("type reconstruction failed: " + reconDiagnostics.toSeq());
+				});
 		IdMap<Type> types = reconed.types();
 		System.out.println(types.buildString());
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");
-		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc);
+		Seq<Diagnostic> patternErrors = PatternChecker.check(idcalc, reconed.partExpType());
 		if(!patternErrors.isEmpty()) {
 			throw new IllegalStateException(
 					"pattern check failed:" + System.lineSeparator()

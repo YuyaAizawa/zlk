@@ -25,10 +25,7 @@ import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.ExpOrPatternMap;
 import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.TypeError;
-import zlk.phase.recon.TypeErrorException;
 import zlk.phase.recon.TypeReconstructor;
-import zlk.phase.recon.constraint.Context;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -75,7 +72,7 @@ public final class Driver {
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
 				reconResult -> nameEvaled.andThen(
-				module -> patternPhase(module, diagCollector)));
+				module -> patternPhase(module, reconResult.partExpTypes(), diagCollector)));
 
 		// 閉包変換からバイトコード生成まで
 		PhaseResult<Map<String, byte[]>> result = nameEvaled.andThen(
@@ -128,36 +125,30 @@ public final class Driver {
 		ConstraintExtractor.Result extracted = ConstraintExtractor.extract(module, freshFlex);
 
 		// 型推論部
-		TypeReconstructor.Result reconed;
-		try {
-			reconed = TypeReconstructor.recon(extracted, freshFlex);
-		} catch(TypeErrorException error) {
-			sink.report(toDiagnostic(error.error()));
-			return PhaseResult.blocked();
-		}
+		return TypeReconstructor.recon(extracted, freshFlex, sink).andThen(reconed -> {
+			// 組込み型とコンストラクタを追加
+			IdMap<Type> types = new IdMap<>();
+			Builtin.functions().forEach(builtin -> types.put(builtin.id(), builtin.type()));
+			module.types().forEach(
+					union -> union.ctors().forEach(
+							ctor -> {
+								Type ctorApp = new Type.CtorApp(union.id(), union.vars());
+								types.put(
+										ctor.id(),
+										ctor.args().isEmpty()
+											? ctorApp
+											: Type.arrow(ctor.args(), ctorApp)
+								);
+							}));
+			reconed.types().forEach(types::put);
 
-		// 組込み型とコンストラクタを追加
-		IdMap<Type> types = new IdMap<>();
-		Builtin.functions().forEach(builtin -> types.put(builtin.id(), builtin.type()));
-		module.types().forEach(
-				union -> union.ctors().forEach(
-						ctor -> {
-							Type ctorApp = new Type.CtorApp(union.id(), union.vars());
-							types.put(
-									ctor.id(),
-									ctor.args().isEmpty()
-										? ctorApp
-										: Type.arrow(ctor.args(), ctorApp)
-							);
-						}));
-		reconed.types().forEach(types::put);
+			if(options.reportInferredTypes()) {
+				reportInferredTypes(module, types, sink);
+			}
 
-		if(options.reportInferredTypes()) {
-			reportInferredTypes(module, types, sink);
-		}
-
-		return PhaseResult.ready(
-				new ReconResult(types, reconed.partExpType()));
+			return PhaseResult.ready(
+					new ReconResult(types, reconed.partExpType()));
+		});
 	}
 
 	private static void reportInferredTypes(
@@ -190,34 +181,13 @@ public final class Driver {
 		sink.report(new Diagnostic.InferredType(location, declaration, type));
 	}
 
-	private static Diagnostic toDiagnostic(TypeError error) {
-		return switch(error) {
-		case TypeError.InfiniteType(var location, var id) ->
-			new Diagnostic.InfiniteType(location, id.simpleName());
-		case TypeError.UnificationFailure(var provenance, var reason) ->
-			new Diagnostic.TypeMismatch(provenance.location(), toDiagnosticContext(provenance.context()),
-					Diagnostic.TypeMismatchReason.valueOf(reason.name()));
-		};
-	}
-
-	private static Diagnostic.TypingContext toDiagnosticContext(Context context) {
-		return switch(context) {
-		case Context.Annotation(var id) -> new Diagnostic.TypingContext.Annotation(id.simpleName());
-		case Context.CallArg(var maybeId, var index) ->
-			new Diagnostic.TypingContext.CallArgument(maybeId.map(id -> id.simpleName()).orElse(""), index);
-		case Context.CallArity(var maybeId, var length) ->
-			new Diagnostic.TypingContext.CallArity(maybeId.map(id -> id.simpleName()).orElse(""), length);
-		case Context.FieldAccess(var field) -> new Diagnostic.TypingContext.FieldAccess(field);
-		case Context.IfCondition _ -> new Diagnostic.TypingContext.IfCondition();
-		case Context.None _ -> new Diagnostic.TypingContext.None();
-		};
-	}
 
 	private static PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
+			ExpOrPatternMap<Type> patternTypes,
 			DiagnosticReporter diagCollector
 	) {
-		Seq<Diagnostic> result = PatternChecker.check(module);
+		Seq<Diagnostic> result = PatternChecker.check(module, patternTypes);
 		result.forEach(diagCollector::report);
 		return result.anyMatch(Diagnostic::isError)
 				? PhaseResult.blocked()

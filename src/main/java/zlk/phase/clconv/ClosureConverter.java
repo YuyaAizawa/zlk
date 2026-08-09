@@ -421,7 +421,7 @@ public final class ClosureConverter {
 	private Seq<Id> fvFunc(CcExp body, Seq<IcPattern> args) {
 		SeqBuffer<Id> free = new SeqBuffer<>();
 		IdSet bounded = new IdSet(knowns);
-		args.forEach(arg -> arg.accumulateVars(bounded));
+		args.forEach(arg -> arg.walkVars(bounded::add));
 		fv(body, bounded, free);
 		return free.toSeq();
 	}
@@ -464,7 +464,7 @@ public final class ClosureConverter {
 		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type _, Location _) -> {
 			fv(target, bounded, free);
 			for (CcCaseBranch branch : branches) {
-				branch.pattern().accumulateVars(bounded);
+				branch.pattern().walkVars(bounded::add);
 				fv(branch.body(), bounded, free);
 			}
 		}

@@ -23,7 +23,7 @@ implements PrettyPrintable {
 
 	CcCaseBranch substId(IdMap<Id> map) {
 		SeqBuffer<Id> ids = new SeqBuffer<Id>();
-		pattern.accumulateVars(ids.uniqueAcc());
+		pattern.walkVars(ids::add);
 		ids.forEach(id -> {
 			if(map.containsKey(id)) {
 				throw new RuntimeException(""+id);

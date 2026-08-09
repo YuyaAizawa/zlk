@@ -8,6 +8,9 @@ import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.DiagnosticReporter;
+import zlk.phase.PhaseResult;
 import zlk.phase.recon.constraint.Constraint;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
@@ -33,7 +36,18 @@ public class TypeReconstructor {
 			ExpOrPatternMap<Type> partExpType  // 部分式の汎化されていない型
 	) {}
 
-	// TODO 型が付かなかったときは例外でなくResultの方が扱いやすそう
+	/** 型再構築内部だけで期待されたsource failureをphase入口まで運ぶ． */
+	private static final class ReconstructionAbort extends RuntimeException {
+		private static final long serialVersionUID = 1L;
+
+		private final Diagnostic diagnostic;
+
+		private ReconstructionAbort(Diagnostic diagnostic, Throwable cause) {
+			super(diagnostic.toString(), cause);
+			this.diagnostic = diagnostic;
+		}
+	}
+
 	// TODO 例外が起きたら，それに関する型はダミーの型に確定したとして続けたらいいか？
 
 	/**
@@ -45,26 +59,33 @@ public class TypeReconstructor {
 	 * 衝突しない型変数の生成器
 	 */
 	private FreshFlex freshFlex;
+	private final Seq<Id> adtFamilies;
 
 	/**
 	 * 汎化するときに使う
 	 */
 	private int gMarkCounter;
 
-	private TypeReconstructor(FreshFlex freshFlex) {
+	private TypeReconstructor(FreshFlex freshFlex, Seq<Id> adtFamilies) {
 		this.result = new IdMap<>();
 		this.freshFlex = freshFlex;
+		this.adtFamilies = adtFamilies;
 	}
 
-	public static Result recon(
+	public static PhaseResult<Result> recon(
 			ConstraintExtractor.Result extracted,
-			FreshFlex freshFlex) {
-		TypeReconstructor self = new TypeReconstructor(freshFlex);
-		self.solve(extracted.constraint(), 0, new IdMap<>());
-
-		return new Result(
-				self.result.traverse(Variable::toType),
-				extracted.partExpType().traverse(RcType::toType));
+			FreshFlex freshFlex,
+			DiagnosticReporter reporter) {
+		TypeReconstructor self = new TypeReconstructor(freshFlex, extracted.adtFamilies());
+		try {
+			self.solve(extracted.constraint(), 0, new IdMap<>());
+			return PhaseResult.ready(new Result(
+					self.result.traverse(Variable::toType),
+					extracted.partExpType().traverse(RcType::toType)));
+		} catch(ReconstructionAbort abort) {
+			reporter.report(abort.diagnostic);
+			return PhaseResult.blocked();
+		}
 	}
 
 	private void solve(Constraint con, int letRank, IdMap<Variable> env) {
@@ -75,7 +96,7 @@ public class TypeReconstructor {
 			Constraint con,
 			int letRank,
 			IdMap<Variable> env,
-			TypeError.InfiniteType infiniteType
+			Diagnostic.InfiniteType infiniteType
 	) {
 		switch(con) {
 		case CEqual(RcType type, RcType expectation, Provenance provenance) -> {
@@ -95,10 +116,10 @@ public class TypeReconstructor {
 			Variable expected = typeToVar(letRank, expectation, IdMap.of());
 			unify(actual, expected, provenance, letRank);
 		}
-		case CPattern(Id _, RcType ctorTy, RcType expection, Provenance provenance) -> {
+		case CPattern(Id constructor, Id family, RcType ctorTy, RcType expection, var location) -> {
 			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
 			Variable expected = typeToVar(letRank, expection, IdMap.of());
-			unify(actual, expected, provenance, letRank);
+			unifyPattern(actual, expected, constructor, family, location, letRank);
 		}
 		case CLet(
 				Seq<Variable> rigids,
@@ -119,11 +140,12 @@ public class TypeReconstructor {
 
 			// 強連結成分ごとに解決
 			for (CPhase phase : headerCons) {
-				TypeError.InfiniteType phaseInfiniteType = infiniteType;
+				Diagnostic.InfiniteType phaseInfiniteType = infiniteType;
 				if(!phase.genTargets().isEmpty()) {
 					Id id = phase.genTargets().head();
 					if(declarationLocations.containsKey(id)) {
-						phaseInfiniteType = new TypeError.InfiniteType(declarationLocations.get(id), id);
+						phaseInfiniteType = new Diagnostic.InfiniteType(
+								declarationLocations.get(id), id.simpleName());
 					}
 				}
 				solve(phase.cons(), nextRank, newEnv, phaseInfiniteType);
@@ -143,9 +165,10 @@ public class TypeReconstructor {
 				for(Variable rigid : rigids) {
 					if(!rigid.get().isQuantified()) {
 						Id id = declarationLocations.keys().head();
-						throw new TypeErrorException(new TypeError.UnificationFailure(
-								new Provenance(declarationLocations.get(id), new zlk.phase.recon.constraint.Context.Annotation(id)),
-								Mismatch.Reason.INCOMPATIBLE), null);
+						throw abort(new Diagnostic.TypeMismatch(
+								declarationLocations.get(id),
+								new Diagnostic.TypingContext.Annotation(id.simpleName()),
+								Diagnostic.TypeMismatchReason.INCOMPATIBLE), null);
 					}
 				}
 			}
@@ -170,7 +193,7 @@ public class TypeReconstructor {
 			solve(cons, nextRank, env, infiniteType);
 			if(vars.anyMatch(Variable::occurs)) {
 				if(infiniteType != null) {
-					throw new TypeErrorException(infiniteType, null);
+					throw abort(infiniteType, null);
 				}
 				throw new IllegalStateException("cyclic inference variable escaped CExists scope");
 			}
@@ -188,7 +211,7 @@ public class TypeReconstructor {
 			Seq<Constraint> cons,
 			int letRank,
 			IdMap<Variable> env,
-			TypeError.InfiniteType infiniteType
+			Diagnostic.InfiniteType infiniteType
 	) {
 		for(Constraint con : cons) {
 			solve(con, letRank, env, infiniteType);
@@ -199,9 +222,57 @@ public class TypeReconstructor {
 		try {
 			Unify.unify(actual, expected, freshFlex, letRank);
 		} catch(Mismatch mismatch) {
-			throw new TypeErrorException(
-					new TypeError.UnificationFailure(provenance, mismatch.reason()), mismatch);
+			throw abort(new Diagnostic.TypeMismatch(
+					provenance.location(), provenance.context(), toDiagnosticReason(mismatch.reason())), mismatch);
 		}
+	}
+
+	private void unifyPattern(
+			Variable actual,
+			Variable expected,
+			Id constructor,
+			Id actualFamily,
+			zlk.common.Location location,
+			int letRank) {
+		try {
+			Unify.unify(actual, expected, freshFlex, letRank);
+		} catch(Mismatch mismatch) {
+			throw abort(toPatternDiagnostic(constructor, actualFamily, location, mismatch), mismatch);
+		}
+	}
+
+	private Diagnostic toPatternDiagnostic(
+			Id constructor,
+			Id actualFamily,
+			zlk.common.Location location,
+			Mismatch mismatch) {
+		if(mismatch.detail() instanceof Mismatch.Detail.ConstructorFamily(var left, var right)) {
+			Id expectedFamily = null;
+			if(actualFamily.equals(left)) {
+				expectedFamily = right;
+			} else if(actualFamily.equals(right)) {
+				expectedFamily = left;
+			}
+			if(expectedFamily != null && adtFamilies.contains(expectedFamily)) {
+				return new Diagnostic.ConstructorFamilyMismatch(
+						location, constructor, actualFamily, expectedFamily);
+			}
+		}
+		return new Diagnostic.TypeMismatch(
+				location, Diagnostic.TypingContext.NONE, toDiagnosticReason(mismatch.reason()));
+	}
+
+	private static Diagnostic.TypeMismatchReason toDiagnosticReason(Mismatch.Reason reason) {
+		return switch(reason) {
+		case INCOMPATIBLE -> Diagnostic.TypeMismatchReason.INCOMPATIBLE;
+		case KIND -> Diagnostic.TypeMismatchReason.KIND;
+		case ROW_LACKS -> Diagnostic.TypeMismatchReason.ROW_LACKS;
+		case RECURSIVE_ROW -> Diagnostic.TypeMismatchReason.RECURSIVE_ROW;
+		};
+	}
+
+	private static ReconstructionAbort abort(Diagnostic diagnostic, Throwable cause) {
+		return new ReconstructionAbort(diagnostic, cause);
 	}
 
 	/**
@@ -254,8 +325,7 @@ public class TypeReconstructor {
 
 	private void occurCheck(Id id, Variable var, zlk.common.Location location) {
 		if(var.occurs()) {
-			throw new TypeErrorException(
-					new TypeError.InfiniteType(location, id), null);
+			throw abort(new Diagnostic.InfiniteType(location, id.simpleName()), null);
 		}
 	}
 

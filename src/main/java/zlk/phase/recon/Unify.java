@@ -111,7 +111,7 @@ public final class Unify {
 						Seq.zip(uArgs, vArgs).forEach(
 								(uArg, vArg) -> unify(uArg, vArg, freshFlex, letRank));
 					} else {
-						throw new Mismatch();
+						throw new Mismatch(new Mismatch.Detail.ConstructorFamily(u__.id(), v__.id()));
 					}
 				} else if(u_.flatType() instanceof Record1 u__ && v_.flatType() instanceof Record1 v__) {
 					// Record1同士: 内包するrow変数同士をrowUnify

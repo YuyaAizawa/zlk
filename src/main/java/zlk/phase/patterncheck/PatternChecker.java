@@ -12,14 +12,18 @@ import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcCase;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
+import zlk.phase.recon.ExpOrPatternMap;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
 // http://moscova.inria.fr/~maranget/papers/warn/warn.pdf
 
 public final class PatternChecker {
-	public static Seq<Diagnostic> check(IcModule module) {
-		PatternChecker checker = new PatternChecker(module);
+	public static Seq<Diagnostic> check(
+			IcModule module,
+			ExpOrPatternMap<Type> patternTypes
+	) {
+		PatternChecker checker = new PatternChecker(module, patternTypes);
 		module.decls().forEach(
 				decl -> decl.body().walk(exp -> {
 					if (exp instanceof IcExp.IcCase caseExp) {
@@ -30,11 +34,11 @@ public final class PatternChecker {
 	}
 
 	private final IdMap<UnionInfo> unionInfos;
-	private final IdMap<Id> ctorToUnion;
+	private final ExpOrPatternMap<Type> patternTypes;
 	private final SeqBuffer<Diagnostic> errors;
-	private PatternChecker(IcModule module) {
+	private PatternChecker(IcModule module, ExpOrPatternMap<Type> patternTypes) {
 		this.unionInfos = new IdMap<>();
-		this.ctorToUnion = new IdMap<>();
+		this.patternTypes = patternTypes;
 		// 組込み
 		Id boolId = Type.BOOL.id();
 		UnionInfo boolInfo = new UnionInfo(
@@ -43,14 +47,12 @@ public final class PatternChecker {
 						new CtorInfo(boolId, Id.intern("Basic.False"), 0),
 						new CtorInfo(boolId, Id.intern("Basic.True"), 0)));
 		unionInfos.put(boolId, boolInfo);
-		boolInfo.ctors.forEach(ctor -> ctorToUnion.put(ctor.id, boolId));
 		// コード
 		module.types().forEach(tyDecl -> {
 			Id unionId = tyDecl.id();
 			Seq<CtorInfo> ctors = tyDecl.ctors()
 					.map(ctor -> new CtorInfo(unionId, ctor.id(), ctor.args().size()));
 			unionInfos.put(unionId, new UnionInfo(unionId, ctors));
-			ctors.forEach(ctor -> ctorToUnion.put(ctor.id(), unionId));
 		});
 
 		this.errors = new SeqBuffer<>();
@@ -70,7 +72,7 @@ public final class PatternChecker {
 
 	/**
 	 * ケース式のパターンの冗長性と網羅性を検査しエラーに記録する
-	 * @param caseExp case式のbranch patternと解決済み型
+	 * @param caseExp case式のbranch pattern
 	 */
 	private void check(IcCase caseExp) {
 		Location overallLoc = caseExp.loc();
@@ -102,9 +104,14 @@ public final class PatternChecker {
 		case IcPattern.Var(Id _, Location _) -> Pattern.Anything.SINGLETON;
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern> args, Location _) -> {
 			Id ctorId = ctor.id();
-			Id unionId = ctorToUnion.get(ctorId);
+			Type patternType = patternTypes.get(pattern);
+			if(!(patternType instanceof Type.CtorApp ctorApp)) {
+				// 型再構築後のCtor patternは必ずADT型になるため，型推論の内部契約違反
+				throw new IllegalStateException(
+						"constructor pattern must have an ADT type after reconstruction: " + patternType);
+			}
 			yield new Pattern.Ctor(
-					unionId,
+					ctorApp.id(),
 					ctorId,
 					args.map(this::toPcPattern));
 		}
@@ -173,9 +180,10 @@ public final class PatternChecker {
 
 		UnionInfo unionInfo = unionInfos.get(seenCtors.head().unionId());
 
-		// 念のため同じunionであることを確認
+		// 型再構築済みmatrixの各列は同じunionに属する
 		Id unionId = unionInfo.id();
 		seenCtors.findFirst(ctor -> ctor.unionId() != unionId).ifPresent(ctor -> {
+			// 型再構築後の同一列は単一の型を持つため，型推論の内部契約違反
 			throw new IllegalStateException(
 					"constructors from different unions appear in the same pattern column: "
 							+ unionId + " and " + ctor.unionId());

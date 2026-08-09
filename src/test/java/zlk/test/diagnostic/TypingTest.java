@@ -94,6 +94,59 @@ public class TypingTest {
 	}
 
 	@Test
+	void constructorPatternArgumentMismatchRemainsTypeMismatch() {
+		Diagnostic.TypeMismatch error = only(Diagnostic.TypeMismatch.class,
+				"""
+				type Box = Box I32
+
+				bad value =
+				  case value of
+				    Box True -> 1
+				""");
+
+		assertEquals(Diagnostic.TypeMismatchReason.INCOMPATIBLE, error.reason());
+		assertInstanceOf(Diagnostic.TypingContext.None.class, error.context());
+		assertEquals(6, error.location().startLine());
+	}
+
+	@Test
+	void constructorPatternWithDifferentDeclaredAdtFamilyHasDedicatedDiagnostic() {
+		Diagnostic.ConstructorFamilyMismatch error = only(Diagnostic.ConstructorFamilyMismatch.class,
+				"""
+				type Maybe a =
+				  | Nothing
+				  | Just a
+
+				type Box = Box (Maybe I32)
+
+				bad value =
+				  case value of
+				    Box True -> 1
+				""");
+
+		assertEquals(zlk.common.id.Id.intern("Basic.True"), error.constructor());
+		assertEquals(zlk.common.id.Id.intern("Bool"), error.actualFamily());
+		assertEquals(zlk.common.id.Id.intern("Main.Maybe"), error.expectedFamily());
+		assertEquals(10, error.location().startLine());
+	}
+
+	@Test
+	void constructorPatternAgainstNonAdtTargetRemainsTypeMismatch() {
+		Diagnostic.TypeMismatch error = only(Diagnostic.TypeMismatch.class,
+				"""
+				bad : I32 -> I32
+				bad value =
+				  case value of
+				    True -> 1
+				""");
+
+		assertEquals(Diagnostic.TypeMismatchReason.INCOMPATIBLE, error.reason());
+		assertInstanceOf(Diagnostic.TypingContext.None.class, error.context());
+		assertEquals(5, error.location().startLine());
+	}
+
+
+	@Test
 	void recordUpdateWithoutTheFieldReportsFieldContext() {
 		Diagnostic.TypeMismatch error = only(Diagnostic.TypeMismatch.class,
 				"""

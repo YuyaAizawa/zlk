@@ -1,11 +1,12 @@
 package zlk.ir.clcalc;
 
+import java.util.function.Consumer;
+
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.ir.idcalc.IcExp;
-import zlk.util.collection.Accumulator;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -38,17 +39,17 @@ extends PrettyPrintable, LocationHolder {
 			Type type,
 			Location loc) implements CcPattern {}
 
-	public default void accumulateVars(Accumulator<Id> known) {
+	public default void walkVars(Consumer<Id> action) {
 		switch(this) {
 		case Wildcard(Location _) -> {}
 		case Var(Id id, Type _, Location _) -> {
-			known.add(id);
+			action.accept(id);
 		}
 		case Dector(IcExp.IcVarCtor _, Seq<CcPattern> args, Type _, Location _) -> {
-			args.forEach(arg -> arg.accumulateVars(known));
+			args.forEach(arg -> arg.walkVars(action));
 		}
 		case Record(Seq<Var> fields, Type _, Location _) ->
-			fields.forEach(field -> known.add(field.id()));
+			fields.forEach(field -> action.accept(field.id()));
 		}
 	}
 

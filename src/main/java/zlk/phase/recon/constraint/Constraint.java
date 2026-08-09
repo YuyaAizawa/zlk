@@ -4,6 +4,7 @@ import zlk.common.Type;
 import zlk.common.Location;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.diagnostic.Diagnostic.TypingContext;
 import zlk.phase.recon.Variable;
 import zlk.phase.recon.constraint.Constraint.CEqual;
 import zlk.phase.recon.constraint.Constraint.CExists;
@@ -19,8 +20,8 @@ public sealed interface Constraint extends PrettyPrintable
 permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 
 	/** Source information attached by {@link zlk.phase.recon.ConstraintExtractor}. */
-	record Provenance(Location location, Context context) {
-		public static final Provenance NONE = new Provenance(Location.noLocation(), Context.NONE);
+	record Provenance(Location location, TypingContext context) {
+		public static final Provenance NONE = new Provenance(Location.noLocation(), TypingContext.NONE);
 	}
 
 	/**
@@ -64,14 +65,11 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 	 * パターンによる制約
 	 */
 	record CPattern(
-			Id id,  // TODO Ctor以外のカテゴリに対応
+			Id constructor,
+			Id family,
 			RcType ctorTy,
 			RcType expected,
-			Provenance provenance) implements Constraint {
-		public CPattern(Id id, RcType ctorTy, RcType expected) {
-			this(id, ctorTy, expected, Provenance.NONE);
-		}
-	}
+			Location location) implements Constraint {}
 
 	/**
 	 * letやcaseのパターンとスコープに関わる制約．
@@ -161,8 +159,8 @@ permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
 		case CForeign(Id id, Type type, RcType expected, Provenance _) -> {
 			pp.append("Foreign: ").append(id).append(":").append(type).append(" = ").append(expected);
 		}
-		case CPattern(Id id, RcType ctorTy, RcType expected, Provenance _) -> {
-			pp.append("Pattern: ").append(id).append(": ").append(ctorTy).append(" = ").append(expected);
+		case CPattern(Id constructor, Id _, RcType ctorTy, RcType expected, Location _) -> {
+			pp.append("Pattern: ").append(constructor).append(": ").append(ctorTy).append(" = ").append(expected);
 		}
 		case CLet(
 				Seq<Variable> rigids,

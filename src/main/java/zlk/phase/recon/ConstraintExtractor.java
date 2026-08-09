@@ -9,6 +9,7 @@ import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
+import zlk.diagnostic.Diagnostic.TypingContext;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcApp;
@@ -31,7 +32,6 @@ import zlk.phase.recon.constraint.Constraint.CLet;
 import zlk.phase.recon.constraint.Constraint.CLocal;
 import zlk.phase.recon.constraint.Constraint.CPhase;
 import zlk.phase.recon.constraint.Constraint.Provenance;
-import zlk.phase.recon.constraint.Context;
 import zlk.phase.recon.constraint.RcType;
 import zlk.phase.recon.constraint.RcType.FunN;
 import zlk.phase.recon.constraint.RcType.VarN;
@@ -64,12 +64,14 @@ public final class ConstraintExtractor {
 						Seq.of()));
 		return new Result(
 				constraint,
-				extractor.partExpTypes);
+				extractor.partExpTypes,
+				Seq.concat(Seq.of(Type.BOOL.id()), module.types().map(type -> type.id())));
 	}
 
 	public record Result(
 			Constraint constraint,
-			ExpOrPatternMap<RcType> partExpType) {}
+			ExpOrPatternMap<RcType> partExpType,
+			Seq<Id> adtFamilies) {}
 
 	/**
 	 * 指定された式の制約を抽出して返す．
@@ -77,10 +79,10 @@ public final class ConstraintExtractor {
 	 * @param expected 期待される型
 	 */
 	public Constraint extract(IcExp exp, RcType expected) {
-		return extract(exp, expected, Context.NONE);
+		return extract(exp, expected, TypingContext.NONE);
 	}
 
-	private Constraint extract(IcExp exp, RcType expected, Context context) {
+	private Constraint extract(IcExp exp, RcType expected, TypingContext context) {
 		partExpTypes.put(exp, expected);
 		return switch (exp) {
 
@@ -141,7 +143,8 @@ public final class ConstraintExtractor {
 				Variable argVar = freshFlex.getVariable();
 				vars.add(argVar);
 				RcType argTy = new VarN(argVar);
-				argCons.add(extract(arg, argTy, new Context.CallArg(fun.getId(), index)));
+				argCons.add(extract(arg, argTy, new TypingContext.CallArgument(
+						fun.getId().map(Id::simpleName).orElse(""), index)));
 				argTys.add(argTy);
 			}
 
@@ -154,7 +157,8 @@ public final class ConstraintExtractor {
 			}
 
 			cons.add(new CEqual(funTy, arityType,
-					new Provenance(loc, new Context.CallArity(fun.getId(), args.size()))));
+					new Provenance(loc, new TypingContext.CallArity(
+							fun.getId().map(Id::simpleName).orElse(""), args.size()))));
 			cons.addAll(argCons);  // アリティの後にしないと引数の数のチェックができない
 			cons.add(new CEqual(resultType, expected, new Provenance(loc, context)));
 
@@ -169,7 +173,7 @@ public final class ConstraintExtractor {
 
 			yield new CExists(
 					Seq.of(branchVar),
-					Seq.of(extract(condExp, RcType.BOOL, Context.IF_CONDITION),
+					Seq.of(extract(condExp, RcType.BOOL, TypingContext.IF_CONDITION),
 							extract(thenExp, branchTy),
 							extract(elseExp, branchTy),
 							new CEqual(branchTy, expected)));
@@ -228,9 +232,9 @@ public final class ConstraintExtractor {
 			yield new CExists(
 					Seq.of(targetVar, fieldVar, tailVar),
 					Seq.of(
-							extract(target, targetType, new Context.FieldAccess(field)),
+							extract(target, targetType, new TypingContext.FieldAccess(field)),
 							new CEqual(targetType, requiredRecord,
-									new Provenance(loc, new Context.FieldAccess(field))),
+									new Provenance(loc, new TypingContext.FieldAccess(field))),
 							new CEqual(fieldType, expected, new Provenance(loc, context))));
 		}
 
@@ -251,7 +255,7 @@ public final class ConstraintExtractor {
 			SeqBuffer<RecordField<RcType>> rowFields = new SeqBuffer<>();
 			vars.add(targetVar);
 			vars.add(sharedTail);
-			cons.add(extract(target, targetType, new Context.FieldAccess(fields.head().name())));
+			cons.add(extract(target, targetType, new TypingContext.FieldAccess(fields.head().name())));
 			for(IcExp.IcRecordField field : fields) {
 				Variable fieldVar = freshFlex.getVariable();
 				RcType fieldType = new VarN(fieldVar);
@@ -262,7 +266,7 @@ public final class ConstraintExtractor {
 			RcType requiredRecord = new RcType.RecordN(
 					new RcType.RowN(rowFields.toSeq(), Optional.of(sharedTail)));
 			cons.add(new CEqual(targetType, requiredRecord,
-					new Provenance(loc, new Context.FieldAccess(fields.head().name()))));
+					new Provenance(loc, new TypingContext.FieldAccess(fields.head().name()))));
 			cons.add(new CEqual(targetType, expected));
 			yield new CExists(vars.toSeq(), cons.toSeq());
 		}
@@ -331,9 +335,10 @@ public final class ConstraintExtractor {
 
 			SeqBuffer<Constraint> headerCons = new SeqBuffer<>();
 			headerCons.add(new CEqual(a.funTy, anno.type(),
-					new Provenance(decl.loc(), new Context.Annotation(decl.id()))));
+					new Provenance(decl.loc(), new TypingContext.Annotation(decl.id().simpleName()))));
 			headerCons.addAll(a.binder.cons);
-			headerCons.add(extract(decl.body(), a.resultTy, new Context.Annotation(decl.id())));
+			headerCons.add(extract(decl.body(), a.resultTy,
+					new TypingContext.Annotation(decl.id().simpleName())));
 
 			return new CLet(
 					anno.rigids(),
@@ -370,7 +375,7 @@ public final class ConstraintExtractor {
 					a.binder.headers,
 					Seq.of(new CPhase(headerCons.toSeq(), Seq.of())),  // 内側CLetは一般化なし
 					new CEqual(a.funTy, header.get(decl.id()),
-							new Provenance(decl.loc(), Context.NONE))
+							new Provenance(decl.loc(), TypingContext.NONE))
 			);
 			defCons.put(decl.id(), rhs);
 		}

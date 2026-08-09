@@ -1,5 +1,7 @@
 package zlk.ir.idcalc;
 
+import java.util.function.Consumer;
+
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
@@ -7,7 +9,6 @@ import zlk.ir.idcalc.IcPattern.Dector;
 import zlk.ir.idcalc.IcPattern.Record;
 import zlk.ir.idcalc.IcPattern.Var;
 import zlk.ir.idcalc.IcPattern.Wildcard;
-import zlk.util.collection.Accumulator;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -29,17 +30,17 @@ permits Wildcard, Var, Dector, Record {
 
 	record Record(Seq<Var> fields, Location loc) implements IcPattern {}
 
-	public default void accumulateVars(Accumulator<Id> known) {
+	public default void walkVars(Consumer<Id> action) {
 		switch(this) {
 		case Wildcard(Location _) -> {}
 		case Var(Id id, Location _) -> {
-			known.add(id);
+			action.accept(id);
 		}
 		case Dector(IcExp.IcVarCtor _, Seq<IcPattern> args, Location _) -> {
-			args.forEach(arg -> arg.accumulateVars(known));
+			args.forEach(arg -> arg.walkVars(action));
 		}
 		case Record(Seq<Var> fields, Location _) ->
-			fields.forEach(field -> known.add(field.id()));
+			fields.forEach(field -> action.accept(field.id()));
 		}
 	}
 
