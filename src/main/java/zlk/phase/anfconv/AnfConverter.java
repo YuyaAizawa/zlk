@@ -3,6 +3,7 @@ package zlk.phase.anfconv;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -11,7 +12,6 @@ import zlk.ir.anf.AnfAtom;
 import zlk.ir.anf.AnfBind;
 import zlk.ir.anf.AnfBlock;
 import zlk.ir.anf.AnfBranch;
-import zlk.ir.anf.AnfCtor;
 import zlk.ir.anf.AnfFunDecl;
 import zlk.ir.anf.AnfModule;
 import zlk.ir.anf.AnfPattern;
@@ -45,7 +45,7 @@ public final class AnfConverter {
 	private AnfTypeDecl convert(CcTypeDecl decl) {
 		return new AnfTypeDecl(
 				decl.id(),
-				decl.ctors().map(ctor -> new AnfCtor(ctor.id(), ctor.args(), ctor.loc())),
+				decl.ctors().map(ctor -> new Ctor(ctor.id(), ctor.args(), ctor.loc())),
 				decl.loc());
 	}
 

@@ -15,13 +15,13 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 import zlk.common.ConstValue;
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.ir.clcalc.CcCaseBranch;
-import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
 import zlk.ir.clcalc.CcExp.CcCase;
 import zlk.ir.clcalc.CcExp.CcClosureApp;
@@ -54,7 +54,7 @@ public final class BytecodeGenerator {
 	private final IdMap<String> toplevelDescs;
 	private final IdMap<CcFunDecl> toplevelDecls;
 	private final IdMap<JavaType> javaClasses;
-	private final IdMap<CcCtor> ctors;
+	private final IdMap<Ctor> ctors;
 	private final Seq<CustomType> customTypes;
 	private ClassWriter cw;
 
@@ -254,7 +254,7 @@ public final class BytecodeGenerator {
 			locals.add(id);
 		}
 		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
-			CcCtor ctorDecl = ctors.get(ctor.id());
+			Ctor ctorDecl = ctors.get(ctor.id());
 			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
 			// stackの数を調整
 			if(args.size() == 0) {
@@ -564,7 +564,7 @@ public final class BytecodeGenerator {
 			locals.add(id);
 		}
 		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
-			CcCtor ctorDecl = ctors.get(ctor.id());
+			Ctor ctorDecl = ctors.get(ctor.id());
 			String subClassName = javaClasses.get(ctor.id()).toClassName();
 			if(next != null) {
 				mv.visitInsn(Opcodes.DUP);
@@ -613,7 +613,7 @@ public final class BytecodeGenerator {
 	 * コンストラクタと同名の，戻り値のあるメソッドをなければ作る
 	 * @param ctor
 	 */
-	private void ensureCtorOriginal(CcCtor ctor) {
+	private void ensureCtorOriginal(Ctor ctor) {
 		Id id = ctor.id();
 		if (toplevelDescs.containsKey(id)) {
 			return;
@@ -659,7 +659,7 @@ public final class BytecodeGenerator {
 	private void getDecl(Id id,
 			Consumer<String> forTopLevelDescriptor,
 			Consumer<Builtin> forBuiltin,
-			Consumer<CcCtor> forCtor) {
+			Consumer<Ctor> forCtor) {
 
 		String descriptor = toplevelDescs.getOrNull(id);
 		if(descriptor != null) {
@@ -673,7 +673,7 @@ public final class BytecodeGenerator {
 			return;
 		}
 
-		CcCtor ctor = ctors.getOrNull(id);
+		Ctor ctor = ctors.getOrNull(id);
 		if(ctor != null) {
 			forCtor.accept(ctor);
 			return;

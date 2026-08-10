@@ -1,14 +1,15 @@
 package zlk.test.phase.nameeval;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import zlk.common.Ctor;
 import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.ir.idcalc.IcCaseBranch;
-import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
@@ -35,7 +36,7 @@ public class NameEvaluatorTest {
 				""", CompileLevel.NAME_EVAL);
 
 		IcModule ic = module.getIdcalcModule();
-		IcCtor ctor = ic.types().head().ctors().head();
+		Ctor ctor = ic.types().head().ctors().head();
 		// IcCtor.args: [Box a展開後のRecord]
 		Seq<Type> ctorArgs = ctor.args();
 

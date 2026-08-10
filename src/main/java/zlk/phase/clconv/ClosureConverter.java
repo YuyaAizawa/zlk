@@ -11,7 +11,6 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.common.id.IdSet;
 import zlk.ir.clcalc.CcCaseBranch;
-import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
 import zlk.ir.clcalc.CcExp.CcCase;
 import zlk.ir.clcalc.CcExp.CcClosureApp;
@@ -30,7 +29,6 @@ import zlk.ir.clcalc.CcModule;
 import zlk.ir.clcalc.CcPattern;
 import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.idcalc.IcCaseBranch;
-import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
@@ -495,11 +493,7 @@ public final class ClosureConverter {
 	}
 
 	private CcTypeDecl convert(IcTypeDecl icType) {
-		return new CcTypeDecl(icType.id(), icType.ctors().map(ctor -> convert(ctor)), icType.loc());
-	}
-
-	private CcCtor convert(IcCtor icCtor) {
-		return new CcCtor(icCtor.id(), icCtor.args(), icCtor.loc());
+		return new CcTypeDecl(icType.id(), icType.ctors(), icType.loc());
 	}
 
 	private CcPattern convert(IcPattern pat) {

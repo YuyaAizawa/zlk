@@ -6,19 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import org.junit.jupiter.api.Test;
 
 import zlk.common.ConstValue;
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.RecordField;
 import zlk.common.Type;
 import zlk.common.id.Id;
+import zlk.ir.anf.AnfAtom;
+import zlk.ir.anf.AnfBind;
 import zlk.ir.anf.AnfBlock;
-import zlk.ir.clcalc.CcCtor;
+import zlk.ir.anf.AnfRhs;
 import zlk.ir.clcalc.CcExp;
 import zlk.ir.clcalc.CcFunDecl;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.clcalc.CcTypeDecl;
-import zlk.ir.anf.AnfAtom;
-import zlk.ir.anf.AnfBind;
-import zlk.ir.anf.AnfRhs;
 import zlk.phase.anfconv.AnfConverter;
 import zlk.util.collection.Seq;
 
@@ -34,7 +34,7 @@ public class AnfConverterTest {
 				"Main",
 				Seq.of(new CcTypeDecl(
 						typeId,
-						Seq.of(new CcCtor(ctorId, Seq.of(Type.I32), NO_LOC)),
+						Seq.of(new Ctor(ctorId, Seq.of(Type.I32), NO_LOC)),
 						NO_LOC)),
 				Seq.of(new CcFunDecl(
 						funId,

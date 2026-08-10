@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import zlk.common.ConstValue;
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -31,7 +32,6 @@ import zlk.ir.ast.Exp.Var;
 import zlk.ir.ast.Module;
 import zlk.ir.ast.Pattern;
 import zlk.ir.idcalc.IcCaseBranch;
-import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
@@ -158,10 +158,10 @@ public final class NameEvaluator {
 
 		Seq<Type> vars = typeResolver.getTypeParameters(id);
 
-		Seq<IcCtor> ctors = union.ctors().map(ctor -> {
+		Seq<Ctor> ctors = union.ctors().map(ctor -> {
 			Id ctorId = env.get(ctor.name());
 			Seq<Type> args = typeResolver.getConstructorArgs(ctorId);
-			return new IcCtor(ctorId, args, ctor.loc());
+			return new Ctor(ctorId, args, ctor.loc());
 		});
 
 		return new IcTypeDecl(id, vars, ctors, union.loc());

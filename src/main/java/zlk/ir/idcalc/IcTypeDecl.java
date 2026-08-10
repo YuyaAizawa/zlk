@@ -1,5 +1,6 @@
 package zlk.ir.idcalc;
 
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.Type;
@@ -15,7 +16,7 @@ import zlk.util.pp.PrettyPrinter;
 public record IcTypeDecl(
 	Id id,
 	Seq<Type> vars,
-	Seq<IcCtor> ctors,
+	Seq<Ctor> ctors,
 	Location loc
 ) implements PrettyPrintable, LocationHolder {
 

@@ -1,5 +1,6 @@
 package zlk.ir.clcalc;
 
+import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
@@ -9,7 +10,7 @@ import zlk.util.pp.PrettyPrinter;
 
 public record CcTypeDecl(
 		Id id,
-		Seq<CcCtor> ctors,
+		Seq<Ctor> ctors,
 		Location loc
 	) implements PrettyPrintable, LocationHolder {
 
