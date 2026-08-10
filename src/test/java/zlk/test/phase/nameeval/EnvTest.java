@@ -14,8 +14,8 @@ public class EnvTest {
 	@Test
 	void withScopeClosesOnNormalExit() {
 		Env env = new Env();
-		env.withScope("Main", owner -> {
-			assertEquals(Id.intern("Main"), owner);
+		env.withScope("Main", scopeId -> {
+			assertEquals(Id.intern("Main"), scopeId);
 			register(env, "x");
 			assertNotNull(env.getOrNull("x"));
 			return null;
@@ -34,15 +34,15 @@ public class EnvTest {
 	}
 
 	@Test
-	void withLetFrameSharesOwnerWithParent() {
+	void withLetFrameSharesScopeWithParent() {
 		Env env = new Env();
-		env.withScope("Main", _ -> env.withScope("f", owner -> {
+		env.withScope("Main", _ -> env.withScope("f", scopeId -> {
 			env.withLetFrame(() -> {
 				assertEquals("Main.f.g", register(env, "g").toString());
 				return null;
 			});
 			assertNull(env.getOrNull("g"));
-			assertEquals(Id.intern("Main.f"), owner);
+			assertEquals(Id.intern("Main.f"), scopeId);
 			return null;
 		}));
 	}
@@ -61,11 +61,11 @@ public class EnvTest {
 	}
 
 	@Test
-	void withLambdaScopeProducesDistinctOwner() {
+	void withLambdaScopeProducesDistinctScope() {
 		Env env = new Env();
 		env.withScope("Main", _ -> env.withScope("f", _ -> {
-			Id lambda1 = env.withLambdaScope(owner -> owner);
-			Id lambda2 = env.withLambdaScope(owner -> owner);
+			Id lambda1 = env.withLambdaScope(scopeId -> scopeId);
+			Id lambda2 = env.withLambdaScope(scopeId -> scopeId);
 
 			assertTrue(lambda1.toString().startsWith("Main.f._lambda"));
 			assertTrue(lambda2.toString().startsWith("Main.f._lambda"));
@@ -132,7 +132,7 @@ public class EnvTest {
 	}
 
 	@Test
-	void sameOwnerDoesNotReuseNameAfterLetFrameCloses() {
+	void sameScopeDoesNotReuseNameAfterLetFrameCloses() {
 		Env env = new Env();
 		env.withScope("Main", _ -> env.withScope("f", _ -> {
 			env.withLetFrame(() -> {
@@ -164,16 +164,16 @@ public class EnvTest {
 	}
 
 	@Test
-	void nestedScopeRestoresParentOwner() {
+	void nestedScopeRestoresParentScope() {
 		Env env = new Env();
-		env.withScope("Main", owner -> {
-			env.withScope("f", nestedOwner -> {
-				assertEquals(Id.intern("Main.f"), nestedOwner);
+		env.withScope("Main", scopeId -> {
+			env.withScope("f", nestedScopeId -> {
+				assertEquals(Id.intern("Main.f"), nestedScopeId);
 				return null;
 			});
-			assertEquals(Id.intern("Main"), owner);
-			env.withScope("g", restoredOwner -> {
-				assertEquals(Id.intern("Main.g"), restoredOwner);
+			assertEquals(Id.intern("Main"), scopeId);
+			env.withScope("g", restoredScopeId -> {
+				assertEquals(Id.intern("Main.g"), restoredScopeId);
 				return null;
 			});
 			return null;

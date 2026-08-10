@@ -95,9 +95,9 @@ public final class NameEvaluator {
 	}
 
 	public IcModule eval() {
-		return env.withScope(module.name(), moduleOwner -> {
+		return env.withScope(module.name(), moduleScopeId -> {
 			// 型名の登録，parameter kindの解決，aliasの解決を行う
-			typeResolver.resolveDeclarations(module.decls(), moduleOwner);
+			typeResolver.resolveDeclarations(module.decls(), moduleScopeId);
 
 			// toplevelのvalueとconstructorを登録する
 			module.decls().forEach(def -> {
@@ -207,9 +207,9 @@ public final class NameEvaluator {
 		}
 
 		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) -> {
-			yield env.withLambdaScope(lambdaOwner ->
+			yield env.withLambdaScope(lambdaScopeId ->
 					new IcLamb(
-						lambdaOwner,
+						lambdaScopeId,
 						patterns.map(a -> eval(a)),
 						eval(body),
 						loc));
@@ -243,7 +243,7 @@ public final class NameEvaluator {
 				case ValDecl valDecl -> valDecl;
 				case ValErr _ -> throw new IllegalArgumentException();
 				});
-				// let は親と同じ owner を共有する一時 binding frame を持ち，
+				// let は親と同じ scope を共有する一時 binding frame を持ち，
 				// 宣言群と body をその frame 内で評価し，退出後に binding を破棄する．
 				yield env.withLetFrame(() -> {
 					for(ValDecl decl: validDecls) {
