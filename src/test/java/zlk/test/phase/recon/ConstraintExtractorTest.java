@@ -414,14 +414,14 @@ public class ConstraintExtractorTest {
 				                      rigids: []
 				                      flexes: []
 				                      header: {
-				                        Main.car._1.hd: I32,
-				                        Main.car._1.tl: Main.IntList,
+				                        Main.car._case1_2.hd: I32,
+				                        Main.car._case1_2.tl: Main.IntList,
 				                      }
 				                      headerCons: [
 				                        Phase:
 				                          cons: [
 				                            Pattern: Main.IntList.Cons: Main.IntList = [4],
-				                            Local: Main.car._1.hd = [5],
+				                            Local: Main.car._case1_2.hd = [5],
 				                          ]
 				                          genTargets: [],
 				                      ]

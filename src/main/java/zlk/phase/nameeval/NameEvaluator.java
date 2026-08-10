@@ -47,6 +47,7 @@ import zlk.ir.idcalc.IcPattern;
 import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
 import zlk.phase.PhaseResult;
+import zlk.phase.nameeval.Env.BranchScopeProvider;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -94,9 +95,9 @@ public final class NameEvaluator {
 	}
 
 	public IcModule eval() {
-		return env.withScope(module.name(), moduleOwner -> {
+		return env.withScope(module.name(), moduleScopeId -> {
 			// 型名の登録，parameter kindの解決，aliasの解決を行う
-			typeResolver.resolveDeclarations(module.decls(), moduleOwner);
+			typeResolver.resolveDeclarations(module.decls(), moduleScopeId);
 
 			// toplevelのvalueとconstructorを登録する
 			module.decls().forEach(def -> {
@@ -173,7 +174,7 @@ public final class NameEvaluator {
 				Id id = env.get(declName);
 				Optional<Type> anno = decl.anno().map(a -> typeResolver.evalAnnotation(a));
 				Seq<IcPattern> args = decl.args().map(a -> eval(a));
-				IcExp body = eval(decl.body(), id);
+				IcExp body = eval(decl.body());
 
 				return new IcValDecl(id, anno, args, body, decl.loc());
 			});
@@ -184,7 +185,7 @@ public final class NameEvaluator {
 		}
 	}
 
-	private IcExp eval(Exp exp, Id scope) {
+	private IcExp eval(Exp exp) {
 		return switch(exp) {
 		case Cnst(ConstValue value, Location loc) ->
 			new IcCnst(value, loc);
@@ -206,17 +207,17 @@ public final class NameEvaluator {
 		}
 
 		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) -> {
-			yield env.withLambdaScope(lambdaOwner ->
+			yield env.withLambdaScope(lambdaScopeId ->
 					new IcLamb(
-						lambdaOwner,
+						lambdaScopeId,
 						patterns.map(a -> eval(a)),
-						eval(body, scope),
+						eval(body),
 						loc));
 		}
 
 		case App(Seq<Exp> exps, Location loc) -> {
-			IcExp fun = eval(exps.head(), scope);
-			Seq<IcExp> args = exps.tail().map(arg -> eval(arg, scope));
+			IcExp fun = eval(exps.head());
+			Seq<IcExp> args = exps.tail().map(arg -> eval(arg));
 			if (fun instanceof IcVarCtor ctor) {
 				int expected = ctor.type().flatten().size() - 1;
 				if (args.size() > expected) {
@@ -229,20 +230,20 @@ public final class NameEvaluator {
 
 		case If(Exp cond, Exp exp1, Exp exp2, Location loc) ->
 			new IcIf(
-					eval(cond, scope),
-					eval(exp1, scope),
-					eval(exp2, scope),
+					eval(cond),
+					eval(exp1),
+					eval(exp2),
 					loc);
 
 		case Let(Seq<Decl.Value> decls, Exp body, Location loc) -> {
 			if(decls.isEmpty()) {
-				yield eval(body, scope);
+				yield eval(body);
 			} else {
 				Seq<ValDecl> validDecls = decls.map(decl -> switch(decl) {
 				case ValDecl valDecl -> valDecl;
 				case ValErr _ -> throw new IllegalArgumentException();
 				});
-				// let は親と同じ owner を共有する一時 binding frame を持ち，
+				// let は親と同じ scope を共有する一時 binding frame を持ち，
 				// 宣言群と body をその frame 内で評価し，退出後に binding を破棄する．
 				yield env.withLetFrame(() -> {
 					for(ValDecl decl: validDecls) {
@@ -255,34 +256,36 @@ public final class NameEvaluator {
 					}
 					return new IcLet(
 							validDecls.map(decl -> eval(decl)),
-							eval(body, scope),
+							eval(body),
 							loc);
 				});
 			}
 		}
 
 		case Case(Exp exp_, Seq<CaseBranch> branches, Location loc) ->
-			new IcCase(
-					eval(exp_, scope),
-					branches.mapIndexed((i, branch) -> eval(branch, i, scope)),
-					loc);
+			env.withCase((BranchScopeProvider<IcCaseBranch> scopeProvider) ->
+				new IcCase(
+						eval(exp_),
+						branches.map(branch -> eval(branch, scopeProvider)),
+						loc)
+			);
 
 		case Exp.Record(Seq<Exp.RecordField> fields, Location loc) ->
 			new IcExp.IcRecord(
 					fields.map(field -> new IcExp.IcRecordField(
 							field.name(),
-							eval(field.value(), scope),
+							eval(field.value()),
 							field.loc())),
 					loc);
 
 		case Exp.RecordAccess(Exp target, String field, Location loc) ->
-			new IcExp.IcRecordAccess(eval(target, scope), field, loc);
+			new IcExp.IcRecordAccess(eval(target), field, loc);
 
 		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, Location loc) ->
 			new IcExp.IcRecordUpdate(
-					eval(target, scope),
+					eval(target),
 					fields.map(field -> new IcExp.IcRecordField(
-							field.name(), eval(field.value(), scope), field.loc())),
+							field.name(), eval(field.value()), field.loc())),
 					loc);
 
 		case Err _ ->
@@ -290,10 +293,10 @@ public final class NameEvaluator {
 		};
 	}
 
-	private IcCaseBranch eval(CaseBranch branch, int branchIdx, Id scope) {
-		return env.withScope("_" + branchIdx, _ -> {
+	private IcCaseBranch eval(CaseBranch branch, BranchScopeProvider<IcCaseBranch> scopeProvider) {
+		return scopeProvider.withBranchScope(() -> {
 			IcPattern pat = eval(branch.pattern());
-			IcExp body = eval(branch.body(), scope);
+			IcExp body = eval(branch.body());
 			return new IcCaseBranch(pat, body, branch.loc());
 		});
 	}

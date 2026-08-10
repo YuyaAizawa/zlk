@@ -67,14 +67,14 @@ final class TypeResolver {
 	}
 
 	/** 型宣言の登録，parameter kind解決，alias解決を順に実行する． */
-	void resolveDeclarations(Seq<Decl> decls, Id owner) {
-		register(decls, owner);
+	void resolveDeclarations(Seq<Decl> decls, Id scopeId) {
+		register(decls, scopeId);
 		resolveParameterKinds();
 		resolveAliases();
 	}
 
 	/** 全型名を登録し，型宣言Idとalias Idを宣言順のimmutableな列として保持する． */
-	private void register(Seq<Decl> decls, Id owner) {
+	private void register(Seq<Decl> decls, Id scopeId) {
 		if (aliasIds != null) {
 			throw new IllegalStateException("type names are already registered");
 		}
@@ -83,9 +83,9 @@ final class TypeResolver {
 		SeqBuffer<Id> aliases = new SeqBuffer<>();
 		decls.forEach(decl -> {
 			switch (decl) {
-			case TypeDecl typeDecl -> declarations.add(register(typeDecl, owner));
+			case TypeDecl typeDecl -> declarations.add(register(typeDecl, scopeId));
 			case TypeAlias alias -> {
-				Id id = register(alias, owner);
+				Id id = register(alias, scopeId);
 				declarations.add(id);
 				aliases.add(id);
 			}
@@ -96,8 +96,8 @@ final class TypeResolver {
 		aliasIds = aliases.toSeq();
 	}
 
-	private Id register(TypeDecl decl, Id owner) {
-		Id id = Id.intern(owner, decl.name());
+	private Id register(TypeDecl decl, Id scopeId) {
+		Id id = Id.intern(scopeId, decl.name());
 		try {
 			typeEnv.register(decl.name(), id);
 			declInfos.put(id, new TyDeclInfo.Nominal(id, decl.vars(), decl.ctors()));
@@ -110,8 +110,8 @@ final class TypeResolver {
 		return id;
 	}
 
-	private Id register(TypeAlias decl, Id owner) {
-		Id id = Id.intern(owner, decl.name());
+	private Id register(TypeAlias decl, Id scopeId) {
+		Id id = Id.intern(scopeId, decl.name());
 		try {
 			typeEnv.register(decl.name(), id);
 			declInfos.put(id, new TyDeclInfo.Alias(id, decl.vars(), decl.body()));

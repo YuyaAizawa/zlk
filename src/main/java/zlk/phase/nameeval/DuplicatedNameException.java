@@ -3,7 +3,7 @@ package zlk.phase.nameeval;
 import zlk.common.id.Id;
 
 /**
- * 同じownerへ同名を再登録しようとしたことを表す．
+ * 同じscopeへ同名を再登録しようとしたことを表す．
  */
 public final class DuplicatedNameException extends Exception {
 	private static final long serialVersionUID = 1L;
