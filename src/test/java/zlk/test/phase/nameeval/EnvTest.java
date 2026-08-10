@@ -75,6 +75,41 @@ public class EnvTest {
 	}
 
 	@Test
+	void withCaseNumbersCasesAndBranchesIndependently() {
+		Env env = new Env();
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
+			Id firstBranch = env.withCase((Env.BranchScopeProvider<Id> branches) ->
+					branches.withBranchScope(() -> register(env, "x")));
+			Id secondBranch = env.withCase((Env.BranchScopeProvider<Id> branches) -> {
+				Id first = branches.withBranchScope(() -> register(env, "x"));
+				Id second = branches.withBranchScope(() -> register(env, "y"));
+				assertEquals(Id.intern("Main.f._case2_1.x"), first);
+				return second;
+			});
+
+			assertEquals(Id.intern("Main.f._case1_1.x"), firstBranch);
+			assertEquals(Id.intern("Main.f._case2_2.y"), secondBranch);
+			return null;
+		}));
+	}
+
+	@Test
+	void nestedCaseDoesNotAdvanceOuterBranchNumber() {
+		Env env = new Env();
+		env.withScope("Main", _ -> env.withScope("f", _ -> {
+			Id outerBranch = env.withCase((Env.BranchScopeProvider<Id> outer) -> {
+				Id innerBranch = env.withCase((Env.BranchScopeProvider<Id> inner) ->
+						inner.withBranchScope(() -> register(env, "inner")));
+				assertEquals(Id.intern("Main.f._case2_1.inner"), innerBranch);
+				return outer.withBranchScope(() -> register(env, "outer"));
+			});
+
+			assertEquals(Id.intern("Main.f._case1_1.outer"), outerBranch);
+			return null;
+		}));
+	}
+
+	@Test
 	void nestedLetFramesDoNotLeak() {
 		Env env = new Env();
 		env.withScope("Main", _ -> env.withScope("f", _ -> {

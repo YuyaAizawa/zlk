@@ -81,7 +81,7 @@ public class TypingInfoTest {
 
 		Seq<Diagnostic.InferredType> inferred = module.inferredTypes();
 		assertEquals(
-				"Main.Maybe.Nothing,Main.Maybe.Just,Main.value,Main.value._1.local",
+				"Main.Maybe.Nothing,Main.Maybe.Just,Main.value,Main.value._case1_2.local",
 				inferred.map(info -> info.declaration().canonicalName()).join(","));
 
 		Type.Var a = new Type.Var("a");

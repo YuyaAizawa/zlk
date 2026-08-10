@@ -64,14 +64,29 @@ public final class Env {
 		return withScope(synthetic, body);
 	}
 
+	public final class BranchScopeProvider<T> {
+		private String prefix;
+		private AtomicInteger branchIndexCounter;
+
+		private BranchScopeProvider() {
+			Frame parent = frames.peek();
+			this.prefix = "_case" + parent.owner().nextCaseIndex() + "_";
+			branchIndexCounter = new AtomicInteger(1);
+		}
+
+		/**
+		 * case-branch用scopeを作り，そのscope内で{@code body}を評価する．
+		 */
+		public T withBranchScope(Supplier<T> body) {
+			String synthetic = prefix + branchIndexCounter.getAndIncrement();
+			return withScope(synthetic, _ -> body.get());
+		}
+	}
 	/**
-	 * let用のbinding frameを作り，そのscope内で{@code body}を評価する．
-	 * scopeは作らない．
+	 * 現在のscopeにcase-branch用のscopeを作るための，BranchScopeProviderを返す．
 	 */
-	public <T> T withLetFrame(Supplier<T> body) {
-		Frame parent = frames.peek();
-		Frame frame = new Frame(parent.owner(), new HashMap<>());
-		return withFrame(frame, body);
+	public <T, U> T withCase(Function<BranchScopeProvider<U>, T> body) {
+		return body.apply(new BranchScopeProvider<>());
 	}
 
 	private <T> T withFrame(Frame frame, Supplier<T> body) {
@@ -81,6 +96,16 @@ public final class Env {
 		} finally {
 			frames.pop();
 		}
+	}
+
+	/**
+	 * let用のbinding frameを作り，そのscope内で{@code body}を評価する．
+	 * scopeは作らない．
+	 */
+	public <T> T withLetFrame(Supplier<T> body) {
+		Frame parent = frames.peek();
+		Frame frame = new Frame(parent.owner(), new HashMap<>());
+		return withFrame(frame, body);
 	}
 
 	/** 現在の binding frame に名前を登録する．owner は現在の frame と同一． */
@@ -135,6 +160,7 @@ final class Owner {
 	private final Id id;
 	private final Map<String, Id> assignedIds = new HashMap<>();
 	private final AtomicInteger lambdaCounter = new AtomicInteger(1);
+	private final AtomicInteger caseCounter = new AtomicInteger(1);
 
 	Owner(Id id) {
 		this.id = id;
@@ -150,6 +176,10 @@ final class Owner {
 
 	int nextLambdaIndex() {
 		return lambdaCounter.getAndIncrement();
+	}
+
+	int nextCaseIndex() {
+		return caseCounter.getAndIncrement();
 	}
 }
 
