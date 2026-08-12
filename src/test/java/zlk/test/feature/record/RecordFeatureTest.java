@@ -3,14 +3,117 @@ package zlk.test.feature.record;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+
+import zlk.compiler.Driver;
 import zlk.runtime.ZlkRecord;
 import zlk.util.fixture.CompilationFixture;
 import zlk.util.tester.DumpOnFailureWatcher;
 
 @ExtendWith(DumpOnFailureWatcher.class)
 public class RecordFeatureTest {
+	@Test
+	void updatesFreshRecordThroughGeneratedBytecode() {
+		var module = CompilationFixture.compileSucceeded(
+				"""
+				updateFresh value =
+				  let
+				    original = { y = True, x = 1 }
+				  in
+				    { original | x = value }
+				""");
+
+		ZlkRecord updated = (ZlkRecord) module.value("updateFresh", 2);
+
+		assertEquals(2, updated.get("x"));
+		assertEquals(true, updated.get("y"));
+	}
+
+	@Test
+	void selectedRecordUpdateInvokesInplaceRuntimeHelper() {
+		var module = CompilationFixture.compileSucceeded(
+				"""
+				updateFresh value =
+				  let
+				    original = { y = True, x = 1 }
+				  in
+				    { original | x = value }
+				""");
+		Driver.CompilationResult.Succeeded result = assertInstanceOf(
+				Driver.CompilationResult.Succeeded.class,
+				module.result());
+		byte[] bytecode = result.clazzes().get("Main");
+		assertNotNull(bytecode);
+
+		AtomicInteger methods = new AtomicInteger();
+		AtomicInteger calls = new AtomicInteger();
+		new ClassReader(bytecode).accept(new ClassVisitor(Opcodes.ASM9) {
+			@Override
+			public MethodVisitor visitMethod(
+					int access,
+					String name,
+					String descriptor,
+					String signature,
+					String[] exceptions
+			) {
+				if(!name.equals("updateFresh")) {
+					return null;
+				}
+				methods.incrementAndGet();
+				return new MethodVisitor(Opcodes.ASM9) {
+					@Override
+					public void visitMethodInsn(
+							int opcode,
+							String owner,
+							String name,
+							String descriptor,
+							boolean isInterface
+					) {
+						if(opcode == Opcodes.INVOKESTATIC
+								&& owner.equals("zlk/runtime/internal/RecordOps")
+								&& name.equals("inplaceUpdate")
+								&& descriptor.equals(
+										"(Lzlk/runtime/ZlkRecord;Ljava/lang/String;Ljava/lang/Object;)"
+												+ "Lzlk/runtime/ZlkRecord;")
+								&& !isInterface) {
+							calls.incrementAndGet();
+						}
+					}
+				};
+			}
+		}, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+
+		assertEquals(1, methods.get());
+		assertEquals(1, calls.get());
+	}
+
+	@Test
+	void updatesMultipleFieldsOfFreshRecordThroughGeneratedBytecode() {
+		var module = CompilationFixture.compileSucceeded(
+				"""
+				updateFresh =
+				  let
+				    original = { z = 3, y = True, x = 1 }
+				  in
+				    { original | x = 2, y = False }
+				""");
+
+		ZlkRecord updated = (ZlkRecord) module.value("updateFresh");
+
+		assertEquals(2, updated.get("x"));
+		assertEquals(false, updated.get("y"));
+		assertEquals(3, updated.get("z"));
+	}
+
 	@Test
 	void recordLiteralUsesCanonicalFieldOrder() {
 		var module = CompilationFixture.compileSucceeded("record = { y = True, x = 1 }");

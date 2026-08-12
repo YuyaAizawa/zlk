@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import zlk.runtime.internal.RecordOps;
+
 /**
  * Zlkレコード値のJavaとの界面
  */
@@ -38,8 +40,8 @@ public interface ZlkRecord extends ZlkValue {
 	 */
 	ZlkRecord update(String name, Object value);
 
-	static ZlkRecord of(Map<String, ?> fields) {
-		return ArrayRecord.fromMap(fields);
+	static ZlkRecord of(Map<String, Object> fields) {
+		return RecordOps.fromMap(fields);
 	}
 
 	/**

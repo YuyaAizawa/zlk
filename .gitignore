@@ -1,10 +1,10 @@
 # binary
-/bin
+/bin/
 *.class
 zlk.zip
 
 # Eclipse
 .classpath
 .project
-.settings
+.settings/
 /target/

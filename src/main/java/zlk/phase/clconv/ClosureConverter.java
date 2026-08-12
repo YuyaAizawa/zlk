@@ -27,7 +27,6 @@ import zlk.ir.clcalc.CcExp.CcVar;
 import zlk.ir.clcalc.CcFunDecl;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.clcalc.CcPattern;
-import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.idcalc.IcCaseBranch;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcApp;
@@ -45,7 +44,6 @@ import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
 import zlk.phase.recon.ExpOrPatternMap;
 import zlk.util.collection.Seq;
@@ -101,8 +99,7 @@ public final class ClosureConverter {
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.implId()); }));
 
-		Seq<CcTypeDecl> types = src.types().map(ty -> convert(ty));
-		return new CcModule(src.name(), types, toplevels.toSeq());
+		return new CcModule(src.name(), src.types(), toplevels.toSeq());
 	}
 
 	/**
@@ -490,10 +487,6 @@ public final class ClosureConverter {
 				src.name()
 				+ Id.SEPARATOR + closureCount.getAndIncrement()
 				+ Id.SEPARATOR + exceptModule);
-	}
-
-	private CcTypeDecl convert(IcTypeDecl icType) {
-		return new CcTypeDecl(icType.id(), icType.ctors(), icType.loc());
 	}
 
 	private CcPattern convert(IcPattern pat) {

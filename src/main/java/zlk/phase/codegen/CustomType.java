@@ -10,8 +10,8 @@ import org.objectweb.asm.Opcodes;
 
 import zlk.common.Ctor;
 import zlk.common.Type;
+import zlk.common.TypeDecl;
 import zlk.common.id.IdMap;
-import zlk.ir.clcalc.CcTypeDecl;
 
 /**
  * 1つのtype宣言に対応するJVMクラス群を生成する．
@@ -36,13 +36,13 @@ final class CustomType {
 			+ ")Ljava/lang/Object;",
 			false);
 
-	private final CcTypeDecl decl;
+	private final TypeDecl decl;
 	private final String origin;
 	private final String nestHost;
 	private final JavaType.Simple interfaceClass;
 	private final IdMap<JavaType.Variant> variantClasses;
 
-	CustomType(String moduleName, CcTypeDecl decl, String origin) {
+	CustomType(String moduleName, TypeDecl decl, String origin) {
 		this.decl = decl;
 		this.origin = origin;
 		this.nestHost = moduleName.replace('.', '/');

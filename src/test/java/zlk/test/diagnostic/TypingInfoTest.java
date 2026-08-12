@@ -19,7 +19,10 @@ public class TypingInfoTest {
 		String src = "module Main\nanswer = 42\n";
 		Driver.CompilationResult.Succeeded defaultResult = succeeded(Driver.compile("Main.zlk", src));
 		Driver.CompilationResult.Succeeded disabledResult = succeeded(
-				Driver.compile("Main.zlk", src, new Driver.CompilationOptions(false)));
+				Driver.compile(
+						"Main.zlk",
+						src,
+						Driver.CompilationOptions.DEFAULT.reportInferredTypes(false)));
 
 		assertEquals(0, defaultResult.diags().size());
 		assertEquals(0, disabledResult.diags().size());

@@ -8,6 +8,7 @@ import zlk.common.ConstValue;
 import zlk.common.Ctor;
 import zlk.common.Location;
 import zlk.common.Type;
+import zlk.common.TypeDecl;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
@@ -16,7 +17,6 @@ import zlk.diagnostic.DiagnosticReporter;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Decl;
 import zlk.ir.ast.Decl.TypeAlias;
-import zlk.ir.ast.Decl.TypeDecl;
 import zlk.ir.ast.Decl.TypeErr;
 import zlk.ir.ast.Decl.ValDecl;
 import zlk.ir.ast.Decl.ValErr;
@@ -44,7 +44,6 @@ import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
 import zlk.phase.PhaseResult;
 import zlk.phase.nameeval.Env.BranchScopeProvider;
@@ -102,7 +101,7 @@ public final class NameEvaluator {
 			// toplevelのvalueとconstructorを登録する
 			module.decls().forEach(def -> {
 				switch(def) {
-				case TypeDecl decl -> {
+				case Decl.TypeDecl decl -> {
 					decl.ctors().forEach(ctor -> {
 						try {
 							Id ctorId = env.register(ctor.name(), Id.intern(typeResolver.getTypeId(decl.name()), ctor.name()));
@@ -128,12 +127,12 @@ public final class NameEvaluator {
 				}
 			});
 
-			SeqBuffer<IcTypeDecl> icTypes = new SeqBuffer<>();
+			SeqBuffer<TypeDecl> icTypes = new SeqBuffer<>();
 			SeqBuffer<IcValDecl> icDecls = new SeqBuffer<>();
 
 			module.decls().forEach(def -> {
 				switch(def) {
-				case TypeDecl ty -> icTypes.add(eval(ty));
+				case Decl.TypeDecl ty -> icTypes.add(eval(ty));
 				case ValDecl fun -> icDecls.add(eval(fun));
 				case TypeAlias _, ValErr _, TypeErr _ -> {}
 				}
@@ -153,7 +152,7 @@ public final class NameEvaluator {
 		}
 	}
 
-	public IcTypeDecl eval(TypeDecl union) {
+	public TypeDecl eval(Decl.TypeDecl union) {
 		Id id = typeResolver.getTypeId(union.name());
 
 		Seq<Type> vars = typeResolver.getTypeParameters(id);
@@ -164,7 +163,7 @@ public final class NameEvaluator {
 			return new Ctor(ctorId, args, ctor.loc());
 		});
 
-		return new IcTypeDecl(id, vars, ctors, union.loc());
+		return new TypeDecl(id, vars, ctors, union.loc());
 	}
 
 	public IcValDecl eval(ValDecl decl) {

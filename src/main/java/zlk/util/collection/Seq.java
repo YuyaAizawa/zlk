@@ -168,7 +168,7 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 	abstract int absIdx(int idx);
 
 	/**
-	 * 実体の配列がこのSeqと同順なら1，そうでなければ-1を返す．
+	 * 実体の配列がこのSeqと同順なら1，逆順なら-1を返す．
 	 * @return
 	 */
 	abstract int step(); // TODO: 最適化効く？
@@ -388,6 +388,12 @@ public sealed abstract class Seq<E> implements Iterable<E> {
 				(i, e, arr) -> { arr[i] = mapper.applyAsInt(e); return arr; },
 				new int[size()],
 				IntArraySeq::new);
+	}
+
+	public <R> Seq<R> flatMap(BiConsumer<Consumer<R>, E> sinkAndElement) {
+		SeqBuffer<R> sink = new SeqBuffer<>(size());
+		forEach(e -> sinkAndElement.accept(sink::add, e));
+		return sink.toSeq();
 	}
 
 	@SuppressWarnings("unchecked")

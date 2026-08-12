@@ -1,8 +1,9 @@
-package zlk.ir.anf;
+package zlk.ir.reuse.anf;
 
+import zlk.common.TypeDecl;
 import zlk.util.collection.Seq;
 
 public record AnfModule(
 		String name,
-		Seq<AnfTypeDecl> types,
+		Seq<TypeDecl> types,
 		Seq<AnfFunDecl> funcs) {}

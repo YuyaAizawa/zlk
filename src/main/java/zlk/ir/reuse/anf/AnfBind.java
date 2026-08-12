@@ -1,10 +1,11 @@
-package zlk.ir.anf;
+package zlk.ir.reuse.anf;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
+import zlk.ir.reuse.LocalVar;
 
-public record AnfBranch(
-		AnfPattern pattern,
-		AnfBlock body,
+public record AnfBind(
+		LocalVar dst,
+		AnfRhs rhs,
 		Location loc
 ) implements LocationHolder {}

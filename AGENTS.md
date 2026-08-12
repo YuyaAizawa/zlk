@@ -48,15 +48,22 @@ ZLK は，実験的な関数型プログラミング言語である．本リポ�
 | 5 | `TypeReconstructor` | 4 |
 | 6 | `PatternChecker` | 3，5 |
 | 7 | `ClosureConverter` | 3，5 |
-| 8 | `BytecodeGenerator` | 5，7 |
+| 8 | `AnfConverter` | 7 |
+| 9 | `OwnershipElaborator` | 8 |
+| 10 | `UniquenessAnalyzer` | 9 |
+| 11 | `ReusePlanner` | 9，10 |
+| 12 | `BytecodeGenerator` | 5，11 |
 
 `ARCHITECTURE.md`のコンパイルフェーズ図とこの一覧は同じパイプラインを表す．フェーズを追加，削除，または変更する場合は，両者の一貫性を確認する．
+`RecordUpdatePlanner`は独立したパイプラインフェーズではなく，`ReusePlanner`が利用する再利用site選択処理である．
 
 ## テスト
 
 テストpackageの構成と責務については，`ARCHITECTURE.md`の「パッケージ構成」を参照すること．
 
 `diagnostic`以下では，phase内部の例外messageやIRを公開契約として検査しない．同じ入力について公開診断とphase内部契約の両方を検査する場合は，`diagnostic`ではvariant，severity，位置，payload，順序，およびコンパイル成否を，対応する`phase`では回復後IRまたはアルゴリズムの不変条件を検査する．
+
+再利用最適化については，`phase.reuse`でOwn IR，一意性facts，および再利用siteを，`feature`で生成classのlinkと実行時意味論を，`runtime`で`RecordOps`とrecord実装の内部ABIを検査する．codegen順序の公開診断では，phase内部の`LocalVar`や`OwnStmt`をpayloadへ含めず，関数`Id`，関数内`localId`，source `Id`，および位置からなるimmutableな値へ変換する．
 
 ## ビルドとテスト
 

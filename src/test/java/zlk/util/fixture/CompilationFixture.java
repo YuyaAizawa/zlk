@@ -19,7 +19,7 @@ import zlk.util.tester.DumpOnFailureWatcher;
 /** Driverの型情報出力を有効にしたtest用コンパイル結果． */
 public final class CompilationFixture {
 	private static final Driver.CompilationOptions REPORT_TYPES =
-			new Driver.CompilationOptions(true);
+			Driver.CompilationOptions.DEFAULT.reportInferredTypes(true);
 
 	private final Driver.CompilationResult result;
 	private final Seq<String> generatedClassNames;

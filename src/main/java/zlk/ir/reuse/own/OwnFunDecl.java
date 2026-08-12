@@ -1,14 +1,15 @@
-package zlk.ir.anf;
+package zlk.ir.reuse.own;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.common.id.Id;
 import zlk.util.collection.Seq;
 
-public record AnfFunDecl(
+public record OwnFunDecl(
 		Id id,
-		Seq<AnfPattern> args,
-		AnfBlock body,
+		Seq<OwnPattern> args,
+		OwnBlock body,
+		int localIdSize,
 		Location loc) implements LocationHolder {
 
 	public int arity() {

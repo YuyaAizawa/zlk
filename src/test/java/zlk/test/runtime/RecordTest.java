@@ -1,24 +1,36 @@
 package zlk.test.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
-import zlk.runtime.ArrayRecord;
+
 import zlk.runtime.ZlkRecord;
+import zlk.runtime.internal.RecordOps;
 
 public class RecordTest {
-	private record Pair(int x, int y) {}
+	private static class Pair {
+		int x;
+		int y;
+
+		Pair(int x, int y) {
+			this.x = x;
+			this.y = y;
+		}
+	}
 
 	private static final class PairRecord implements ZlkRecord {
 		private final Pair value;
@@ -35,8 +47,8 @@ public class RecordTest {
 		@Override
 		public Object get(String name) {
 			return switch(name) {
-			case "x" -> value.x();
-			case "y" -> value.y();
+			case "x" -> value.x;
+			case "y" -> value.y;
 			default -> throw new IllegalArgumentException("unknown field: " + name);
 			};
 		}
@@ -44,8 +56,8 @@ public class RecordTest {
 		@Override
 		public ZlkRecord update(String name, Object newValue) {
 			return switch(name) {
-			case "x" -> new PairRecord(new Pair((Integer) newValue, value.y()));
-			case "y" -> new PairRecord(new Pair(value.x(), (Integer) newValue));
+			case "x" -> new PairRecord(new Pair((Integer) newValue, value.y));
+			case "y" -> new PairRecord(new Pair(value.x, (Integer) newValue));
 			default -> throw new IllegalArgumentException("unknown field: " + name);
 			};
 		}
@@ -112,6 +124,20 @@ public class RecordTest {
 	}
 
 	@Test
+	void inplaceUpdateMutatesAndReturnsTheSameArrayRecord() {
+		ZlkRecord record = ZlkRecord.of(Map.of("x", 1, "y", 2));
+
+		ZlkRecord updated = RecordOps.inplaceUpdate(record, "x", 3);
+
+		assertSame(record, updated);
+		assertEquals(3, record.get("x"));
+		assertEquals(2, record.get("y"));
+		assertThrows(
+				IllegalArgumentException.class,
+				() -> RecordOps.inplaceUpdate(record, "z", 4));
+	}
+
+	@Test
 	void structuralValueSemanticsCrossImplementations() {
 		ZlkRecord array = ZlkRecord.of(Map.of("x", 1, "y", 2));
 		ZlkRecord wrapper = new PairRecord(new Pair(1, 2));
@@ -157,7 +183,7 @@ public class RecordTest {
 
 	@Test
 	void bootstrapCreatesRecordsForTheCanonicalShape() throws Throwable {
-		CallSite site = ArrayRecord.bootstrapLiteral(
+		CallSite site = RecordOps.bootstrapLiteral(
 				MethodHandles.lookup(),
 				"recordLiteral",
 				MethodType.methodType(ZlkRecord.class, Object.class, Object.class),
@@ -175,7 +201,7 @@ public class RecordTest {
 
 	@Test
 	void bootstrapCreatesEmptyRecord() throws Throwable {
-		CallSite site = ArrayRecord.bootstrapLiteral(
+		CallSite site = RecordOps.bootstrapLiteral(
 				MethodHandles.lookup(),
 				"recordLiteral",
 				MethodType.methodType(ZlkRecord.class),
@@ -190,12 +216,12 @@ public class RecordTest {
 
 	@Test
 	void bootstrapRejectsInvalidShape() {
-		assertThrows(IllegalArgumentException.class, () -> ArrayRecord.bootstrapLiteral(
+		assertThrows(IllegalArgumentException.class, () -> RecordOps.bootstrapLiteral(
 				MethodHandles.lookup(),
 				"recordLiteral",
 				MethodType.methodType(ZlkRecord.class, Object.class, Object.class),
 				"v1;1#y1#x"));
-		assertThrows(IllegalArgumentException.class, () -> ArrayRecord.bootstrapLiteral(
+		assertThrows(IllegalArgumentException.class, () -> RecordOps.bootstrapLiteral(
 				MethodHandles.lookup(),
 				"recordLiteral",
 				MethodType.methodType(ZlkRecord.class, Object.class),
@@ -222,7 +248,7 @@ public class RecordTest {
 				"(Ljava/lang/Object;Ljava/lang/Object;)Lzlk/runtime/ZlkRecord;",
 				new Handle(
 						Opcodes.H_INVOKESTATIC,
-						"zlk/runtime/ArrayRecord",
+						"zlk/runtime/internal/RecordOps",
 						"bootstrapLiteral",
 						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
 						+ "Ljava/lang/invoke/MethodType;Ljava/lang/String;)Ljava/lang/invoke/CallSite;",
@@ -235,7 +261,7 @@ public class RecordTest {
 
 		class Loader extends ClassLoader {
 			Loader() {
-				super(ArrayRecord.class.getClassLoader());
+				super(RecordOps.class.getClassLoader());
 			}
 
 			Class<?> define(byte[] bytes) {

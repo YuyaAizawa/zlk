@@ -21,20 +21,19 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
-import zlk.ir.clcalc.CcCaseBranch;
-import zlk.ir.clcalc.CcExp;
-import zlk.ir.clcalc.CcExp.CcCase;
-import zlk.ir.clcalc.CcExp.CcClosureApp;
-import zlk.ir.clcalc.CcExp.CcCnst;
-import zlk.ir.clcalc.CcExp.CcDirectApp;
-import zlk.ir.clcalc.CcExp.CcIf;
-import zlk.ir.clcalc.CcExp.CcLet;
-import zlk.ir.clcalc.CcExp.CcMkCls;
-import zlk.ir.clcalc.CcExp.CcVar;
-import zlk.ir.clcalc.CcFunDecl;
-import zlk.ir.clcalc.CcModule;
-import zlk.ir.clcalc.CcPattern;
-import zlk.ir.idcalc.IcExp;
+import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.DiagnosticReporter;
+import zlk.ir.reuse.LocalMap;
+import zlk.ir.reuse.LocalVar;
+import zlk.ir.reuse.own.OwnBlock;
+import zlk.ir.reuse.own.OwnBranch;
+import zlk.ir.reuse.own.OwnFunDecl;
+import zlk.ir.reuse.own.OwnPattern;
+import zlk.ir.reuse.own.OwnRhs;
+import zlk.ir.reuse.own.OwnRhs.OwnRecordField;
+import zlk.ir.reuse.own.OwnStmt;
+import zlk.ir.reuse.own.OwnUse;
+import zlk.ir.reuse.plan.ReusePlan;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Stack;
@@ -47,15 +46,16 @@ public final class BytecodeGenerator {
 
 	public static final int OPCODE_VERSION = Opcodes.V23;
 
-	private final CcModule module;
+	private final ReusePlan module;
 	private final String origin;
 	private final IdMap<Type> types;
 	private final IdMap<Builtin> builtins;
 	private final IdMap<String> toplevelDescs;
-	private final IdMap<CcFunDecl> toplevelDecls;
+	private final IdMap<OwnFunDecl> toplevelDecls;
 	private final IdMap<JavaType> javaClasses;
 	private final IdMap<Ctor> ctors;
 	private final Seq<CustomType> customTypes;
+	private final DiagnosticReporter diagnosticReporter;
 	private ClassWriter cw;
 
 	private static final Id LOCAL_DUMMY_ID = Id.intern("..DUMMY..");
@@ -73,7 +73,7 @@ public final class BytecodeGenerator {
 			false);
 	private static final Handle RECORD_LITERAL_BOOTSTRAP = new Handle(
 			Opcodes.H_INVOKESTATIC,
-			"zlk/runtime/ArrayRecord",
+			"zlk/runtime/internal/RecordOps",
 			"bootstrapLiteral",
 			"(Ljava/lang/invoke/MethodHandles$Lookup;"
 			+ "Ljava/lang/String;"
@@ -83,11 +83,23 @@ public final class BytecodeGenerator {
 			false);
 
 	// for compileDecl
+	private Id compilingFun;
 	private SeqBuffer<Id> locals;
+	private LocalMap<OwnStmt.Bind> stack;  // 結果をstack上に置くBind
 	private MethodVisitor mv;
 	private Stack<Runnable> pendings;
 
-	public BytecodeGenerator(CcModule module, IdMap<Type> types, Seq<Builtin> builtins, String origin) {
+	public BytecodeGenerator(ReusePlan module, IdMap<Type> types, Seq<Builtin> builtins, String origin) {
+		this(module, types, builtins, origin, _ -> {});
+	}
+
+	public BytecodeGenerator(
+			ReusePlan module,
+			IdMap<Type> types,
+			Seq<Builtin> builtins,
+			String origin,
+			DiagnosticReporter diagnosticReporter
+	) {
 		this.module = module;
 		this.types = types;
 		this.builtins = builtins.fold(IdMap.folder(b -> b.id(), b -> b));
@@ -97,6 +109,7 @@ public final class BytecodeGenerator {
 		this.javaClasses = new IdMap<>();
 		this.ctors = new IdMap<>();
 		this.customTypes = module.types().map(decl -> new CustomType(module.name(), decl, origin));
+		this.diagnosticReporter = diagnosticReporter;
 		this.pendings = new Stack<>();
 
 		javaClasses.put(Type.UNIT.id(), JavaType.VOID);
@@ -190,20 +203,21 @@ public final class BytecodeGenerator {
 		mv.visitEnd();
 	}
 
-	private void compileDecl(CcFunDecl decl) { // TODO トップレベルは全て非カリー化する
-		Id id = decl.id();
+	private void compileDecl(OwnFunDecl decl) { // TODO トップレベルは全て非カリー化する
+		compilingFun = decl.id();
+		this.locals = new SeqBuffer<>();
+		this.stack = new LocalMap<>(decl.localIdSize());
 		try {
-			this.locals = new SeqBuffer<>();
 			mv = cw.visitMethod(
 					Opcodes.ACC_PUBLIC + Opcodes.ACC_STATIC,
-					javaMethodName(id),
-					toplevelDescs.get(id),
+					javaMethodName(compilingFun),
+					toplevelDescs.get(compilingFun),
 					null,
 					null);
 
 			mv.visitCode();
 			registerArgs(decl.args());
-			Type retTy = types.get(id).dropArgs(decl.arity());
+			Type retTy = types.get(compilingFun).dropArgs(decl.arity());
 			compile(decl.body(), toJavaType(retTy));
 			genReturn(retTy);
 			mv.visitMaxs(-1, -1); // compute all frames and local automatically
@@ -212,18 +226,22 @@ public final class BytecodeGenerator {
 			while(!pendings.isEmpty()) {
 				pendings.pop().run();
 			}
+			if(!stack.isEmply()) {
+				throw new RuntimeException("uncompiled stmt remained!");
+			}
 		} catch(RuntimeException e) {
-			throw new RuntimeException("on method "+id, e);
+			throw new RuntimeException("on method "+compilingFun, e);
 		}
+		compilingFun = null;
 	}
 
 	/**
 	 * 関数の引数をlocalsに登録する
 	 * @param args 引数
 	 */
-	private void registerArgs(Seq<CcPattern> args) {
+	private void registerArgs(Seq<OwnPattern> args) {
 		args.forEach(arg -> {
-			if(arg instanceof CcPattern.Var var) {
+			if(arg instanceof OwnPattern.Var var) {
 				locals.add(var.id());
 			} else {
 				locals.add(LOCAL_DUMMY_ID);
@@ -231,31 +249,31 @@ public final class BytecodeGenerator {
 		});
 
 		for (int i = 0; i < args.size(); i++) {
-			if(args.at(i) instanceof CcPattern.Ctor ctor) {
-				Type subClassTy = types.get(ctor.ctor().id());
+			if(args.at(i) instanceof OwnPattern.Ctor ctor) {
+				Type subClassTy = types.get(ctor.ctor());
 				loadLocal(i, subClassTy);
 				registerArgRec(ctor);
-			} else if(args.at(i) instanceof CcPattern.Record record) {
+			} else if(args.at(i) instanceof OwnPattern.Record record) {
 				mv.visitVarInsn(Opcodes.ALOAD, i);
 				registerArgRec(record);
 			}
 		}
 	}
-	private void registerArgRec(CcPattern pat) {
+	private void registerArgRec(OwnPattern pat) {
 		// 事前条件：パターンに対応する値がstackのトップに乗っている
 		// 事後条件：パターンに対応する値をstackから消費
 		switch(pat) {
-		case CcPattern.Wildcard(Type _, Location _) -> {
+		case OwnPattern.Wildcard(Type _, Location _) -> {
 			mv.visitInsn(Opcodes.POP);  // TODO: 最適化 フィールドからとらないように
 		}
-		case CcPattern.Var(Id id, Type type, Location _) -> {
-			checkcastIfNeed(JavaType.OBJECT, toJavaType(type));
-			storeLocal(locals.size(), type);
-			locals.add(id);
+		case OwnPattern.Var var -> {
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(var.type()));
+			storeLocal(locals.size(), var.type());
+			locals.add(var.id());
 		}
-		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
-			Ctor ctorDecl = ctors.get(ctor.id());
-			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(ctor.id()).toClassName());
+		case OwnPattern.Ctor(Id id, Seq<OwnPattern> args, Type _, Location _) -> {
+			Ctor ctorDecl = ctors.get(id);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, javaClasses.get(id).toClassName());
 			// stackの数を調整
 			if(args.size() == 0) {
 				mv.visitInsn(Opcodes.POP);
@@ -268,17 +286,17 @@ public final class BytecodeGenerator {
 			Seq.zip(args, ctorDecl.args()).forEachIndexed((fieldIdx, ctorArg, declArgType) -> {
 				mv.visitFieldInsn(
 						Opcodes.GETFIELD,
-						javaClasses.get(ctor.id()).toClassName(),
+						javaClasses.get(id).toClassName(),
 						CustomType.componentName(fieldIdx),
 						toDesc(declArgType));
 				registerArgRec(ctorArg);
 			});
 		}
-		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
+		case OwnPattern.Record(Seq<OwnPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
 			for(int i = 0; i < fields.size(); i++) {
 				if(i < fields.size() - 1) mv.visitInsn(Opcodes.DUP);
-				CcPattern.Var field = fields.at(i);
+				OwnPattern.Var field = fields.at(i);
 				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
 						Opcodes.INVOKEINTERFACE,
@@ -292,32 +310,59 @@ public final class BytecodeGenerator {
 		}
 	}
 
+	private void compile(OwnBlock block, JavaType expectedJavaType) {
+		block.stmts().forEach(this::compile);
+		compile(block.result(), expectedJavaType);
+	}
 	/**
-	 * 式に対応するバイトコードを生成する．
+	 * OwnStmtに対応するバイトコードを生成する．
 	 *
-	 * Javaの型消去方式に対応するため，期待される戻り値型の上限境界を指定し，
+	 * Javaの型消去方式に対応するため，期待される戻り値型の上限境界を考慮し，
 	 * 満たせない場合ダウンキャストを補う．
 	 *
-	 * @param exp
-	 * @param ubTy 式がstackに残す値の上限境界の型
+	 * 明示的な変数名が振られているLocalVarは局所変数として，
+	 * それ以外はスタックでデータの受け渡しを行う．
+	 *
+	 * @param stmt
 	 */
-	private void compile(CcExp exp, JavaType ubTy) {
-		switch (exp) {
-		case CcCnst(ConstValue value, Location _) -> {
+	private void compile(OwnStmt stmt) {
+		if(stmt instanceof OwnStmt.Bind bind) {
+			LocalVar lhs = bind.dst();
+			// local変数の処理
+			lhs.id().ifPresentOrElse(id -> {
+				compile(bind, toJavaType(lhs.type()));
+				storeLocal(id);
+			}, () -> {
+				stack.put(lhs, bind);
+			});
+		}
+		// TODO: 必要になったらDup/Dropの処理
+	}
+	private void compile(OwnStmt.Bind bind, JavaType expectedJavaType) {
+		LocalVar lhs = bind.dst();
+		compile(lhs, bind.rhs(), expectedJavaType);
+		diagnosticReporter.report(new Diagnostic.BytecodeStmt(
+				bind.loc(),
+				compilingFun,
+				lhs.localId(),
+				lhs.id()));
+	}
+	/**
+	 * OwnRhsに対応するバイトコードを生成する．
+	 * @param site 演算の識別子（左辺の変数）
+	 * @param rhs 右辺の演算
+	 * @param expectedJavaType 値に対してこの使用地点で要求されるJavaの型
+	 */
+	private void compile(LocalVar site, OwnRhs rhs, JavaType expectedJavaType) {
+		switch(rhs) {
+		case OwnRhs.Cnst(ConstValue value) -> {
 			loadCnst(value);
 		}
-		case CcVar(Id id, Type type, Location _) -> {
-			int localIndex = locals.indexOf(id);
-			if(localIndex == -1) {
-				throw new Error("No such locals: "+id);
-			}
-			loadLocal(localIndex, type);
-		}
-		case CcDirectApp(Id funId, Seq<CcExp> args, Type _, Location _) -> {
-			Type funTy = types.get(funId);
+		case OwnRhs.DirectApp(Id fun, Seq<OwnUse> args) -> {
+			Type funTy = types.get(fun);
 			Seq<Type> flattenTys = funTy.flatten();
 
-			getDecl(funId, descriptor -> {
+			getDecl(fun, descriptor -> {
 				// 全ての引数をstackに載せる
 				Seq.zip(args, flattenTys.take(args.size())).forEach(
 						(arg, ty) -> compile(arg, toJavaType(ty)));
@@ -325,12 +370,12 @@ public final class BytecodeGenerator {
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
 						module.name(),
-						javaMethodName(funId),
+						javaMethodName(fun),
 						descriptor,
 						false);
 
 				JavaType stackTopTy = toJavaType(funTy.dropArgs(args.size()));
-				checkcastIfNeed(stackTopTy, ubTy);
+				checkcastIfNeed(stackTopTy, expectedJavaType);
 			}, builtin -> {
 				// 全ての引数をstackに載せる
 				Seq.zip(args, flattenTys.take(args.size())).forEach(
@@ -352,81 +397,77 @@ public final class BytecodeGenerator {
 						toMethodDesc(ctor.args(), Type.UNIT),
 						false);
 
-				checkcastIfNeed(subclass, ubTy);
+				checkcastIfNeed(subclass, expectedJavaType);
 			});
 		}
-		case CcClosureApp(CcExp funExp, Seq<CcExp> args, Type _, Location _) -> {
-			compile(funExp, JavaType.FUNCTION);
+		case OwnRhs.ClosureApp(OwnUse fun, Seq<OwnUse> args) -> {
+			compile(fun, JavaType.FUNCTION);
 
 			compile(args.head(), JavaType.OBJECT);
 			invokeApply();
-			for (CcExp arg : args.tail()) {
+			for (OwnUse arg : args.tail()) {
 				checkcast(JavaType.FUNCTION);
 				compile(arg, JavaType.OBJECT);
 				invokeApply();
 			}
-			checkcastIfNeed(JavaType.OBJECT, ubTy);
+			checkcastIfNeed(JavaType.OBJECT, expectedJavaType);
 		}
-		case CcMkCls(Id implId, Seq<CcExp> caps, Type _, Location _) -> {
-			if(ctors.containsKey(implId)) {  // データ型の初期化確認
+		case OwnRhs.MakeClosure(Id impl, Seq<OwnUse> captures) -> {
+			if(ctors.containsKey(impl)) {  // データ型の初期化確認
 				// 部分適用する前にコンストラクタ用メソッド（<init>とは別）があるか確認
-				ensureCtorOriginal(ctors.get(implId));
+				ensureCtorOriginal(ctors.get(impl));
 			}
 
 			// 組込みへの対処 TODO 分離
-			Builtin builtinValue = builtins.getOrNull(implId);
+			Builtin builtinValue = builtins.getOrNull(impl);
 			if(builtinValue != null) {
 				builtinValue.accept(mv);
 				return;
 			}
 
 			// 引数が要らない場合戻り値のデータを置く
-			Type implTy = types.get(implId);
+			Type implTy = types.get(impl);
 			if(!implTy.isArrow()) {
 				mv.visitMethodInsn(
 						Opcodes.INVOKESTATIC,
 						module.name(),
-						javaMethodName(implId),
-						toplevelDescs.get(implId),
+						javaMethodName(impl),
+						toplevelDescs.get(impl),
 						false);
 				return;
 			}
 
-			loadCurried(implId);
+			loadCurried(impl);
 
-			if(caps.isEmpty()) {
-				checkcastIfNeed(JavaType.FUNCTION, ubTy);
+			if(captures.isEmpty()) {
+				checkcastIfNeed(JavaType.FUNCTION, expectedJavaType);
 				return;
 			}
 
-			for (CcExp cap : caps) {
+			for (OwnUse cap : captures) {
 				checkcast(JavaType.FUNCTION);
 				compile(cap, JavaType.OBJECT);
 				invokeApply();
 			}
-			checkcastIfNeed(JavaType.OBJECT, ubTy);
+			checkcastIfNeed(JavaType.OBJECT, expectedJavaType);
 		}
-		case CcIf(CcExp cond, CcExp thenExp, CcExp elseExp, Type _, Location _) -> {
+		case OwnRhs.If(OwnUse condition, OwnBlock thenBlock, OwnBlock elseBlock) -> {
 			Label l1 = new Label();
 			Label l2 = new Label();
-			compile(cond, toJavaType(Type.BOOL));
+			compile(condition, toJavaType(Type.BOOL));
+			int mark = markLocals();
 			Primitive.BOOL.genUnboxing(mv);
 			mv.visitJumpInsn(Opcodes.IFEQ, // = 0; false
 					l1);
-			compile(thenExp, ubTy);
+			compile(thenBlock, expectedJavaType);
+			restoreLocals(mark);
 			mv.visitJumpInsn(Opcodes.GOTO, l2);
 			mv.visitLabel(l1);
-			compile(elseExp, ubTy);
+			compile(elseBlock, expectedJavaType);
+			restoreLocals(mark);
 			mv.visitLabel(l2);
 		}
-		case CcLet(Id varName, CcExp boundExp, CcExp body, Type _, Location _) -> {
-			Type varTy = types.get(varName);
-			compile(boundExp, toJavaType(varTy));
-			locals.add(varName);
-			storeLocal(locals.size() - 1, varTy);
-			compile(body, ubTy);
-		}
-		case CcCase(CcExp target, Seq<CcCaseBranch> branches, Type _, Location _) -> {
+		case OwnRhs.Case(OwnUse target, Seq<OwnBranch> branches) -> {
 			// TODO マッチしないときの例外処理
 			// TODO tableswitchに置き換え（以下のようにしてできるはず）
 			// invokedynamic #0:typeSwitch, 0 2つ目の引数は型リストの前半を無視するとき使う
@@ -461,27 +502,29 @@ public final class BytecodeGenerator {
 			Label neck = new Label();
 
 			// マッチしないパターンに遭遇したら次の選択肢に進む
-			SeqBuffer<Id> localsBeforeBranch = new SeqBuffer<>(locals);
+			int mark = markLocals();
 			for (int branchIdx = 0; branchIdx < branches.size(); branchIdx++) {
 				Label nextBranchLabel = (branchIdx < branches.size() - 1) ? new Label() : null;
-				CcCaseBranch branch = branches.at(branchIdx);
+				OwnBranch branch = branches.at(branchIdx);
 				mv.visitVarInsn(Opcodes.ALOAD, caseTargetLocal);
 				checkMatchAndStoreLocals(branch.pattern(), null, nextBranchLabel); // TODO: Dectorの分解にはdeclTyは要らないのでメソッドを分ける
-				compile(branch.body(), ubTy);
+				compile(branch.body(), expectedJavaType);
 				mv.visitJumpInsn(Opcodes.GOTO, neck);
 
 				if (nextBranchLabel != null) {
 					mv.visitLabel(nextBranchLabel);
 				}
-				locals = localsBeforeBranch;
+				restoreLocals(mark);
 			}
 			mv.visitLabel(neck);
 		}
-		case CcExp.CcRecord(Seq<CcExp.CcRecordField> fields, Type _, Location _) -> {
+		case OwnRhs.MakeRecord(Seq<OwnRecordField> fields) -> {
+			int mark = markLocals();
+
 			// 計算順序は記述順に（この制限は外してもよい）
-			record StoredField(CcExp.CcRecordField field, int localIndex) {}
+			record StoredField(OwnRecordField field, int localIndex) {}
 			SeqBuffer<StoredField> canonicalFields = new SeqBuffer<>(fields.size());
-			for(CcExp.CcRecordField field : fields) {
+			for(OwnRecordField field : fields) {
 				compile(field.value(), JavaType.OBJECT);
 				int localIndex = locals.size();
 				locals.add(LOCAL_DUMMY_ID);
@@ -505,9 +548,11 @@ public final class BytecodeGenerator {
 					descriptor,
 					RECORD_LITERAL_BOOTSTRAP,
 					encodedNames.toString());
-			checkcastIfNeed(JavaType.RECORD, ubTy);
+			checkcastIfNeed(JavaType.RECORD, expectedJavaType);
+
+			restoreLocals(mark);
 		}
-		case CcExp.CcRecordAccess(CcExp target, String field, Type _, Location _) -> {
+		case OwnRhs.RecordGet(OwnUse target, String field) -> {
 			compile(target, JavaType.RECORD);
 			mv.visitLdcInsn(field);
 			mv.visitMethodInsn(
@@ -516,23 +561,49 @@ public final class BytecodeGenerator {
 					"get",
 					"(Ljava/lang/String;)Ljava/lang/Object;",
 					true);
-			checkcastIfNeed(JavaType.OBJECT, ubTy);
+			checkcastIfNeed(JavaType.OBJECT, expectedJavaType);
 		}
-		case CcExp.CcRecordUpdate(CcExp target, Seq<CcExp.CcRecordField> fields, Type _, Location _) -> {
+		case OwnRhs.RecordUpdate(OwnUse target, Seq<OwnRecordField> fields) -> {
 			compile(target, JavaType.RECORD);
-			for(CcExp.CcRecordField field : fields) {
+			for(OwnRecordField field : fields) {
 				mv.visitLdcInsn(field.name());
 				compile(field.value(), JavaType.OBJECT);
-				mv.visitMethodInsn(
-						Opcodes.INVOKEINTERFACE,
-						JavaType.RECORD.toClassName(),
-						"update",
-						"(Ljava/lang/String;Ljava/lang/Object;)Lzlk/runtime/ZlkRecord;",
-						true);
+				if(module.isInplaceRecordUpdate(compilingFun, site)) {  // 破壊的更新の可否
+					mv.visitMethodInsn(
+							Opcodes.INVOKESTATIC,
+							"zlk/runtime/internal/RecordOps",
+							"inplaceUpdate",
+							"(" + JavaType.RECORD.toDesc()
+									+ "Ljava/lang/String;Ljava/lang/Object;)" + JavaType.RECORD.toDesc(),
+							false);
+				} else {
+					mv.visitMethodInsn(
+							Opcodes.INVOKEINTERFACE,
+							JavaType.RECORD.toClassName(),
+							"update",
+							"(Ljava/lang/String;Ljava/lang/Object;)Lzlk/runtime/ZlkRecord;",
+							true);
+				}
 			}
-			checkcastIfNeed(JavaType.RECORD, ubTy);
+			checkcastIfNeed(JavaType.RECORD, expectedJavaType);
 		}
 		}
+	}
+	/**
+	 * operand stackへ値を置く
+	 * @param arg
+	 * @param expectedJavaType
+	 */
+	private void compile(OwnUse arg, JavaType expectedJavaType) {
+		LocalVar var = arg.var();
+		var.id().ifPresentOrElse(id -> {
+			// local変数から読み込み
+			loadLocal(id);
+			checkcastIfNeed(toJavaType(types.get(id)), expectedJavaType);
+		}, () -> {
+			// 値を生成
+			compile(stack.remove(var), expectedJavaType);
+		});
 	}
 
 	private void checkcastIfNeed(JavaType actual, JavaType expected) {
@@ -553,19 +624,19 @@ public final class BytecodeGenerator {
 	 * @param declTy
 	 * @param next 次のラベル
 	 */
-	private void checkMatchAndStoreLocals(CcPattern pat, Type declTy, Label next) {
+	private void checkMatchAndStoreLocals(OwnPattern pat, Type declTy, Label next) {
 		switch(pat) {
-		case CcPattern.Wildcard(Type _, Location _) -> {
+		case OwnPattern.Wildcard(Type _, Location _) -> {
 			mv.visitInsn(Opcodes.POP);
 		}
-		case CcPattern.Var(Id id, Type type, Location _) -> {
-			checkcastIfNeed(JavaType.OBJECT, toJavaType(type));
-			storeLocal(locals.size(), type);
-			locals.add(id);
+		case OwnPattern.Var(LocalVar var, _, Location _) -> {
+			checkcastIfNeed(JavaType.OBJECT, toJavaType(pat.type()));
+			storeLocal(locals.size(), pat.type());
+			locals.add(var.id().get());  // TODO: ここ明示的な変数名が無ければstackに
 		}
-		case CcPattern.Ctor(IcExp.IcVarCtor ctor, Seq<CcPattern> args, Type _, Location _) -> {
-			Ctor ctorDecl = ctors.get(ctor.id());
-			String subClassName = javaClasses.get(ctor.id()).toClassName();
+		case OwnPattern.Ctor(Id ctor, Seq<OwnPattern> args, Type _, Location _) -> {
+			Ctor ctorDecl = ctors.get(ctor);
+			String subClassName = javaClasses.get(ctor).toClassName();
 			if(next != null) {
 				mv.visitInsn(Opcodes.DUP);
 				mv.visitTypeInsn(Opcodes.INSTANCEOF, subClassName);
@@ -589,12 +660,12 @@ public final class BytecodeGenerator {
 				checkMatchAndStoreLocals(arg, ctorArg, next);
 			});
 		}
-		case CcPattern.Record(Seq<CcPattern.Var> fields, Type _, Location _) -> {
+		case OwnPattern.Record(Seq<OwnPattern.Var> fields, Type _, Location _) -> {
 			mv.visitTypeInsn(Opcodes.CHECKCAST, JavaType.RECORD.toClassName());
 			int recordLocal = locals.size();
 			locals.add(LOCAL_DUMMY_ID);
 			mv.visitVarInsn(Opcodes.ASTORE, recordLocal);
-			for(CcPattern.Var field : fields) {
+			for(OwnPattern.Var field : fields) {
 				mv.visitVarInsn(Opcodes.ALOAD, recordLocal);
 				mv.visitLdcInsn(field.id().simpleName());
 				mv.visitMethodInsn(
@@ -607,6 +678,16 @@ public final class BytecodeGenerator {
 			}
 		}
 		};
+	}
+
+	private int markLocals() {
+		return locals.size();
+	}
+
+	private void restoreLocals(int mark) {
+		while(locals.size() > mark) {
+			locals.removeLast();
+		}
 	}
 
 	/**
@@ -743,7 +824,7 @@ public final class BytecodeGenerator {
 			mv.visitCode();
 
 			for (int i = 0; i < argTys.size(); i++) {
-				mv.visitIntInsn(Opcodes.ALOAD, i);
+				mv.visitVarInsn(Opcodes.ALOAD, i);
 			}
 
 			mv.visitInvokeDynamicInsn(
@@ -790,12 +871,18 @@ public final class BytecodeGenerator {
 		}
 		}
 	}
+	private void loadLocal(Id id) {
+		loadLocal(locals.indexOf(id), types.get(id));
+	}
+	private void storeLocal(Id id) {
+		storeLocal(locals.size(), types.get(id));
+		locals.add(id);
+	}
 
 	private void loadLocal(int idx, Type ty) {
 		assert ty != Type.UNIT;
 		mv.visitVarInsn(Opcodes.ALOAD, idx);
 	}
-
 	private void storeLocal(int idx, Type ty) {
 		assert ty != Type.UNIT;
 		mv.visitVarInsn(Opcodes.ASTORE, idx);
@@ -803,7 +890,7 @@ public final class BytecodeGenerator {
 
 	private void genReturn(Type type) {
 		if(type == Type.UNIT) {
-			mv.visitInsn(Opcodes.RETURN);
+			throw new RuntimeException();
 		}
 		mv.visitInsn(Opcodes.ARETURN);
 	}
@@ -817,7 +904,7 @@ public final class BytecodeGenerator {
 				true);
 	}
 
-	private String getDescription(CcFunDecl decl) {
+	private String getDescription(OwnFunDecl decl) {
 		Type funTy = types.get(decl.id());
 		int arity = decl.arity();
 		Seq<Type> argTys = funTy.flatten().take(arity);
