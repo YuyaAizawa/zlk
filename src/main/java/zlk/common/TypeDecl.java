@@ -1,8 +1,5 @@
-package zlk.ir.idcalc;
+package zlk.common;
 
-import zlk.common.Location;
-import zlk.common.LocationHolder;
-import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
@@ -12,10 +9,10 @@ import zlk.util.pp.PrettyPrinter;
  * ADT宣言．
  * @param vars 型変数は{@link Type.Var}，レコードの列変数は空のopen {@link Type.Record}として保持する
  */
-public record IcTypeDecl(
+public record TypeDecl(
 	Id id,
 	Seq<Type> vars,
-	Seq<IcCtor> ctors,
+	Seq<Ctor> ctors,
 	Location loc
 ) implements PrettyPrintable, LocationHolder {
 

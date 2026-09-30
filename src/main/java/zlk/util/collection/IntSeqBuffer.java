@@ -121,6 +121,24 @@ public final class IntSeqBuffer implements Iterable<Integer>{
 		}
 	}
 
+	public int replace(int index, int element) {
+		if(index < 0 || totalSize <= index) {
+			throw new ArrayIndexOutOfBoundsException(index);
+		}
+
+		int count = 0;
+		Chunk cursor = headChunk;
+		while(true) {
+			if(index - count < cursor.data.length) {
+				int old = cursor.data[index - count];
+				cursor.data[index - count] = element;
+				return old;
+			}
+			count += cursor.data.length;
+			cursor = cursor.next;
+		}
+	}
+
 	public boolean contains(int element) {
 		if(isEmpty()) {
 			return false;

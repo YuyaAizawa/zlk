@@ -21,6 +21,9 @@ import zlk.diagnostic.Diagnostic;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcModule;
+import zlk.ir.reuse.anf.AnfModule;
+import zlk.ir.reuse.own.OwnModule;
+import zlk.ir.reuse.plan.ReusePlan;
 import zlk.ir.token.Tokenized;
 import zlk.phase.clconv.ClosureConverter;
 import zlk.phase.codegen.BytecodeGenerator;
@@ -32,6 +35,9 @@ import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
 import zlk.phase.recon.TypeReconstructor;
 import zlk.phase.recon.constraint.Constraint;
+import zlk.phase.reuse.AnfConverter;
+import zlk.phase.reuse.OwnershipElaborator;
+import zlk.phase.reuse.ReusePlanner;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -52,11 +58,6 @@ public class Main {
 				type List a =
 				  | Nil
 				  | Cons a (List a)
-
-				foldl func acc list =
-				  case list of
-				    Nil -> acc
-				    Cons x xs -> foldl func (func x acc) xs
 
 				sq a =
 				  let
@@ -94,10 +95,7 @@ public class Main {
 				    Cons hd tl -> add hd (sum tl)
 
 				ans1 =
-				  let
-				    input = Cons 1 (Cons 2 (Cons 3 (Nil)))
-				  in
-				    foldl (\\e total -> add total e) 0 input
+				  sq 42
 
 				ans2 =
 				  sum (Cons 3 (Cons 2 (Cons 1 Nil)))
@@ -127,14 +125,14 @@ public class Main {
 		System.out.println(idcalc.buildString());
 		System.out.println();
 
-		System.out.println("-- CONSTRAIN EXTRACTION --");
+		System.out.println("-- CONSTRAIN EXTR --");
 		FreshFlex freshFlex = new FreshFlex();
 		ConstraintExtractor.Result extractResult = ConstraintExtractor.extract(idcalc, freshFlex);
 		Constraint cint = extractResult.constraint();
 		System.out.println(cint.buildString());
 		System.out.println();
 
-		System.out.println("-- TYPE RECONSTRUCTION --");
+		System.out.println("-- TYPE RECON --");
 		SeqBuffer<Diagnostic> reconDiagnostics = new SeqBuffer<>();
 		var reconed = TypeReconstructor.recon(extractResult, freshFlex, reconDiagnostics::add).fold(
 				reconstructed -> reconstructed,
@@ -172,6 +170,15 @@ public class Main {
 		clconv.pp(System.out);
 		System.out.println();
 
+		System.out.println("-- ANF CONV --");
+		AnfModule anf = AnfConverter.convert(clconv);
+
+		System.out.println("-- OWN ELAB --");
+		OwnModule own = OwnershipElaborator.convert(anf);
+
+		System.out.println("-- RESUSE PLAN --");
+		ReusePlan plan = ReusePlanner.plan(own);
+
 		System.out.println("-- BYTECODE GEN --");
 
 		Map<String, byte[]> classBins = new HashMap<>();
@@ -188,7 +195,7 @@ public class Main {
 				}
 			};
 
-		new BytecodeGenerator(clconv, types, Builtin.functions(), name).compile(fileWriter);
+		new BytecodeGenerator(plan, types, Builtin.functions(), name).compile(fileWriter);
 
 		System.out.println();
 		System.out.println("-- EXECUTE --");

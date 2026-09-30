@@ -436,7 +436,7 @@ public final class Parser {
 	 *                    | <recordExp>
 	 *                    | <panicAExp>
 	 *
-	 * <memberExp>      ::= <aExp> (. <lcid>)*
+	 * <memberExp>      ::= <varExp> (. <lcid>)*
 	 * <appExp>         ::= <memberExp>+
 	 *
 	 * <lambdaExp>      ::= \ <pattern>+ -> <exp>

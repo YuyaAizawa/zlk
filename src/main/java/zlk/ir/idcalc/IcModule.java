@@ -1,5 +1,6 @@
 package zlk.ir.idcalc;
 
+import zlk.common.TypeDecl;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
@@ -13,7 +14,7 @@ import zlk.util.pp.PrettyPrinter;
  */
 public record IcModule(
 		String name,
-		Seq<IcTypeDecl> types,
+		Seq<TypeDecl> types,
 		Seq<IcValDecl> decls
 ) implements PrettyPrintable {
 

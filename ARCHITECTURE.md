@@ -5,39 +5,80 @@
 ## コンパイルフェーズ
 
 ```mermaid
-flowchart TD
-    Source(["source code"]) --> Lexer["Lex<br/>phase.parse.Lexer"]
-    Lexer --> Tokens(["token.Tokenized"])
-    Tokens --> Parser["Parse<br/>phase.parse.Parser"]
-    Parser --> AST(["ast.Module"])
-    AST --> NameEvaluator["NameEval<br/>phase.nameeval.NameEvaluator"]
-    NameEvaluator --> IC(["idcalc.IcModule"])
+flowchart TB
+    Source(["source code"])
+    Tokens(["token.Tokenized"])
+    AST(["ast.Module"])
+    IC(["idcalc.IcModule"])
+    Extracted(["recon.ConstraintExtractor.Result"])
+    Types(["recon.TypeReconstructor.Result"])
+    CC(["clcalc.CcModule"])
+    ANF(["reuse.anf.AnfModule"])
+    Own(["reuse.own.OwnModule"])
+    Unique(["reuse.plan.ModuleUniquenessFacts"])
+    ReusePlanned(["reuse.plan.ReusePlan"])
+    Class(["JVM bytecode / .class"])
+    Lexer["Lex<br/>phase.parse.Lexer"]
+    Parser["Parse<br/>phase.parse.Parser"]
+    NameEval["Name Evaluation<br/>phase.nameeval.NameEvaluator"]
+    Extract["Constraint Extraction<br/>phase.recon.ConstraintExtractor"]
+    Reconstruct["Type Reconstruction<br/>phase.recon.TypeReconstructor"]
+    PatternCheck["Pattern Checking<br/>phase.patterncheck.PatternChecker"]
+    ClosureConv["Closure Conversion<br/>phase.clconv.ClosureConverter"]
+    BytecodeGen["Bytecode Generation<br/>phase.codegen.BytecodeGenerator"]
+    AnfConv["ANF Conversion<br/>phase.reuse.AnfConverter"]
+    OwnElab["Ownership Elaboration<br/>phase.reuse.OwnershipElaborator"]
+    UniqueYzer["Uniqueness Analysis<br/>phase.reuse.UniquenessAnalyzer"]
+    ReusePlan["Reuse Planning<br/>phase.reuse.ReusePlanner"]
 
-    IC --> Extractor["ConstraintExtract<br/>phase.recon.ConstraintExtractor"]
+    Source --> Lexer
+    Lexer --> Tokens
+    Tokens --> Parser
+    Parser --> AST
+    AST --> NameEval
+    NameEval --> IC
+
+    IC --> Extract
     subgraph Recon
-        Extractor --> Extracted(["recon.ConstraintExtractor.Result"])
-        Extracted --> Reconstructor["TypeReconstruct<br/>phase.recon.TypeReconstructor"]
+        Extract --> Extracted
+        Extracted --> Reconstruct
     end
-    Reconstructor --> Types(["recon.TypeReconstructor.Result"])
+    Reconstruct --> Types
 
-    IC --> PatternChecker["PatternChecker<br/>phase.patterncheck.PatternChecker"]
-    Types --> PatternChecker
+    IC --> PatternCheck
+    Types --> PatternCheck
 
-    IC --> ClosureConverter["ClosureConverter<br/>phase.clconv.ClosureConverter"]
-    Types --> ClosureConverter
-    ClosureConverter --> CC(["clcalc.CcModule"])
+    IC --> ClosureConv
+    Types --> ClosureConv
+    ClosureConv --> CC
 
-    CC --> BytecodeGenerator["BytecodeGenerator<br/>phase.codegen.BytecodeGenerator"]
-    Types --> BytecodeGenerator
-    BytecodeGenerator --> Class(["JVM bytecode / .class"])
+    CC --> AnfConv
+    subgraph Reuse
+        AnfConv --> ANF
+        ANF --> OwnElab
+        OwnElab --> Own
+        Own --> UniqueYzer
+        UniqueYzer --> Unique
+        Own --> ReusePlan
+        Unique --> ReusePlan
+    end
+    ReusePlan --> ReusePlanned
+
+    ReusePlanned --> BytecodeGen
+    Types --> BytecodeGen
+    BytecodeGen --> Class
 ```
 
-`Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
+`Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`reusePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
 `reconPhase`は`Driver`内では1つのフェーズのように記述してあるが，内部は`ConstraintExtractor`と`TypeReconstructor`という概念上異なるフェーズを含む．
+
+`AnfConverter`は，後続の所有権解析とレコード再利用計画の前段として，`CcModule`を`AnfModule`へ変換する．`AnfModule`では式の評価順序と局所変数を明示し，関数引数およびcase式のpatternを自己完結したnested `AnfPattern`として保持する．`LocalVar.localId`はANF上の値を識別し，単なる変数別名には新しい`LocalVar`や`AnfBind`を導入しない．pattern compilationはANF変換後の別フェーズの責務とする．`OwnershipElaborator`は`AnfModule`から`OwnModule`を生成し，各変数出現を`BORROW`または`TAKE`として明示するとともに，binderに`OWNED`または`BORROWED`を保持し，後ろ向きlivenessに基づく`Dup`／`Drop`を`OwnStmt`として挿入する．`UniquenessAnalyzer`は各`Bind`のRHS評価直前にuniqueな値を`ModuleUniquenessFacts`へ記録する．`ReusePlanner`はこのfactsと`OwnModule`から，uniqueなtargetを`TAKE`するrecord updateだけをin-place更新siteとして選択し，選択結果を`ReusePlan`へ保持する．
+
+`BytecodeGenerator`は，source上の名前を持つ`LocalVar`のRHSを`OwnBlock.stmts()`の走査時に生成してlocal slotへ格納する．名前を持たないsingle-useの`LocalVar`はpending mapへ保持し，そのuseを生成するときにRHSを生成してoperand stackへ直接残す．関数の生成後にはpending mapが空でなければならない．`CompilationOptions.DEFAULT.reportBytecodeStmtOrder(true)`を指定すると，各RHSのbytecode生成が正常に完了した順番を`Diagnostic.BytecodeStmt`としてreportする．payloadは関数`Id`，関数内`localId`，任意のsource `Id`，位置だけを持ち，`LocalVar`やOwn IRを公開しない．
 
 `PatternChecker`は，名前解決後の`IcModule`と型再構築後の`ExpOrPatternMap<Type>`を検査する．型再構築済みのpattern型からconstructor familyを取得するため，well-typedなpattern matrixを前提として冗長性と網羅性の検査に専念する．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のpattern matrixではwildcard相当として扱う．
 
-parser，nameeval，recon，patterncheckの各phaseは，`Driver`から渡されたreporterへ公開`Diagnostic`をreportする．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
+parser，nameeval，recon，patterncheck，codegenの各phaseは，`Driver`から渡されたreporterへ公開`Diagnostic`をreportする．任意のINFO診断を無効にする場合，`Driver`はphase全体を無効化するno-op reporterではなく，対象のdiagnostic variantだけを拒否するreporterを渡す．これにより，同じphaseが将来reportする別の診断は回収される．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
 
 ## レコード型
 
@@ -94,6 +135,10 @@ M.f._case2_1._case1_1.y
 | `ir.idcalc` | 名前解決後のIR |
 | `ir.typing` | 型再構築後に後続フェーズが利用する型情報 |
 | `ir.clcalc` | クロージャ変換後のIR |
+| `ir.reuse` | 所有権・再利用解析で共有する`LocalVar`等のデータ構造 |
+| `ir.reuse.anf` | A正規形変換後のIR |
+| `ir.reuse.own` | use-siteの所有権要求と`Dup`/`Drop`を明示したIR |
+| `ir.reuse.plan` | 一意性解析結果と再利用計画 |
 | `phase` | コンパイルフェーズ共通の結果表現 |
 | `phase.parse` | 字句解析と構文解析 |
 | `phase.nameeval` | 名前解決と型名解決 |
@@ -101,6 +146,7 @@ M.f._case2_1._case1_1.y
 | `phase.recon.constraint` | 型制約IRと型再構築中の型表現 |
 | `phase.patterncheck` | パターンマッチの冗長性および網羅性の検査 |
 | `phase.clconv` | クロージャ変換 |
+| `phase.reuse` | A正規形変換，所有権付与，および後続の再利用解析 |
 | `phase.codegen` | JVMバイトコード生成 |
 | `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
 | `util`，`util.collection`，`util.pp` | `Result`，コレクション，Pretty Printerなどの汎用部品 |
@@ -129,6 +175,18 @@ featureテストは`Driver`を公開入口として利用し，phaseテストだ
 - **generalize**：対象スコープで自由な型変数を量化すること
 - **instantiate**：量化された多相型をfresh flexへ置き換えて利用可能にすること
 
+### 再利用解析
+
+- **Ownership**：変数の参照の種類
+  - **OWNED**：所有参照．実体は所有参照カウントされる．0ならばあらゆる参照がない．
+  - **BORROWED**：借用参照．所有参照カウントに含まれない参照．borrowed parameter/pattern decomposition viewで利用予定の発展的機能．
+- **UseMode**：出現（右辺）が所有参照を消費するか
+  - **TAKE**：消費して所有権はcalleeに移る
+  - **BORROW**：消費しない
+- **Dup/Drop**：所有参照のカウント増減
+- **aliveness**：以降に変数が出現するか
+- **uniqueness**：同じ実体を指す参照が他にないと保証できるか
+
 ### プロジェクト共通の省略形
 
 長い単語には，コード全体で一貫して使用する次の省略形を定めている．
@@ -144,3 +202,4 @@ featureテストは`Driver`を公開入口として利用し，phaseテストだ
 | Declaration | `Decl` | `IcValDecl`，`IcTypeDecl` |
 | Calculation | `calc` | `idcalc`，`clcalc` |
 | Conversion / Converter | `conv` | `clconv`，`ClosureConverter` |
+| Statement | `stmt` | `stmts`，`OwnStmt` |

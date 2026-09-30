@@ -8,10 +8,10 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import zlk.common.Ctor;
 import zlk.common.Type;
+import zlk.common.TypeDecl;
 import zlk.common.id.IdMap;
-import zlk.ir.clcalc.CcCtor;
-import zlk.ir.clcalc.CcTypeDecl;
 
 /**
  * 1つのtype宣言に対応するJVMクラス群を生成する．
@@ -36,13 +36,13 @@ final class CustomType {
 			+ ")Ljava/lang/Object;",
 			false);
 
-	private final CcTypeDecl decl;
+	private final TypeDecl decl;
 	private final String origin;
 	private final String nestHost;
 	private final JavaType.Simple interfaceClass;
 	private final IdMap<JavaType.Variant> variantClasses;
 
-	CustomType(String moduleName, CcTypeDecl decl, String origin) {
+	CustomType(String moduleName, TypeDecl decl, String origin) {
 		this.decl = decl;
 		this.origin = origin;
 		this.nestHost = moduleName.replace('.', '/');
@@ -55,7 +55,7 @@ final class CustomType {
 						interfaceClass.toClassName())));
 	}
 
-	void putJavaClasses(IdMap<JavaType> javaClasses, IdMap<CcCtor> ctors) {
+	void putJavaClasses(IdMap<JavaType> javaClasses, IdMap<Ctor> ctors) {
 		javaClasses.put(decl.id(), interfaceClass);
 		decl.ctors().forEach(ctor -> {
 			javaClasses.put(ctor.id(), variantClasses.get(ctor.id()));
@@ -117,7 +117,7 @@ final class CustomType {
 	 */
 	private ClassWriter genVariantClass(
 			int opcodeVersion,
-			CcCtor ctor,
+			Ctor ctor,
 			Function<Type, String> toDesc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		String owner = variantClasses.get(ctor.id()).toClassName();
@@ -166,7 +166,7 @@ final class CustomType {
 	private void genCanonicalConstructor(
 			ClassWriter cw,
 			String owner,
-			CcCtor ctor,
+			Ctor ctor,
 			Function<Type, String> toDesc) {
 		MethodVisitor mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC,
@@ -289,7 +289,7 @@ final class CustomType {
 	private void genAppendStringTo(
 			ClassWriter cw,
 			String owner,
-			CcCtor ctor,
+			Ctor ctor,
 			Function<Type, String> toDesc) {
 		MethodVisitor mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SYNTHETIC,
@@ -333,7 +333,7 @@ final class CustomType {
 	 * }
 	 * }</pre>
 	 */
-	private void genAppendStringAsArgTo(ClassWriter cw, String owner, CcCtor ctor) {
+	private void genAppendStringAsArgTo(ClassWriter cw, String owner, Ctor ctor) {
 		MethodVisitor mv = cw.visitMethod(
 				Opcodes.ACC_PUBLIC + Opcodes.ACC_FINAL + Opcodes.ACC_SYNTHETIC,
 				APPEND_STRING_AS_ARG_TO,
@@ -384,7 +384,7 @@ final class CustomType {
 	private void genEqualsAndHashCode(
 			ClassWriter cw,
 			String owner,
-			CcCtor ctor,
+			Ctor ctor,
 			Function<Type, String> toDesc) {
 		Object[] bootstrapArgs = objectMethodBootstrapArgs(ctor, owner, toDesc);
 
@@ -425,7 +425,7 @@ final class CustomType {
 	}
 
 	private Object[] objectMethodBootstrapArgs(
-			CcCtor ctor,
+			Ctor ctor,
 			String owner,
 			Function<Type, String> toDesc) {
 		Object[] args = new Object[ctor.args().size() + 2];
@@ -450,7 +450,7 @@ final class CustomType {
 		return args;
 	}
 
-	private String constructorDesc(CcCtor ctor, Function<Type, String> toDesc) {
+	private String constructorDesc(Ctor ctor, Function<Type, String> toDesc) {
 		StringBuilder sb = new StringBuilder("(");
 		ctor.args().forEach(type -> sb.append(toDesc.apply(type)));
 		return sb.append(")V").toString();

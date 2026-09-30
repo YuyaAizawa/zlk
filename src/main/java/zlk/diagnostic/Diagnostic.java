@@ -1,5 +1,7 @@
 package zlk.diagnostic;
 
+import java.util.Optional;
+
 import zlk.common.Location;
 import zlk.common.Type;
 import zlk.common.id.Id;
@@ -220,6 +222,30 @@ public sealed interface Diagnostic {
 	 * @param type 再構築後の安定した型
 	 */
 	record InferredType(Location location, Id declaration, Type type) implements Diagnostic {
+		@Override
+		public Severity severity() {
+			return Severity.INFO;
+		}
+	}
+
+	/**
+	 * Bytecode生成において一つのRHSの生成が完了したことを表すtrace．
+	 *
+	 * source診断ではなく，明示的に有効化した場合だけ報告するbackend情報である．
+	 * {@code localId}は{@code function}内でのみLocalVarを識別する．phase内部の
+	 * LocalVar自体は公開しない．
+	 *
+	 * @param location RHSに対応するsource位置
+	 * @param function 生成中の関数
+	 * @param localId 関数内のLocalVar識別子
+	 * @param variable source上の名前を持つ場合の識別子
+	 */
+	record BytecodeStmt(
+			Location location,
+			Id function,
+			int localId,
+			Optional<Id> variable
+	) implements Diagnostic {
 		@Override
 		public Severity severity() {
 			return Severity.INFO;

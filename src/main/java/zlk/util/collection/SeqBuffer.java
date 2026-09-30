@@ -7,6 +7,7 @@ import java.util.NoSuchElementException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -152,8 +153,16 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		return (E) tailChunk.data[tailSize - 1];
 	}
 
-	@SuppressWarnings("unchecked")
 	public E at(int index) {
+		return replace(index, e -> e);
+	}
+
+	public E replace(int index, E element) {
+		return replace(index, _ -> element);
+	}
+
+	@SuppressWarnings("unchecked")
+	public E replace(int index, UnaryOperator<E> updater) {
 		if(index < 0 || totalSize <= index) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
@@ -162,7 +171,9 @@ public final class SeqBuffer<E> implements Iterable<E> {
 		Chunk cursor = headChunk;
 		while(true) {
 			if(index - count < cursor.data.length) {
-				return (E) cursor.data[index - count];
+				E old = (E) cursor.data[index - count];
+				cursor.data[index - count] = updater.apply(old);
+				return old;
 			}
 			count += cursor.data.length;
 			cursor = cursor.next;

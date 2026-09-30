@@ -11,7 +11,6 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.common.id.IdSet;
 import zlk.ir.clcalc.CcCaseBranch;
-import zlk.ir.clcalc.CcCtor;
 import zlk.ir.clcalc.CcExp;
 import zlk.ir.clcalc.CcExp.CcCase;
 import zlk.ir.clcalc.CcExp.CcClosureApp;
@@ -28,9 +27,7 @@ import zlk.ir.clcalc.CcExp.CcVar;
 import zlk.ir.clcalc.CcFunDecl;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.clcalc.CcPattern;
-import zlk.ir.clcalc.CcTypeDecl;
 import zlk.ir.idcalc.IcCaseBranch;
-import zlk.ir.idcalc.IcCtor;
 import zlk.ir.idcalc.IcExp;
 import zlk.ir.idcalc.IcExp.IcApp;
 import zlk.ir.idcalc.IcExp.IcCase;
@@ -47,7 +44,6 @@ import zlk.ir.idcalc.IcExp.IcVarForeign;
 import zlk.ir.idcalc.IcExp.IcVarLocal;
 import zlk.ir.idcalc.IcModule;
 import zlk.ir.idcalc.IcPattern;
-import zlk.ir.idcalc.IcTypeDecl;
 import zlk.ir.idcalc.IcValDecl;
 import zlk.phase.recon.ExpOrPatternMap;
 import zlk.util.collection.Seq;
@@ -103,8 +99,7 @@ public final class ClosureConverter {
 				.forEach(maybeCls -> maybeCls.ifPresent(cls -> {
 					throw new RuntimeException("toplevel must not be closure: "+cls.implId()); }));
 
-		Seq<CcTypeDecl> types = src.types().map(ty -> convert(ty));
-		return new CcModule(src.name(), types, toplevels.toSeq());
+		return new CcModule(src.name(), src.types(), toplevels.toSeq());
 	}
 
 	/**
@@ -494,21 +489,13 @@ public final class ClosureConverter {
 				+ Id.SEPARATOR + exceptModule);
 	}
 
-	private CcTypeDecl convert(IcTypeDecl icType) {
-		return new CcTypeDecl(icType.id(), icType.ctors().map(ctor -> convert(ctor)), icType.loc());
-	}
-
-	private CcCtor convert(IcCtor icCtor) {
-		return new CcCtor(icCtor.id(), icCtor.args(), icCtor.loc());
-	}
-
 	private CcPattern convert(IcPattern pat) {
 		return switch(pat) {
 		case IcPattern.Wildcard(Location loc) ->
-			new CcPattern.Wildcard(loc);
+			new CcPattern.Wildcard(partExpTypes.get(pat), loc);
 		case IcPattern.Var var -> convert(var);
 		case IcPattern.Dector(IcExp.IcVarCtor ctor, Seq<IcPattern> args, Location loc) ->
-			new CcPattern.Dector(ctor, args.map(arg -> convert(arg)), partExpTypes.get(pat), loc);
+			new CcPattern.Ctor(ctor, args.map(arg -> convert(arg)), partExpTypes.get(pat), loc);
 		case IcPattern.Record(Seq<IcPattern.Var> fields, Location loc) ->
 			new CcPattern.Record(fields.map(this::convert), partExpTypes.get(pat), loc);
 		};

@@ -1,12 +1,13 @@
 package zlk.ir.clcalc;
 
+import zlk.common.TypeDecl;
 import zlk.util.collection.Seq;
 import zlk.util.pp.PrettyPrintable;
 import zlk.util.pp.PrettyPrinter;
 
 public record CcModule(
 		String name,
-		Seq<CcTypeDecl> types,
+		Seq<TypeDecl> types,
 		Seq<CcFunDecl> funcs)
 implements PrettyPrintable {
 
