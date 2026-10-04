@@ -18,12 +18,15 @@ import zlk.ir.reuse.anf.AnfModule;
 import zlk.ir.reuse.own.OwnModule;
 import zlk.ir.reuse.plan.ReusePlan;
 import zlk.ir.token.Tokenized;
+import zlk.phase.CompilationOptions;
+import zlk.phase.CompilationOptions.Key;
 import zlk.phase.PhaseResult;
 import zlk.phase.clconv.ClosureConverter;
 import zlk.phase.codegen.BytecodeGenerator;
 import zlk.phase.nameeval.NameEvaluator;
 import zlk.phase.parse.Lexer;
 import zlk.phase.parse.Parser;
+import zlk.phase.parse.Parser.ParseResult;
 import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.ExpOrPatternMap;
@@ -36,24 +39,6 @@ import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
 public final class Driver {
-
-	/**
-	 * コンパイル時に任意で有効化する診断設定．
-	 */
-	public record CompilationOptions(
-			boolean reportInferredTypes,
-			boolean reportBytecodeStmtOrder
-	) {
-		public static final CompilationOptions DEFAULT = new CompilationOptions(false, false);
-
-		public CompilationOptions reportInferredTypes(boolean enabled) {
-			return new CompilationOptions(enabled, reportBytecodeStmtOrder);
-		}
-
-		public CompilationOptions reportBytecodeStmtOrder(boolean enabled) {
-			return new CompilationOptions(reportInferredTypes, enabled);
-		}
-	}
 
 	public sealed interface CompilationResult {
 
@@ -69,73 +54,76 @@ public final class Driver {
 		) implements CompilationResult {}
 	}
 
+	public static CompilationResult compile(String name, String src, CompilationOptions options) {
+		return new Driver(options).run(name, src);
+	}
 	public static CompilationResult compile(String name, String src) {
 		return compile(name, src, CompilationOptions.DEFAULT);
 	}
 
-	public static CompilationResult compile(String name, String src, CompilationOptions options) {
+	private final CompilationOptions options;
+	private final DiagnosticCollector sink;
 
-		DiagnosticCollector diagCollector = new DiagnosticCollector();
-		DiagnosticReporter reconSink = options.reportInferredTypes()
-				? diagCollector
-				: diagCollector.excluding(Diagnostic.InferredType.class);
+	private Driver(CompilationOptions options) {
+		this.options = options;
+		this.sink = new DiagnosticCollector();
+	}
+
+	public CompilationResult run(String name, String src) {
 
 		// 字句解析から名前解決まで
-		PhaseResult<IcModule> nameEvaled = lexPhase(name, src, diagCollector)
-				.andThen(tokenized -> parsePhase(tokenized, diagCollector))
-				.andThen(module -> nameEvalPhase(module, diagCollector));
+		PhaseResult<IcModule> nameEvaled = lexPhase(name, src)
+				.andThen(tokenized -> parsePhase(tokenized))
+				.andThen(module -> nameEvalPhase(module));
 
 		// 型推論
 		PhaseResult<ReconResult> reconed =
-				nameEvaled.andThen(icModule -> reconPhase(icModule, reconSink));
+				nameEvaled.andThen(icModule -> reconPhase(icModule));
 
 		// パターン検査
 		PhaseResult<PhaseResult.Unit> patternChecked = reconed.andThen(
 				reconResult -> nameEvaled.andThen(
-				module -> patternPhase(module, reconResult.partExpTypes(), diagCollector)));
+				module -> patternPhase(module, reconResult.partExpTypes())));
 
 		// 閉包変換
 		PhaseResult<CcModule> closured = nameEvaled.andThen(
 				module -> patternChecked.andThen(
 				_ -> reconed.andThen(
-				inffered -> closurePhase(
-							module,
-							inffered.types(),
-							inffered.partExpTypes(),
-							diagCollector)
-				)));
+				inffered -> closurePhase(module, inffered.types(), inffered.partExpTypes()))));
 
 		// 再利用最適化
 		PhaseResult<ReusePlan> planed = closured.andThen(
-				ccmodule -> reusePhase(ccmodule, diagCollector));
+				ccmodule -> reusePhase(ccmodule));
 
-		DiagnosticReporter bytecodeSink = options.reportBytecodeStmtOrder()
-				? diagCollector
-				: diagCollector.excluding(Diagnostic.BytecodeStmt.class);
 		PhaseResult<Map<String, byte[]>> result =
 				planed.andThen(plan ->
 				reconed.andThen(inffered ->
-					bytecodePhase(plan, inffered.types(), name, bytecodeSink)));
+					bytecodePhase(plan, inffered.types(), name)));
 
-		Seq<Diagnostic> diags = diagCollector.collect();
+		Seq<Diagnostic> diags = sink.collect();
 		return result.fold(
 				clazzes -> new CompilationResult.Succeeded(clazzes, diags),
 				() -> new CompilationResult.Failed(diags));
 	}
 
-	private static PhaseResult<Tokenized> lexPhase(String name, String src, DiagnosticReporter sink) {
+	private PhaseResult<Tokenized> lexPhase(String name, String src) {
 		return PhaseResult.ready(new Lexer(name, src).lex());
 	}
 
-	private static PhaseResult<Module> parsePhase(Tokenized tokens, DiagnosticReporter sink) {
-		Parser.Result result = Parser.parseResult(tokens);
-		result.diagnostics().forEach(sink::report);
-		return result.diagnostics().isEmpty()
-				? PhaseResult.ready(result.module())
-				: PhaseResult.blocked();
+	private PhaseResult<Module> parsePhase(Tokenized tokens) {
+		ParseResult parseResult = Parser.parse(tokens);
+		if(parseResult.errors().isEmpty()) {
+			return PhaseResult.ready(parseResult.ast());
+		} else {
+			parseResult.errors().forEach(sink::report);
+			return PhaseResult.blocked();
+		}
 	}
 
-	private static PhaseResult<IcModule> nameEvalPhase(Module module, DiagnosticReporter sink) {
+	private PhaseResult<IcModule> nameEvalPhase(
+			Module module
+	) {
+		// TODO エラーを診断に出すように
 		return new NameEvaluator(module).eval(sink);
 	}
 
@@ -143,9 +131,8 @@ public final class Driver {
 			IdMap<Type> types,
 			ExpOrPatternMap<Type> partExpTypes
 	) {}
-	private static PhaseResult<ReconResult> reconPhase(
-			IcModule module,
-			DiagnosticReporter sink
+	private PhaseResult<ReconResult> reconPhase(
+			IcModule module
 	) {
 		// 共通のフレッシュ変数カウンタ
 		FreshFlex freshFlex = new FreshFlex();
@@ -171,7 +158,9 @@ public final class Driver {
 							}));
 			reconed.types().forEach(types::put);
 
-			reportInferredTypes(module, types, sink);
+			if(options.isEnabled(Key.REPORT_INFERRED_TYPES)) {
+				reportInferredTypes(module, types, sink);
+			}
 
 			return PhaseResult.ready(
 					new ReconResult(types, reconed.partExpType()));
@@ -209,13 +198,12 @@ public final class Driver {
 	}
 
 
-	private static PhaseResult<PhaseResult.Unit> patternPhase(
+	private PhaseResult<PhaseResult.Unit> patternPhase(
 			IcModule module,
-			ExpOrPatternMap<Type> patternTypes,
-			DiagnosticReporter diagCollector
+			ExpOrPatternMap<Type> patternTypes
 	) {
 		Seq<Diagnostic> result = PatternChecker.check(module, patternTypes);
-		result.forEach(diagCollector::report);
+		result.forEach(sink::report);
 		return result.anyMatch(Diagnostic::isError)
 				? PhaseResult.blocked()
 				: PhaseResult.ready(PhaseResult.Unit.INSTANCE);
@@ -224,8 +212,7 @@ public final class Driver {
 	private static PhaseResult<CcModule> closurePhase(
 			IcModule module,
 			IdMap<Type> types,
-			ExpOrPatternMap<Type> partExpTypes,
-			DiagnosticReporter sink
+			ExpOrPatternMap<Type> partExpTypes
 	) {
 		// TODO: 診断仕込み
 		Seq<Id> builtinIds = Builtin.functions().map(Builtin::id);
@@ -233,26 +220,24 @@ public final class Driver {
 				new ClosureConverter(module, types, partExpTypes, builtinIds).convert());
 	}
 
-	private static PhaseResult<ReusePlan> reusePhase(
-			CcModule module,
-			DiagnosticReporter sink
+	private PhaseResult<ReusePlan> reusePhase(
+			CcModule module
 	) {
 		// TODO: 診断仕込み
 		AnfModule anf = AnfConverter.convert(module);
 		OwnModule own = OwnershipElaborator.convert(anf);
-		ReusePlan plan = ReusePlanner.plan(own);
+		ReusePlan plan = ReusePlanner.plan(own, options);
 		return PhaseResult.ready(plan);
 	}
 
 
-	private static PhaseResult<Map<String, byte[]>> bytecodePhase(
+	private PhaseResult<Map<String, byte[]>> bytecodePhase(
 			ReusePlan module,
 			IdMap<Type> types,
-			String name,
-			DiagnosticReporter sink
+			String name
 	) {
 		Map<String, byte[]> bytecode = new HashMap<>();
-		new BytecodeGenerator(module, types, Builtin.functions(), name, sink)
+		new BytecodeGenerator(module, types, Builtin.functions(), name, sink, options)
 				.compile(bytecode::put);
 		return PhaseResult.ready(bytecode);
 	}

@@ -13,14 +13,13 @@ import java.util.function.Function;
 import zlk.common.id.Id;
 import zlk.compiler.Driver;
 import zlk.diagnostic.Diagnostic;
+import zlk.phase.CompilationOptions;
+import zlk.phase.CompilationOptions.Key;
 import zlk.util.collection.Seq;
 import zlk.util.tester.DumpOnFailureWatcher;
 
 /** Driverの型情報出力を有効にしたtest用コンパイル結果． */
 public final class CompilationFixture {
-	private static final Driver.CompilationOptions REPORT_TYPES =
-			Driver.CompilationOptions.DEFAULT.reportInferredTypes(true);
-
 	private final Driver.CompilationResult result;
 	private final Seq<String> generatedClassNames;
 	private final InMemoryClassLoader classLoader;
@@ -39,7 +38,10 @@ public final class CompilationFixture {
 	}
 
 	public static CompilationFixture compile(String src) {
-		return new CompilationFixture(Driver.compile("Main.zlk", "module Main\n" + src, REPORT_TYPES));
+		return new CompilationFixture(Driver.compile(
+				"Main.zlk",
+				"module Main\n" + src,
+				CompilationOptions.DEFAULT.enable(Key.REPORT_INFERRED_TYPES)));
 	}
 
 	public static CompilationFixture compileSucceeded(String src) {

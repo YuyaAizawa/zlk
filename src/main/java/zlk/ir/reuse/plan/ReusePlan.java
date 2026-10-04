@@ -11,7 +11,7 @@ import zlk.util.collection.Seq;
 
 public final class ReusePlan {
 	private final OwnModule module;
-	private final IdMap<LocalSet> inplaceRecordUpdateInFun;
+	private final IdMap<LocalSet> inplaceRecordUpdateInFun;  // 最適化しない関数は含めなくても良い
 
 	public ReusePlan(OwnModule module, IdMap<LocalSet> inplaceRecordUpdateInFun) {
 		this.module = module;
@@ -31,7 +31,9 @@ public final class ReusePlan {
 	}
 
 	public boolean isInplaceRecordUpdate(Id fun, LocalVar site) {
-		return inplaceRecordUpdateInFun.get(fun).contains(site);
+		return inplaceRecordUpdateInFun.getOptional(fun)
+				.map(sites -> sites.contains(site))
+				.orElse(false);
 	}
 
 }

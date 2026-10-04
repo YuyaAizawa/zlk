@@ -18,6 +18,7 @@ import zlk.common.id.Id;
 import zlk.common.id.IdMap;
 import zlk.core.Builtin;
 import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.Diagnostic.SyntaxError;
 import zlk.ir.ast.Module;
 import zlk.ir.clcalc.CcModule;
 import zlk.ir.idcalc.IcModule;
@@ -30,6 +31,7 @@ import zlk.phase.codegen.BytecodeGenerator;
 import zlk.phase.nameeval.NameEvaluator;
 import zlk.phase.parse.Lexer;
 import zlk.phase.parse.Parser;
+import zlk.phase.parse.Parser.ParseResult;
 import zlk.phase.patterncheck.PatternChecker;
 import zlk.phase.recon.ConstraintExtractor;
 import zlk.phase.recon.FreshFlex;
@@ -114,8 +116,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- AST --");
-		Module ast = Parser.parse(tokens);
+		ParseResult parsed = Parser.parse(tokens);
+		Module ast = parsed.ast();
+		Seq<SyntaxError> parseErrors = parsed.errors();
 		System.out.println(ast.buildString());
+		if(!parseErrors.isEmpty()) {
+			parseErrors.forEach(e -> System.out.println(e));
+		}
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");

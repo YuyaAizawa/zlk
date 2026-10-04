@@ -9,12 +9,12 @@ import static zlk.phase.parse.Peg.sequence;
 import static zlk.phase.parse.Peg.star;
 import static zlk.util.ErrorUtils.todo;
 
-import java.io.IOException;
 import java.util.Optional;
 
 import zlk.common.Location;
 import zlk.common.LocationHolder;
 import zlk.diagnostic.Diagnostic;
+import zlk.diagnostic.Diagnostic.SyntaxError;
 import zlk.ir.ast.AnType;
 import zlk.ir.ast.CaseBranch;
 import zlk.ir.ast.Constructor;
@@ -94,33 +94,24 @@ import zlk.util.collection.SeqBuffer;
  */
 public final class Parser {
 
-	public record Result(Module module, Seq<Diagnostic.SyntaxError> diagnostics) {}
-
-	public static Module parse(Tokenized src) {
-		return parseResult(src).module();
-	}
-
-	public static Result parseResult(Tokenized src) {
-		Module result = module.parse(src);
-		if(result == null) {
+	// Parserは失敗したときもASTを返すためPhaseResultにしていない
+	// どこまでparseできたかが充分に診断に含められたら変更しても良い
+	public record ParseResult(Module ast, Seq<SyntaxError> errors) {}
+	public static ParseResult parse(Tokenized src) {
+		Module ast = module.parse(src);
+		if(ast == null) {
 			todo("error");
 		}
 		if(src.hasNext()) {
 			System.err.println(src.restSource());
 			todo("error");
 		}
-		return new Result(result, collectSyntaxErrors(result));
-	}
-
-	public static Module parse(String fileName, String src) {
-		return parse(new Lexer(fileName, src).lex());
-	}
-
-	public static Module parse(String fileName) throws IOException {
-		return parse(new Lexer(fileName).lex());
+		Seq<SyntaxError> errors = collectSyntaxErrors(ast);
+		return new ParseResult(ast, errors);
 	}
 
 	private static Seq<Diagnostic.SyntaxError> collectSyntaxErrors(Module module) {
+
 		SeqBuffer<Diagnostic.SyntaxError> errors = new SeqBuffer<>();
 		for(Decl decl : module.decls()) {
 			switch(decl) {

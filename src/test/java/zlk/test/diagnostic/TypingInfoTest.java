@@ -10,6 +10,8 @@ import zlk.common.Type;
 import zlk.common.id.Id;
 import zlk.compiler.Driver;
 import zlk.diagnostic.Diagnostic;
+import zlk.phase.CompilationOptions;
+import zlk.phase.CompilationOptions.Key;
 import zlk.util.collection.Seq;
 import zlk.util.fixture.CompilationFixture;
 
@@ -22,7 +24,7 @@ public class TypingInfoTest {
 				Driver.compile(
 						"Main.zlk",
 						src,
-						Driver.CompilationOptions.DEFAULT.reportInferredTypes(false)));
+						CompilationOptions.DEFAULT.disable(Key.REPORT_INFERRED_TYPES)));
 
 		assertEquals(0, defaultResult.diags().size());
 		assertEquals(0, disabledResult.diags().size());

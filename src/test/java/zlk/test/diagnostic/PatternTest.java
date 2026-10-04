@@ -1,14 +1,14 @@
 package zlk.test.diagnostic;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.compiler.Driver;
 import zlk.common.id.Id;
+import zlk.compiler.Driver;
 import zlk.diagnostic.Diagnostic;
 import zlk.diagnostic.PatternWitness;
 import zlk.util.collection.Seq;
@@ -217,8 +217,10 @@ public class PatternTest {
 				"module Main\n" + src
 		);
 		Driver.CompilationResult.Failed failed = assertInstanceOf(Driver.CompilationResult.Failed.class, result);
-		assertEquals(1, failed.diags().size());
-		Diagnostic diagnostic = failed.diags().head();
+
+		Seq<Diagnostic> diags = failed.diags();
+		assertEquals(1, diags.size(), "expected only ONE Diagnostic, but was: "+diags);
+		Diagnostic diagnostic = diags.head();
 		assertTrue(diagnostic.isError());
 		return diagnostic;
 	}

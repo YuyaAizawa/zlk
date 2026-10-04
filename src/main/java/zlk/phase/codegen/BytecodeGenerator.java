@@ -34,6 +34,8 @@ import zlk.ir.reuse.own.OwnRhs.OwnRecordField;
 import zlk.ir.reuse.own.OwnStmt;
 import zlk.ir.reuse.own.OwnUse;
 import zlk.ir.reuse.plan.ReusePlan;
+import zlk.phase.CompilationOptions;
+import zlk.phase.CompilationOptions.Key;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Stack;
@@ -56,6 +58,7 @@ public final class BytecodeGenerator {
 	private final IdMap<Ctor> ctors;
 	private final Seq<CustomType> customTypes;
 	private final DiagnosticReporter diagnosticReporter;
+	private final CompilationOptions options;
 	private ClassWriter cw;
 
 	private static final Id LOCAL_DUMMY_ID = Id.intern("..DUMMY..");
@@ -90,7 +93,7 @@ public final class BytecodeGenerator {
 	private Stack<Runnable> pendings;
 
 	public BytecodeGenerator(ReusePlan module, IdMap<Type> types, Seq<Builtin> builtins, String origin) {
-		this(module, types, builtins, origin, _ -> {});
+		this(module, types, builtins, origin, _ -> {}, CompilationOptions.DEFAULT);
 	}
 
 	public BytecodeGenerator(
@@ -98,7 +101,8 @@ public final class BytecodeGenerator {
 			IdMap<Type> types,
 			Seq<Builtin> builtins,
 			String origin,
-			DiagnosticReporter diagnosticReporter
+			DiagnosticReporter diagnosticReporter,
+			CompilationOptions options
 	) {
 		this.module = module;
 		this.types = types;
@@ -110,6 +114,7 @@ public final class BytecodeGenerator {
 		this.ctors = new IdMap<>();
 		this.customTypes = module.types().map(decl -> new CustomType(module.name(), decl, origin));
 		this.diagnosticReporter = diagnosticReporter;
+		this.options = options;
 		this.pendings = new Stack<>();
 
 		javaClasses.put(Type.UNIT.id(), JavaType.VOID);
@@ -341,11 +346,13 @@ public final class BytecodeGenerator {
 	private void compile(OwnStmt.Bind bind, JavaType expectedJavaType) {
 		LocalVar lhs = bind.dst();
 		compile(lhs, bind.rhs(), expectedJavaType);
-		diagnosticReporter.report(new Diagnostic.BytecodeStmt(
-				bind.loc(),
-				compilingFun,
-				lhs.localId(),
-				lhs.id()));
+		if (options.isEnabled(Key.REPORT_BYTECODE_STMT_ORDER)) {
+			diagnosticReporter.report(new Diagnostic.BytecodeStmt(
+					bind.loc(),
+					compilingFun,
+					lhs.localId(),
+					lhs.id()));
+		}
 	}
 	/**
 	 * OwnRhsに対応するバイトコードを生成する．
