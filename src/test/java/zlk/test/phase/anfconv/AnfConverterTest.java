@@ -7,22 +7,22 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.ConstValue;
-import zlk.common.Ctor;
-import zlk.common.Location;
-import zlk.common.RecordField;
-import zlk.common.Type;
-import zlk.common.TypeDecl;
-import zlk.common.id.Id;
-import zlk.ir.clcalc.CcExp;
-import zlk.ir.clcalc.CcFunDecl;
-import zlk.ir.clcalc.CcModule;
-import zlk.ir.reuse.LocalVar;
-import zlk.ir.reuse.anf.AnfBind;
-import zlk.ir.reuse.anf.AnfBlock;
-import zlk.ir.reuse.anf.AnfRhs;
-import zlk.ir.reuse.anf.AnfRhs.Cnst;
-import zlk.phase.reuse.AnfConverter;
+import zlk.compiler.id.Id;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.clcalc.CcExp;
+import zlk.compiler.ir.clcalc.CcFunDecl;
+import zlk.compiler.ir.clcalc.CcModule;
+import zlk.compiler.ir.reuse.LocalVar;
+import zlk.compiler.ir.reuse.anf.AnfBind;
+import zlk.compiler.ir.reuse.anf.AnfBlock;
+import zlk.compiler.ir.reuse.anf.AnfRhs;
+import zlk.compiler.ir.reuse.anf.AnfRhs.Cnst;
+import zlk.compiler.ir.typing.Ctor;
+import zlk.compiler.ir.typing.RecordField;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.ir.typing.TypeDecl;
+import zlk.compiler.phase.reuse.AnfConverter;
+import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 
 public class AnfConverterTest {

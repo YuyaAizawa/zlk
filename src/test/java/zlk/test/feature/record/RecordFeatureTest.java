@@ -14,7 +14,7 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import zlk.compiler.Driver;
+import zlk.compiler.driver.Driver;
 import zlk.runtime.ZlkRecord;
 import zlk.util.fixture.CompilationFixture;
 import zlk.util.tester.DumpOnFailureWatcher;

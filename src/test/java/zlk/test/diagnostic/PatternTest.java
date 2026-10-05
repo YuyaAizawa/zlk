@@ -7,10 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.id.Id;
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
-import zlk.diagnostic.PatternWitness;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.PatternWitness;
+import zlk.compiler.driver.Driver;
+import zlk.compiler.id.Id;
 import zlk.util.collection.Seq;
 import zlk.util.fixture.CompilationFixture;
 

@@ -1,6 +1,5 @@
 package zlk.util;
 
-import zlk.common.Location;
 
 public final class ErrorUtils {
 	private ErrorUtils() {}
@@ -15,10 +14,6 @@ public final class ErrorUtils {
 
 	public static <R> R neverHappen(String reason) {
 		throw new NeverHappen(reason);
-	}
-
-	public static <R> R neverHappen(String reason, Location loc) {
-		throw new NeverHappen(reason, loc);
 	}
 }
 
@@ -37,9 +32,5 @@ class Todo extends RuntimeException {
 class NeverHappen extends Error {
 	NeverHappen(String reason) {
 		super(reason);
-	}
-
-	NeverHappen(String reason, Location loc) {
-		this(reason+"@"+loc);
 	}
 }

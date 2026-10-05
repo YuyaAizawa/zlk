@@ -2,6 +2,7 @@
 
 この文書は，ZLKコンパイラの全体構造，コンパイルフェーズ，主要なデータ構造，およびコードを読むための用語と命名の凡例を示す．個々のクラスやアルゴリズムの詳細は，関連するソースコードとコメントに記載されている．
 
+
 ## コンパイルフェーズ
 
 ```mermaid
@@ -69,23 +70,48 @@ flowchart TB
     BytecodeGen --> Class
 ```
 
-`Driver`は，`lexPhase`，`parsePhase`，`nameEvalPhase`，`reconPhase`，`patternPhase`，`closurePhase`，`reusePhase`，`bytecodePhase`という塊で処理を順に呼び出すことにより，各フェーズの実装を組合わせてコンパイルを実現する．
-`reconPhase`は`Driver`内では1つのフェーズのように記述してあるが，内部は`ConstraintExtractor`と`TypeReconstructor`という概念上異なるフェーズを含む．
+図の丸いノードはIR・解析結果，四角いノードはフェーズを表す．型情報や一意性解析結果は，式のIRとは別に後続フェーズへ渡す．以下のIR名は`zlk.compiler.ir`，フェーズ名は`zlk.compiler.phase`からの相対名である．`recon.*.Result`は型推論フェーズ間で受け渡す結果型であり，`phase.recon`に属する．
 
-`AnfConverter`は，後続の所有権解析とレコード再利用計画の前段として，`CcModule`を`AnfModule`へ変換する．`AnfModule`では式の評価順序と局所変数を明示し，関数引数およびcase式のpatternを自己完結したnested `AnfPattern`として保持する．`LocalVar.localId`はANF上の値を識別し，単なる変数別名には新しい`LocalVar`や`AnfBind`を導入しない．pattern compilationはANF変換後の別フェーズの責務とする．`OwnershipElaborator`は`AnfModule`から`OwnModule`を生成し，各変数出現を`BORROW`または`TAKE`として明示するとともに，binderに`OWNED`または`BORROWED`を保持し，後ろ向きlivenessに基づく`Dup`／`Drop`を`OwnStmt`として挿入する．`UniquenessAnalyzer`は各`Bind`のRHS評価直前にuniqueな値を`ModuleUniquenessFacts`へ記録する．`ReusePlanner`はこのfactsと`OwnModule`から，uniqueなtargetを`TAKE`するrecord updateだけをin-place更新siteとして選択し，選択結果を`ReusePlan`へ保持する．
+### IR・解析結果
 
-`BytecodeGenerator`は，source上の名前を持つ`LocalVar`のRHSを`OwnBlock.stmts()`の走査時に生成してlocal slotへ格納する．名前を持たないsingle-useの`LocalVar`はpending mapへ保持し，そのuseを生成するときにRHSを生成してoperand stackへ直接残す．関数の生成後にはpending mapが空でなければならない．`CompilationOptions.DEFAULT.reportBytecodeStmtOrder(true)`を指定すると，各RHSのbytecode生成が正常に完了した順番を`Diagnostic.BytecodeStmt`としてreportする．payloadは関数`Id`，関数内`localId`，任意のsource `Id`，位置だけを持ち，`LocalVar`やOwn IRを公開しない．
+| 表現 | 特徴・他の表現との違い |
+|---|---|
+| `token.Tokenized` | 字句とソース位置の列．式や宣言の構造は未解析 |
+| `ast.Module` | ソースの構文構造．名前は文字列で保持し，構文解析後は変更しない |
+| `idcalc.IcModule` | 名前を`Id`へ解決した式・宣言．型名やaliasは解決済みだが，式の型推論は未実施 |
+| `recon.ConstraintExtractor.Result` | 型の等式・スコープ制約と，式・パターンに対応する推論中の型．型を求める条件の表現 |
+| `recon.TypeReconstructor.Result` | 宣言の多相型と，式・パターンの型の対応表．推論中の可変な型表現ではなく，安定した`typing.Type`で保持 |
+| `clcalc.CcModule` | 局所関数を持ち上げ，自由変数の捕捉を明示した式．評価順序の局所変数への展開は未実施 |
+| `reuse.anf.AnfModule` | 評価順序と中間値を`LocalVar`で明示したA正規形．関数引数とcase分岐のパターンは保持 |
+| `reuse.own.OwnModule` | ANFにbinderの所有状態，出現ごとの借用・消費，`Dup`／`Drop`を付与．再利用箇所は未選択 |
+| `reuse.plan.ModuleUniquenessFacts` | 各束縛の右辺評価直前に，一意と保証できる値の情報．Own IRを書き換えない解析結果 |
+| `reuse.plan.ReusePlan` | Own IRと，in-place更新するレコード更新箇所の集合．一意性の情報から選んだ具体的な最適化計画 |
 
-`PatternChecker`は，名前解決後の`IcModule`と型再構築後の`ExpOrPatternMap<Type>`を検査する．型再構築済みのpattern型からconstructor familyを取得するため，well-typedなpattern matrixを前提として冗長性と網羅性の検査に専念する．レコードパターンは1個以上の同名フィールド変数だけを持つ反駁不能なbinderなので，内部のpattern matrixではwildcard相当として扱う．
+### フェーズ
 
-parser，nameeval，recon，patterncheck，codegenの各phaseは，`Driver`から渡されたreporterへ公開`Diagnostic`をreportする．任意のINFO診断を無効にする場合，`Driver`はphase全体を無効化するno-op reporterではなく，対象のdiagnostic variantだけを拒否するreporterを渡す．これにより，同じphaseが将来reportする別の診断は回収される．`ERROR`がreportされた段階で`Driver`は後続フェーズをblockし，`CompilationResult.Failed`を返す．`WARN`と`INFO`だけの場合は，diagnostic列を保持したまま後続フェーズを継続する．
+| フェーズ | 役割・他のフェーズとの違い |
+|---|---|
+| `parse.Lexer` | ソース文字列を字句列へ分割．構文の組立てはParserの責務 |
+| `parse.Parser` | 字句列からASTを構築．名前の参照先や型は解決しない |
+| `nameeval.NameEvaluator` | 名前の参照先，型名，型aliasを解決．式の型の整合性は型推論で検査 |
+| `recon.ConstraintExtractor` | 式・パターン・型注釈から型制約を抽出．制約の解決は行わない |
+| `recon.TypeReconstructor` | 単一化と汎化により型制約を解き，型を再構築．パターンの網羅性は検査しない |
+| `patterncheck.PatternChecker` | 型が確定したパターンの冗長性と網羅性を検査．IRの変換やパターンのコード生成は行わない |
+| `clconv.ClosureConverter` | 局所関数を持ち上げ，捕捉する自由変数を明示．所有権や値の一意性は扱わない |
+| `reuse.AnfConverter` | 評価順序を束縛列へ展開し，中間値を明示．パターンの分解・分岐命令への変換は行わない |
+| `reuse.OwnershipElaborator` | 値の生存に基づき借用・消費と`Dup`／`Drop`を明示．in-place更新の可否は決めない |
+| `reuse.UniquenessAnalyzer` | Own IRから値の一意性を解析．最適化箇所の選択やIRの変更は行わない |
+| `reuse.ReusePlanner` | 一意な値を消費するレコード更新を，再利用箇所として選択．命令生成は後段へ委ねる |
+| `codegen.BytecodeGenerator` | 型情報と再利用計画からJVMクラスを生成．パターンを分解・分岐へ変換し，JVM上の値表現と命令を決定 |
+
+`compiler.driver.Driver`は，これらのフェーズを順に実行する公開入口である．コンパイルオプションを適用し，生成クラスと診断を`CompilationResult`へまとめる．エラー時は後続フェーズへ進まず，警告・情報診断だけの場合はコンパイルを継続する．
 
 ## レコード型
 
 ZLKのレコード型は，行多相を持つ構造的型である．重要な設計は次のとおり．
 
-レコードリテラル/パターンは1個以上のフィールドを必要とする．パターンはフィールド名と同名の変数を束縛する事ことのみ可能．
-型はネスト可能で，レコード多相のRowは空も許容する．
+レコードリテラルとレコードパターンは1個以上のフィールドを必要とする．レコードパターンは同名フィールド変数の列だけからなり，renameやネストしたパターンを持たない．
+レコード型はネスト可能で，行多相のRowは空のフィールド列も許容する．
 
 - **RecordとRowの分離**：安定層では`Type.Record`が`Type.Row`を包み，row tailの`Type.RowVar`は値型`Type`を実装しない．制約層の`RcType.RecordN`／`RowN`，flat層の`FlatType.Record1`／`Row1`も同じ境界を保つ．union-find rootはTYPE／ROW kindを持ち，rank，generalize，instantiateの機構を共有する．
 - **open rowによる一様な型推論**：アクセス，更新，レコードパターンは`ConstraintExtractor`でopen rowを含む`CEqual`へlowerする．solverはrowのlabel差分をtailへ束縛し，lacks制約で重複labelを防ぐため，個別構文向けの特例を必要としない．
@@ -126,45 +152,34 @@ M.f._case2_1._case1_1.y
 
 | パッケージ | 責務 |
 |---|---|
-| `common`，`common.id` | `Id`，`Location`，`Type`などの共通データ構造 |
-| `compiler` | `Driver`によるコンパイルパイプラインと結果の統括 |
-| `core` | 組み込み関数と組み込み値 |
-| `diagnostic` | 構造化診断と診断の報告先 |
-| `ir.ast` | 抽象構文木 |
-| `ir.token` | 字句解析結果 |
-| `ir.idcalc` | 名前解決後のIR |
-| `ir.typing` | 型再構築後に後続フェーズが利用する型情報 |
-| `ir.clcalc` | クロージャ変換後のIR |
-| `ir.reuse` | 所有権・再利用解析で共有する`LocalVar`等のデータ構造 |
-| `ir.reuse.anf` | A正規形変換後のIR |
-| `ir.reuse.own` | use-siteの所有権要求と`Dup`/`Drop`を明示したIR |
-| `ir.reuse.plan` | 一意性解析結果と再利用計画 |
-| `phase` | コンパイルフェーズ共通の結果表現 |
-| `phase.parse` | 字句解析と構文解析 |
-| `phase.nameeval` | 名前解決と型名解決 |
-| `phase.recon` | 型制約の抽出と型再構築 |
-| `phase.recon.constraint` | 型制約IRと型再構築中の型表現 |
-| `phase.patterncheck` | パターンマッチの冗長性および網羅性の検査 |
-| `phase.clconv` | クロージャ変換 |
-| `phase.reuse` | A正規形変換，所有権付与，および後続の再利用解析 |
-| `phase.codegen` | JVMバイトコード生成 |
-| `runtime` | 生成コードが利用する実行時interfaceと値の文字列化 |
-| `util`，`util.collection`，`util.pp` | `Result`，コレクション，Pretty Printerなどの汎用部品 |
+| `compiler` | Driverと各フェーズで共有する`CompilationOptions`と`PhaseResult` |
+| `compiler.driver` | コンパイルパイプラインの統括と，診断を含むコンパイル結果 |
+| `compiler.builtin` | 組込み値の名前，ZLKの型，JVM命令列による実装 |
+| `compiler.diagnostic` | 構造化診断と診断の報告先 |
+| `compiler.id` | 解決済み識別子`Id`と，その対応表・集合 |
+| `compiler.source` | ソース文字列と位置・範囲 |
+| `compiler.ir`以下 | 各段階のIR，安定した型情報，解析結果．詳細は「コンパイルフェーズ」を参照 |
+| `compiler.phase`以下 | 各コンパイルフェーズの実装と内部表現．詳細は「コンパイルフェーズ」を参照 |
+| `compiler.jvm` | 組込み定義とコード生成で共有する，ASMを用いたJVM命令生成部品 |
+| `runtime` | 生成プログラムが利用する公開interfaceと値の文字列化 |
+| `runtime.internal` | レコード実装と，生成コードが呼び出す内部ABI |
+| `util`以下 | コンパイラに依存しないコレクション，Pretty Printerなどの汎用部品 |
+
+`compiler`直下の共通契約は`driver`や`phase`に依存しない．`builtin`とコード生成は`jvm`の部品を共有し，`runtime`はコンパイラから独立している．
 
 ### テストコード：`src/test/java/zlk`
 
 | パッケージ | 責務 |
 |---|---|
 | `zlk` | 全テストpackageを選択するsuite |
-| `zlk.test.feature.*` | 言語機能および実行時意味論のテスト |
-| `zlk.test.diagnostic` | コンパイラの診断機能のテスト |
-| `zlk.test.phase.*` | コンパイルフェーズごとの内部アルゴリズム等の検査 |
-| `zlk.test.runtime` | 生成コードが利用するランタイムの検査 |
+| `zlk.test.feature.*` | Driverを入口とする言語機能，推論型，生成クラスのlink・実行時意味論のテスト |
+| `zlk.test.diagnostic` | Driverを入口とする公開診断とコンパイル成否のテスト |
+| `zlk.test.phase.*` | 対象フェーズを直接利用した，内部アルゴリズムとIRの検査 |
+| `zlk.test.runtime` | runtime APIを直接利用した，値の振舞いと内部ABIの検査 |
 | `zlk.util.fixture` | `Driver`のコンパイル結果，推論型，および生成bytecodeのload・実行を扱うテスト支援ユーティリティ |
 | `zlk.util.tester` | コンパイルフェーズの内部IRおよびphase固有アルゴリズムを直接検査するテスト支援ユーティリティ |
 
-`Driver`は，コンパイルパイプラインを統括し，構造化diagnosticと`CompilationResult`を返す公開入口である．`Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
-featureテストは`Driver`を公開入口として利用し，phaseテストだけが検査対象のコンパイルフェーズを直接組み立てる．
+`Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
 
 ## 用語と命名
 
@@ -177,13 +192,13 @@ featureテストは`Driver`を公開入口として利用し，phaseテストだ
 
 ### 再利用解析
 
-- **Ownership**：変数の参照の種類
-  - **OWNED**：所有参照．実体は所有参照カウントされる．0ならばあらゆる参照がない．
-  - **BORROWED**：借用参照．所有参照カウントに含まれない参照．borrowed parameter/pattern decomposition viewで利用予定の発展的機能．
+- **Ownership**：binderが保持する参照の所有状態．値の一意性とは別の情報
+  - **OWNED**：所有参照を保持し，最終的に`TAKE`または`Drop`する責任を持つ状態
+  - **BORROWED**：所有参照を他で保持しており，このbinderでは`Drop`しない状態．将来のborrowed parameterなどに向けた区分
 - **UseMode**：出現（右辺）が所有参照を消費するか
   - **TAKE**：消費して所有権はcalleeに移る
   - **BORROW**：消費しない
-- **Dup/Drop**：所有参照のカウント増減
+- **Dup/Drop**：Own IR上での所有参照の複製・破棄．現在のJVMコード生成では参照カウント操作を出力せず，メモリ管理はGCに委ねる
 - **aliveness**：以降に変数が出現するか
 - **uniqueness**：同じ実体を指す参照が他にないと保証できるか
 
@@ -194,12 +209,12 @@ featureテストは`Driver`を公開入口として利用し，phaseテストだ
 | 完全形 | 省略形 | 例 |
 |---|---|---|
 | Annotation | `Anno` | `IcValDecl.anno`，`RcType.Anno` |
-| Constructor | `Ctor` | `IcCtor`，`IcVarCtor` |
+| Constructor | `Ctor` | `typing.Ctor`，`IcExp.IcVarCtor` |
 | Instance / Instantiation | `Inst` | `RcType.Inst` |
 | Expression | `Exp` | `IcExp`，`CcExp` |
 | Pattern | `Pat` | `pat`，`patTy` |
 | Constraint | `Con` | `bodyCon`，`headerCons` |
-| Declaration | `Decl` | `IcValDecl`，`IcTypeDecl` |
+| Declaration | `Decl` | `IcValDecl`，`typing.TypeDecl` |
 | Calculation | `calc` | `idcalc`，`clcalc` |
 | Conversion / Converter | `conv` | `clconv`，`ClosureConverter` |
 | Statement | `stmt` | `stmts`，`OwnStmt` |

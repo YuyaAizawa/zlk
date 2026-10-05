@@ -1,0 +1,98 @@
+package zlk.compiler.phase.recon;
+
+import java.util.function.Consumer;
+
+import zlk.compiler.id.Id;
+import zlk.compiler.id.IdMap;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.idcalc.IcCaseBranch;
+import zlk.compiler.ir.idcalc.IcExp;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.idcalc.IcPattern;
+import zlk.compiler.ir.idcalc.IcValDecl;
+import zlk.compiler.ir.idcalc.IcExp.IcApp;
+import zlk.compiler.ir.idcalc.IcExp.IcCase;
+import zlk.compiler.ir.idcalc.IcExp.IcCnst;
+import zlk.compiler.ir.idcalc.IcExp.IcIf;
+import zlk.compiler.ir.idcalc.IcExp.IcLamb;
+import zlk.compiler.ir.idcalc.IcExp.IcLet;
+import zlk.compiler.ir.idcalc.IcExp.IcVarCtor;
+import zlk.compiler.ir.idcalc.IcExp.IcVarForeign;
+import zlk.compiler.ir.idcalc.IcExp.IcVarLocal;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.source.Location;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
+
+public class LetDependencyExtractor {
+	private LetDependencyExtractor() {}
+
+	/**
+	 * 依存されている先を抽出する
+	 * @param module
+	 * @return
+	 */
+	public static IdMap<Seq<Id>> extract(IcModule module) {
+		IdMap<Seq<Id>> includes = new IdMap<>();
+		accIncluded(module.decls(), includes, null);
+		// 依存されている側から引く（letで定義されるものだけでよい）
+		IdMap<SeqBuffer<Id>> dependency = new IdMap<>();
+		includes.keys().forEach(k -> dependency.put(k, new SeqBuffer<>()));
+		includes.forEach(
+				(d, es) -> es
+						.filter(dependency::containsKey)
+						.forEach(e -> dependency.get(e).addIfNotContains(d))
+		);
+		return dependency.traverse(SeqBuffer::toSeq);
+	}
+
+	private static void accIncluded(Seq<IcValDecl> decls, IdMap<Seq<Id>> revRel, SeqBuffer<Id> acc) {
+		for (IcValDecl decl : decls) {
+			SeqBuffer<Id> partial = new SeqBuffer<>();
+			accIncluded(decl.body(), revRel, partial);
+			revRel.put(decl.id(), partial.toSeq());
+			if(acc != null) {
+				partial.forEach(acc::addIfNotContains);
+			}
+		}
+	}
+
+	private static void accIncluded(IcExp exp, IdMap<Seq<Id>> includes, SeqBuffer<Id> acc) {
+		Consumer<IcExp> go = exp_ -> accIncluded(exp_, includes, acc);
+
+		switch (exp) {
+		case IcCnst(ConstValue _, Location _) -> {}
+		case IcVarLocal(Id id, Location _) -> {
+			acc.addIfNotContains(id);
+		}
+		case IcVarForeign(Id _, Type _, Location _) -> {}
+		case IcVarCtor(Id _, Type _, Location _) -> {}
+		case IcLamb(Id _, Seq<IcPattern> _, IcExp body, Location _) -> {
+			accIncluded(body, includes, acc);
+		}
+		case IcApp(IcExp fun, Seq<IcExp> args, Location _) -> {
+			accIncluded(fun, includes, acc);
+			args.forEach(go);
+		}
+		case IcIf(IcExp cond, IcExp thenExp, IcExp elseExp, Location _) -> {
+			Seq.of(cond, thenExp, elseExp).forEach(go);
+		}
+		case IcLet(Seq<IcValDecl> decls, IcExp body, Location _) -> {
+			accIncluded(decls, includes, acc);
+			accIncluded(body, includes, acc);
+		}
+		case IcCase(IcExp target, Seq<IcCaseBranch> branches, Location _) -> {
+			accIncluded(target, includes, acc);
+			branches.map(IcCaseBranch::body).forEach(go);
+		}
+		case IcExp.IcRecord(Seq<IcExp.IcRecordField> fields, Location _) ->
+			fields.forEach(field -> accIncluded(field.value(), includes, acc));
+		case IcExp.IcRecordAccess(IcExp target, String _, Location _) ->
+			accIncluded(target, includes, acc);
+		case IcExp.IcRecordUpdate(IcExp target, Seq<IcExp.IcRecordField> fields, Location _) -> {
+			accIncluded(target, includes, acc);
+			fields.forEach(field -> accIncluded(field.value(), includes, acc));
+		}
+		};
+	}
+}

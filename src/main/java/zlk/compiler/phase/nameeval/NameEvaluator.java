@@ -1,0 +1,369 @@
+package zlk.compiler.phase.nameeval;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+import zlk.compiler.PhaseResult;
+import zlk.compiler.builtin.Builtin;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.DiagnosticReporter;
+import zlk.compiler.id.Id;
+import zlk.compiler.id.IdMap;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.ast.CaseBranch;
+import zlk.compiler.ir.ast.Decl;
+import zlk.compiler.ir.ast.Exp;
+import zlk.compiler.ir.ast.Module;
+import zlk.compiler.ir.ast.Pattern;
+import zlk.compiler.ir.ast.Decl.TypeAlias;
+import zlk.compiler.ir.ast.Decl.TypeErr;
+import zlk.compiler.ir.ast.Decl.ValDecl;
+import zlk.compiler.ir.ast.Decl.ValErr;
+import zlk.compiler.ir.ast.Exp.App;
+import zlk.compiler.ir.ast.Exp.Case;
+import zlk.compiler.ir.ast.Exp.Cnst;
+import zlk.compiler.ir.ast.Exp.Err;
+import zlk.compiler.ir.ast.Exp.If;
+import zlk.compiler.ir.ast.Exp.Lamb;
+import zlk.compiler.ir.ast.Exp.Let;
+import zlk.compiler.ir.ast.Exp.Var;
+import zlk.compiler.ir.idcalc.IcCaseBranch;
+import zlk.compiler.ir.idcalc.IcExp;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.idcalc.IcPattern;
+import zlk.compiler.ir.idcalc.IcValDecl;
+import zlk.compiler.ir.idcalc.IcExp.IcApp;
+import zlk.compiler.ir.idcalc.IcExp.IcCase;
+import zlk.compiler.ir.idcalc.IcExp.IcCnst;
+import zlk.compiler.ir.idcalc.IcExp.IcIf;
+import zlk.compiler.ir.idcalc.IcExp.IcLamb;
+import zlk.compiler.ir.idcalc.IcExp.IcLet;
+import zlk.compiler.ir.idcalc.IcExp.IcVarCtor;
+import zlk.compiler.ir.idcalc.IcExp.IcVarForeign;
+import zlk.compiler.ir.idcalc.IcExp.IcVarLocal;
+import zlk.compiler.ir.typing.Ctor;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.ir.typing.TypeDecl;
+import zlk.compiler.phase.nameeval.Env.BranchScopeProvider;
+import zlk.compiler.source.Location;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
+
+/**
+ * 名前評価器．値名前解決，AST expression／patternのidcalc化，module phase orchestrationを担う．
+ *
+ * <p>alias/kind-aware型解決は {@link TypeResolver} へ分離しており，本クラスは
+ * 次のphase順序だけを統括する．
+ * <ol>
+ *   <li>module value scope進入</li>
+ *   <li>全TypeDecl／TypeAliasの事前解決（TypeResolver API）</li>
+ *   <li>constructor／toplevel value登録</li>
+ *   <li>IcTypeDecl／IcValDecl生成</li>
+ * </ol>
+ * 入力ASTと出力IcModuleの意味論は不変．
+ */
+public final class NameEvaluator {
+
+	private final Module module;
+	private final Env env;
+	private final TypeResolver typeResolver;
+	private final IdMap<Builtin> builtins;
+	/** 暫定的な組込みconstructor signature表（Id → Type）． */
+	private final IdMap<Type> builtinCtors;
+	private final Map<Id, Location> nameLocations = new HashMap<>();
+
+	public NameEvaluator(Module module) {
+		this.module = module;
+		this.builtins = Builtin.functions().fold(IdMap.folder(b -> b.id(), b -> b));
+		this.builtinCtors = new IdMap<>();
+
+		// TODO: 組込みのBasic.Boolを作るまでの暫定対応
+		builtinCtors.put(Id.intern("Basic.True"), Type.BOOL);
+		builtinCtors.put(Id.intern("Basic.False"), Type.BOOL);
+
+		env = new Env();
+		typeResolver = new TypeResolver();
+		builtins.forEach((_, b) -> {
+			try {
+				env.registerGlobal(b.id());
+			} catch (DuplicatedNameException e) {
+				throw new Error("builtin value dupicated", e);
+			}
+		});
+	}
+
+	public IcModule eval() {
+		return env.withScope(module.name(), moduleScopeId -> {
+			// 型名の登録，parameter kindの解決，aliasの解決を行う
+			typeResolver.resolveDeclarations(module.decls(), moduleScopeId);
+
+			// toplevelのvalueとconstructorを登録する
+			module.decls().forEach(def -> {
+				switch(def) {
+				case Decl.TypeDecl decl -> {
+					decl.ctors().forEach(ctor -> {
+						try {
+							Id ctorId = env.register(ctor.name(), Id.intern(typeResolver.getTypeId(decl.name()), ctor.name()));
+							nameLocations.put(ctorId, ctor.loc());
+							typeResolver.registerConstructor(decl, ctor, ctorId);
+						} catch (DuplicatedNameException e) {
+							throw duplicateName(ctor.loc(), Diagnostic.NameNamespace.CONSTRUCTOR, ctor.name(), e);
+						}
+					});
+				}
+				case ValDecl(String name, _, _, _, _) -> {
+					try {
+						Id id = env.register(name);
+						nameLocations.put(id, def.loc());
+					} catch (DuplicatedNameException e) {
+						throw duplicateName(def.loc(), Diagnostic.NameNamespace.VALUE, name, e);
+					}
+				}
+				case TypeAlias _ -> {}
+				case ValErr _, TypeErr _ -> {
+					throw new IllegalStateException();
+				}
+				}
+			});
+
+			SeqBuffer<TypeDecl> icTypes = new SeqBuffer<>();
+			SeqBuffer<IcValDecl> icDecls = new SeqBuffer<>();
+
+			module.decls().forEach(def -> {
+				switch(def) {
+				case Decl.TypeDecl ty -> icTypes.add(eval(ty));
+				case ValDecl fun -> icDecls.add(eval(fun));
+				case TypeAlias _, ValErr _, TypeErr _ -> {}
+				}
+			});
+
+			return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
+		});
+	}
+
+	/** Source-facing resolution failures are reported and stop this phase. */
+	public PhaseResult<IcModule> eval(DiagnosticReporter reporter) {
+		try {
+			return PhaseResult.ready(eval());
+		} catch (ResolutionException error) {
+			reporter.report(error.diagnostic());
+			return PhaseResult.blocked();
+		}
+	}
+
+	public TypeDecl eval(Decl.TypeDecl union) {
+		Id id = typeResolver.getTypeId(union.name());
+
+		Seq<Type> vars = typeResolver.getTypeParameters(id);
+
+		Seq<Ctor> ctors = union.ctors().map(ctor -> {
+			Id ctorId = env.get(ctor.name());
+			Seq<Type> args = typeResolver.getConstructorArgs(ctorId);
+			return new Ctor(ctorId, args, ctor.loc());
+		});
+
+		return new TypeDecl(id, vars, ctors, union.loc());
+	}
+
+	public IcValDecl eval(ValDecl decl) {
+		try {
+			return env.withScope(decl.name(), _ -> {
+				String declName = decl.name();
+				Id id = env.get(declName);
+				Optional<Type> anno = decl.anno().map(a -> typeResolver.evalAnnotation(a));
+				Seq<IcPattern> args = decl.args().map(a -> eval(a));
+				IcExp body = eval(decl.body());
+
+				return new IcValDecl(id, anno, args, body, decl.loc());
+			});
+		} catch (ResolutionException error) {
+			throw error;
+		} catch (RuntimeException e) {
+			throw new RuntimeException("in "+decl.name(), e);
+		}
+	}
+
+	private IcExp eval(Exp exp) {
+		return switch(exp) {
+		case Cnst(ConstValue value, Location loc) ->
+			new IcCnst(value, loc);
+
+		case Var(String name, Location loc) -> {
+			Id id = getName(name, loc);
+
+			Builtin builtin = builtins.getOrNull(id);
+			if(builtin != null) {
+				yield new IcVarForeign(id, builtin.type(), loc);
+			}
+
+			Type ctor = getConstructorTypeOrNull(id);
+			if(ctor != null) {
+				yield new IcVarCtor(id, ctor, loc);
+			}
+
+			yield new IcVarLocal(id, loc);
+		}
+
+		case Lamb(Seq<Pattern> patterns, Exp body, Location loc) -> {
+			yield env.withLambdaScope(lambdaScopeId ->
+					new IcLamb(
+						lambdaScopeId,
+						patterns.map(a -> eval(a)),
+						eval(body),
+						loc));
+		}
+
+		case App(Seq<Exp> exps, Location loc) -> {
+			IcExp fun = eval(exps.head());
+			Seq<IcExp> args = exps.tail().map(arg -> eval(arg));
+			if (fun instanceof IcVarCtor ctor) {
+				int expected = ctor.type().flatten().size() - 1;
+				if (args.size() > expected) {
+					throw new ResolutionException(new Diagnostic.ConstructorArityMismatch(
+							loc, ctor.id().simpleName(), expected, args.size()));
+				}
+			}
+			yield new IcApp(fun, args, loc);
+		}
+
+		case If(Exp cond, Exp exp1, Exp exp2, Location loc) ->
+			new IcIf(
+					eval(cond),
+					eval(exp1),
+					eval(exp2),
+					loc);
+
+		case Let(Seq<Decl.Value> decls, Exp body, Location loc) -> {
+			if(decls.isEmpty()) {
+				yield eval(body);
+			} else {
+				Seq<ValDecl> validDecls = decls.map(decl -> switch(decl) {
+				case ValDecl valDecl -> valDecl;
+				case ValErr _ -> throw new IllegalArgumentException();
+				});
+				// let は親と同じ scope を共有する一時 binding frame を持ち，
+				// 宣言群と body をその frame 内で評価し，退出後に binding を破棄する．
+				yield env.withLetFrame(() -> {
+					for(ValDecl decl: validDecls) {
+						try {
+							Id id = env.register(decl.name());
+							nameLocations.put(id, decl.loc());
+						} catch (DuplicatedNameException e) {
+							throw duplicateName(decl.loc(), Diagnostic.NameNamespace.VALUE, decl.name(), e);
+						}
+					}
+					return new IcLet(
+							validDecls.map(decl -> eval(decl)),
+							eval(body),
+							loc);
+				});
+			}
+		}
+
+		case Case(Exp exp_, Seq<CaseBranch> branches, Location loc) ->
+			env.withCase((BranchScopeProvider<IcCaseBranch> scopeProvider) ->
+				new IcCase(
+						eval(exp_),
+						branches.map(branch -> eval(branch, scopeProvider)),
+						loc)
+			);
+
+		case Exp.Record(Seq<Exp.RecordField> fields, Location loc) ->
+			new IcExp.IcRecord(
+					fields.map(field -> new IcExp.IcRecordField(
+							field.name(),
+							eval(field.value()),
+							field.loc())),
+					loc);
+
+		case Exp.RecordAccess(Exp target, String field, Location loc) ->
+			new IcExp.IcRecordAccess(eval(target), field, loc);
+
+		case Exp.RecordUpdate(Exp target, Seq<Exp.RecordField> fields, Location loc) ->
+			new IcExp.IcRecordUpdate(
+					eval(target),
+					fields.map(field -> new IcExp.IcRecordField(
+							field.name(), eval(field.value()), field.loc())),
+					loc);
+
+		case Err _ ->
+			throw new IllegalArgumentException();
+		};
+	}
+
+	private IcCaseBranch eval(CaseBranch branch, BranchScopeProvider<IcCaseBranch> scopeProvider) {
+		return scopeProvider.withBranchScope(() -> {
+			IcPattern pat = eval(branch.pattern());
+			IcExp body = eval(branch.body());
+			return new IcCaseBranch(pat, body, branch.loc());
+		});
+	}
+
+	private IcPattern eval(Pattern pat) {
+		switch(pat) {
+		case Pattern.Wildcard(Location loc): {
+			return new IcPattern.Wildcard(loc);
+		}
+		case Pattern.Var var: return eval(var);
+		case Pattern.Ctor(String name, Seq<Pattern> args, Location loc): {
+			Id ctor = getName(name, loc);
+			Type ctorType = getConstructorType(ctor);
+			IcVarCtor icVarCtor = new IcVarCtor(ctor, ctorType, Location.noLocation());
+			int expected = ctorType.flatten().size() - 1;
+			if (args.size() != expected) {
+				throw new ResolutionException(new Diagnostic.ConstructorArityMismatch(loc, name, expected, args.size()));
+			}
+			Seq<IcPattern> dectorArgs = args.map(arg -> eval(arg));
+			return new IcPattern.Dector(icVarCtor, dectorArgs, loc);
+		}
+		case Pattern.Record(Seq<Pattern.Var> fields, Location loc): {
+			return new IcPattern.Record(fields.map(this::eval), loc);
+		}
+		case Pattern.Err _: {
+			throw new IllegalArgumentException();
+		}
+		}
+	}
+
+	private IcPattern.Var eval(Pattern.Var var) {
+		String name = var.name();
+		Location loc = var.loc();
+		Id id;
+		try {
+			id = env.register(name);
+		} catch (DuplicatedNameException e) {
+			throw duplicateName(loc, Diagnostic.NameNamespace.VALUE, name, e);
+		}
+		nameLocations.put(id, loc);
+		return new IcPattern.Var(id, loc);
+	}
+
+	private Type getConstructorTypeOrNull(Id id) {
+		Type builtin = builtinCtors.getOrNull(id);
+		return builtin != null ? builtin : typeResolver.getConstructorTypeOrNull(id);
+	}
+
+	private Type getConstructorType(Id id) {
+		Type type = getConstructorTypeOrNull(id);
+		if (type == null) {
+			throw new IllegalArgumentException("not a constructor: " + id);
+		}
+		return type;
+	}
+
+	private Id getName(String name, Location loc) {
+		Id id = env.getOrNull(name);
+		if (id == null) {
+			throw new ResolutionException(new Diagnostic.UnknownName(loc, name));
+		}
+		return id;
+	}
+
+	private ResolutionException duplicateName(
+			Location location, Diagnostic.NameNamespace namespace, String name, DuplicatedNameException error
+	) {
+		return new ResolutionException(new Diagnostic.DuplicateName(
+				location, namespace, name, nameLocations.get(error.oldId)));
+	}
+}

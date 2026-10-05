@@ -9,9 +9,9 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import zlk.common.RecordField;
-import zlk.common.Type;
-import zlk.ir.idcalc.IcModule;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.typing.RecordField;
+import zlk.compiler.ir.typing.Type;
 import zlk.util.collection.Seq;
 import zlk.util.tester.DumpOnFailureWatcher;
 import zlk.util.tester.ModuleTester;

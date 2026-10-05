@@ -80,14 +80,14 @@ ZLK は，実験的な関数型プログラミング言語である．本リポ�
 特定のテストクラスだけを実行する場合：
 
 ```sh
-./mvnw -Dtest=zlk.phase.patterncheck.PatternCheckerTest test
+./mvnw -Dtest=zlk.test.phase.patterncheck.PatternCheckerTest test
 ```
 
 ただしWindows環境ではそれぞれ
 
 ```cmd
 mvnw.cmd test
-mvnw.cmd -Dtest=zlk.phase.patterncheck.PatternCheckerTest test
+mvnw.cmd -Dtest=zlk.test.phase.patterncheck.PatternCheckerTest test
 ```
 
 すべての不具合修正には，可能な限り実装に先行して，その不具合を再現する回帰テストを追加する．配置先には，上記の責務を満たす最も近い既存クラスを優先する．

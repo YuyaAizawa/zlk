@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
 
 public class ResolutionTest {
 	@Test

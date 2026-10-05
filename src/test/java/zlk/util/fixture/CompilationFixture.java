@@ -10,11 +10,11 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.function.Function;
 
-import zlk.common.id.Id;
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
-import zlk.phase.CompilationOptions;
-import zlk.phase.CompilationOptions.Key;
+import zlk.compiler.CompilationOptions;
+import zlk.compiler.CompilationOptions.Key;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
+import zlk.compiler.id.Id;
 import zlk.util.collection.Seq;
 import zlk.util.tester.DumpOnFailureWatcher;
 

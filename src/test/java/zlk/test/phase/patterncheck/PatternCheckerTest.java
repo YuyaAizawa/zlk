@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.Diagnostic;
 import zlk.util.collection.Seq;
 import zlk.util.tester.ModuleTester;
 import zlk.util.tester.ModuleTester.CompileLevel;

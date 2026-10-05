@@ -8,13 +8,13 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.RecordField;
-import zlk.common.Type;
-import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.Variable;
-import zlk.phase.recon.constraint.RcType;
-import zlk.phase.recon.constraint.RcType.Inst;
-import zlk.phase.recon.constraint.RcType.RecordN;
+import zlk.compiler.ir.typing.RecordField;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.recon.FreshFlex;
+import zlk.compiler.phase.recon.RcType;
+import zlk.compiler.phase.recon.Variable;
+import zlk.compiler.phase.recon.RcType.Inst;
+import zlk.compiler.phase.recon.RcType.RecordN;
 import zlk.util.collection.Seq;
 
 public class RcTypeTest {
