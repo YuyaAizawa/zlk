@@ -38,14 +38,22 @@ public final class CompilationFixture {
 	}
 
 	public static CompilationFixture compile(String src) {
+		return compile(src, CompilationOptions.DEFAULT);
+	}
+
+	public static CompilationFixture compile(String src, CompilationOptions options) {
 		return new CompilationFixture(Driver.compile(
 				"Main.zlk",
 				"module Main\n" + src,
-				CompilationOptions.DEFAULT.enable(Key.REPORT_INFERRED_TYPES)));
+				options.enable(Key.REPORT_INFERRED_TYPES)));
 	}
 
 	public static CompilationFixture compileSucceeded(String src) {
-		CompilationFixture compilation = compile(src);
+		return compileSucceeded(src, CompilationOptions.DEFAULT);
+	}
+
+	public static CompilationFixture compileSucceeded(String src, CompilationOptions options) {
+		CompilationFixture compilation = compile(src, options);
 		assertInstanceOf(
 				Driver.CompilationResult.Succeeded.class,
 				compilation.result,

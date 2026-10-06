@@ -14,13 +14,16 @@ public final class CompilationOptions {
 
 		// 最適化系
 		OPT_REUSE_RECORD,
+		OPT_USE_OPERAND_STACK,
 	}
 
 	/**
 	 * 既定のコンパイルオプション
 	 */
 	public static final CompilationOptions DEFAULT =
-			new CompilationOptions(EnumSet.of(Key.OPT_REUSE_RECORD));
+			new CompilationOptions(EnumSet.of(
+					Key.OPT_REUSE_RECORD,
+					Key.OPT_USE_OPERAND_STACK));
 
 	private final EnumSet<Key> keys;
 	private CompilationOptions(EnumSet<Key> keys) {

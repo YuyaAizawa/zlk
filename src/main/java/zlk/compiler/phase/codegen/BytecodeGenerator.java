@@ -37,6 +37,7 @@ import zlk.compiler.ir.typing.Ctor;
 import zlk.compiler.ir.typing.Type;
 import zlk.compiler.jvm.Primitive;
 import zlk.compiler.source.Location;
+import zlk.util.collection.IntSeqBuffer;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 import zlk.util.collection.Stack;
@@ -62,7 +63,7 @@ public final class BytecodeGenerator {
 	private final CompilationOptions options;
 	private ClassWriter cw;
 
-	private static final Id LOCAL_DUMMY_ID = Id.intern("..DUMMY..");
+	private static final int LOCAL_DUMMY_ID = -1;
 	private static final Handle LAMBDA_METAFACTORY = new Handle(
 			Opcodes.H_INVOKESTATIC,
 			"java/lang/invoke/LambdaMetafactory",
@@ -88,7 +89,7 @@ public final class BytecodeGenerator {
 
 	// for compileDecl
 	private Id compilingFun;
-	private SeqBuffer<Id> locals;
+	private IntSeqBuffer locals;
 	private LocalMap<OwnStmt.Bind> stack;  // 結果をstack上に置くBind
 	private MethodVisitor mv;
 	private Stack<Runnable> pendings;
@@ -211,7 +212,7 @@ public final class BytecodeGenerator {
 
 	private void compileDecl(OwnFunDecl decl) { // TODO トップレベルは全て非カリー化する
 		compilingFun = decl.id();
-		this.locals = new SeqBuffer<>();
+		this.locals = new IntSeqBuffer(decl.localIdSize());
 		this.stack = new LocalMap<>(decl.localIdSize());
 		try {
 			mv = cw.visitMethod(
@@ -248,7 +249,7 @@ public final class BytecodeGenerator {
 	private void registerArgs(Seq<OwnPattern> args) {
 		args.forEach(arg -> {
 			if(arg instanceof OwnPattern.Var var) {
-				locals.add(var.id());
+				locals.add(var.var().localId());
 			} else {
 				locals.add(LOCAL_DUMMY_ID);
 			}
@@ -274,8 +275,9 @@ public final class BytecodeGenerator {
 		}
 		case OwnPattern.Var var -> {
 			checkcastIfNeed(JavaType.OBJECT, toJavaType(var.type()));
-			storeLocal(locals.size(), var.type());
-			locals.add(var.id());
+			int localIndex = locals.size();
+			storeLocal(localIndex, var.type());
+			locals.add(var.var().localId());
 		}
 		case OwnPattern.Ctor(Id id, Seq<OwnPattern> args, Type _, Location _) -> {
 			Ctor ctorDecl = ctors.get(id);
@@ -326,21 +328,20 @@ public final class BytecodeGenerator {
 	 * Javaの型消去方式に対応するため，期待される戻り値型の上限境界を考慮し，
 	 * 満たせない場合ダウンキャストを補う．
 	 *
-	 * 明示的な変数名が振られているLocalVarは局所変数として，
-	 * それ以外はスタックでデータの受け渡しを行う．
+	 * 明示的な変数名が振られているLocalVarは局所変数として扱う．
+	 * それ以外は，設定に応じてoperand stackまたは局所変数でデータを受け渡す．
 	 *
 	 * @param stmt
 	 */
 	private void compile(OwnStmt stmt) {
 		if(stmt instanceof OwnStmt.Bind bind) {
 			LocalVar lhs = bind.dst();
-			// local変数の処理
-			lhs.id().ifPresentOrElse(id -> {
-				compile(bind, toJavaType(lhs.type()));
-				storeLocal(id);
-			}, () -> {
+			if(options.isEnabled(Key.OPT_USE_OPERAND_STACK) && lhs.id().isEmpty()) {
 				stack.put(lhs, bind);
-			});
+			} else {
+				compile(bind, toJavaType(lhs.type()));
+				storeLocal(lhs);
+			}
 		}
 		// TODO: 必要になったらDup/Dropの処理
 	}
@@ -604,14 +605,12 @@ public final class BytecodeGenerator {
 	 */
 	private void compile(OwnUse arg, JavaType expectedJavaType) {
 		LocalVar var = arg.var();
-		var.id().ifPresentOrElse(id -> {
-			// local変数から読み込み
-			loadLocal(id);
-			checkcastIfNeed(toJavaType(types.get(id)), expectedJavaType);
-		}, () -> {
-			// 値を生成
+		if(stack.contains(var)) {
 			compile(stack.remove(var), expectedJavaType);
-		});
+		} else {
+			loadLocal(locals.indexOf(var.localId()), var.type());
+			checkcastIfNeed(toJavaType(var.type()), expectedJavaType);
+		}
 	}
 
 	private void checkcastIfNeed(JavaType actual, JavaType expected) {
@@ -639,8 +638,9 @@ public final class BytecodeGenerator {
 		}
 		case OwnPattern.Var(LocalVar var, _, Location _) -> {
 			checkcastIfNeed(JavaType.OBJECT, toJavaType(pat.type()));
-			storeLocal(locals.size(), pat.type());
-			locals.add(var.id().get());  // TODO: ここ明示的な変数名が無ければstackに
+			int localIndex = locals.size();
+			storeLocal(localIndex, pat.type());
+			locals.add(var.localId());  // TODO: ここ明示的な変数名が無ければstackに
 		}
 		case OwnPattern.Ctor(Id ctor, Seq<OwnPattern> args, Type _, Location _) -> {
 			Ctor ctorDecl = ctors.get(ctor);
@@ -879,12 +879,10 @@ public final class BytecodeGenerator {
 		}
 		}
 	}
-	private void loadLocal(Id id) {
-		loadLocal(locals.indexOf(id), types.get(id));
-	}
-	private void storeLocal(Id id) {
-		storeLocal(locals.size(), types.get(id));
-		locals.add(id);
+	private void storeLocal(LocalVar var) {
+		int localIndex = locals.size();
+		storeLocal(localIndex, var.type());
+		locals.add(var.localId());
 	}
 
 	private void loadLocal(int idx, Type ty) {

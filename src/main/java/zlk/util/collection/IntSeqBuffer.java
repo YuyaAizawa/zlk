@@ -139,24 +139,32 @@ public final class IntSeqBuffer implements Iterable<Integer>{
 		}
 	}
 
-	public boolean contains(int element) {
+	/// 指定した要素が最初に出現するインデックスを返す．含まれていなければ-1．
+	/// @param element
+	public int indexOf(int element) {
 		if(isEmpty()) {
-			return false;
+			return -1;
 		}
+		int count = 0;
 		Chunk cursor = headChunk;
-		while(cursor != null) {
+		while(true) {
 			int length = cursor == tailChunk ? tailSize : cursor.data.length;
 			for(int i = 0; i < length; i++) {
 				if(element == cursor.data[i]) {
-					return true;
+					return count + i;
 				}
 			}
+			count += cursor.data.length;
 			cursor = cursor.next;
 			if(cursor == null) {
 				break;
 			}
 		}
-		return false;
+		return -1;
+	}
+
+	public boolean contains(int element) {
+		return indexOf(element) >= 0;
 	}
 
 	public void forEachIndexed(ConsumerIndexed<Integer> action) {
