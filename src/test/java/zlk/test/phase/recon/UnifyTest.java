@@ -5,10 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.Mismatch;
-import zlk.phase.recon.Unify;
-import zlk.phase.recon.Variable;
+import zlk.compiler.phase.recon.FreshFlex;
+import zlk.compiler.phase.recon.Mismatch;
+import zlk.compiler.phase.recon.Unify;
+import zlk.compiler.phase.recon.Variable;
 
 public class UnifyTest {
 	@Test

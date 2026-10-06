@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
 import zlk.util.fixture.CompilationFixture;
 
 public class TypingTest {
@@ -124,9 +124,9 @@ public class TypingTest {
 				    Box True -> 1
 				""");
 
-		assertEquals(zlk.common.id.Id.intern("Basic.True"), error.constructor());
-		assertEquals(zlk.common.id.Id.intern("Bool"), error.actualFamily());
-		assertEquals(zlk.common.id.Id.intern("Main.Maybe"), error.expectedFamily());
+		assertEquals(zlk.compiler.id.Id.intern("Basic.True"), error.constructor());
+		assertEquals(zlk.compiler.id.Id.intern("Bool"), error.actualFamily());
+		assertEquals(zlk.compiler.id.Id.intern("Main.Maybe"), error.expectedFamily());
 		assertEquals(10, error.location().startLine());
 	}
 

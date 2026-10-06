@@ -6,23 +6,23 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.ConstValue;
-import zlk.common.Location;
-import zlk.common.Type;
-import zlk.common.id.Id;
-import zlk.ir.reuse.LocalVar;
-import zlk.ir.reuse.own.OwnBlock;
-import zlk.ir.reuse.own.OwnBranch;
-import zlk.ir.reuse.own.OwnFunDecl;
-import zlk.ir.reuse.own.OwnPattern;
-import zlk.ir.reuse.own.OwnRhs;
-import zlk.ir.reuse.own.OwnStmt;
-import zlk.ir.reuse.own.OwnUse;
-import zlk.ir.reuse.own.Ownership;
-import zlk.ir.reuse.own.UseMode;
-import zlk.ir.reuse.plan.Uniqueness;
-import zlk.ir.reuse.plan.UniquenessFacts;
-import zlk.phase.reuse.UniquenessAnalyzer;
+import zlk.compiler.id.Id;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.reuse.LocalVar;
+import zlk.compiler.ir.reuse.own.OwnBlock;
+import zlk.compiler.ir.reuse.own.OwnBranch;
+import zlk.compiler.ir.reuse.own.OwnFunDecl;
+import zlk.compiler.ir.reuse.own.OwnPattern;
+import zlk.compiler.ir.reuse.own.OwnRhs;
+import zlk.compiler.ir.reuse.own.OwnStmt;
+import zlk.compiler.ir.reuse.own.OwnUse;
+import zlk.compiler.ir.reuse.own.Ownership;
+import zlk.compiler.ir.reuse.own.UseMode;
+import zlk.compiler.ir.reuse.plan.Uniqueness;
+import zlk.compiler.ir.reuse.plan.UniquenessFacts;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.reuse.UniquenessAnalyzer;
+import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 
 public class UniquenessAnalyzerTest {

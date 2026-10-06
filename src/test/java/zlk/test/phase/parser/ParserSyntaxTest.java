@@ -2,15 +2,14 @@ package zlk.test.phase.parser;
 
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import zlk.ir.ast.AnType;
-import zlk.ir.ast.Decl;
-import zlk.ir.ast.Pattern;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
+import zlk.compiler.ir.ast.AnType;
+import zlk.compiler.ir.ast.Decl;
+import zlk.compiler.ir.ast.Pattern;
 import zlk.util.collection.Seq;
 import zlk.util.tester.DumpOnFailureWatcher;
 import zlk.util.tester.ModuleTester;

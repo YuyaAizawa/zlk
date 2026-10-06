@@ -13,37 +13,39 @@ import java.util.function.BiConsumer;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.util.TraceClassVisitor;
 
-import zlk.common.Type;
-import zlk.common.id.Id;
-import zlk.common.id.IdMap;
-import zlk.core.Builtin;
-import zlk.diagnostic.Diagnostic;
-import zlk.ir.ast.Module;
-import zlk.ir.clcalc.CcModule;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.reuse.anf.AnfModule;
-import zlk.ir.reuse.own.OwnModule;
-import zlk.ir.reuse.plan.ReusePlan;
-import zlk.ir.token.Tokenized;
-import zlk.phase.clconv.ClosureConverter;
-import zlk.phase.codegen.BytecodeGenerator;
-import zlk.phase.nameeval.NameEvaluator;
-import zlk.phase.parse.Lexer;
-import zlk.phase.parse.Parser;
-import zlk.phase.patterncheck.PatternChecker;
-import zlk.phase.recon.ConstraintExtractor;
-import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.TypeReconstructor;
-import zlk.phase.recon.constraint.Constraint;
-import zlk.phase.reuse.AnfConverter;
-import zlk.phase.reuse.OwnershipElaborator;
-import zlk.phase.reuse.ReusePlanner;
+import zlk.compiler.builtin.Builtin;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.Diagnostic.SyntaxError;
+import zlk.compiler.id.Id;
+import zlk.compiler.id.IdMap;
+import zlk.compiler.ir.ast.Module;
+import zlk.compiler.ir.clcalc.CcModule;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.reuse.anf.AnfModule;
+import zlk.compiler.ir.reuse.own.OwnModule;
+import zlk.compiler.ir.reuse.plan.ReusePlan;
+import zlk.compiler.ir.token.Tokenized;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.clconv.ClosureConverter;
+import zlk.compiler.phase.codegen.BytecodeGenerator;
+import zlk.compiler.phase.nameeval.NameEvaluator;
+import zlk.compiler.phase.parse.Lexer;
+import zlk.compiler.phase.parse.Parser;
+import zlk.compiler.phase.parse.Parser.ParseResult;
+import zlk.compiler.phase.patterncheck.PatternChecker;
+import zlk.compiler.phase.recon.Constraint;
+import zlk.compiler.phase.recon.ConstraintExtractor;
+import zlk.compiler.phase.recon.FreshFlex;
+import zlk.compiler.phase.recon.TypeReconstructor;
+import zlk.compiler.phase.reuse.AnfConverter;
+import zlk.compiler.phase.reuse.OwnershipElaborator;
+import zlk.compiler.phase.reuse.ReusePlanner;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
 /**
  * 各コンパイルフェーズの中間結果と生成bytecodeを表示して実行する手動サンプル．
- * 古いので廃止予定．通常のコンパイル入口は {@link zlk.compiler.Driver}．
+ * 古いので廃止予定．通常のコンパイル入口は {@link zlk.compiler.driver.Driver}．
  */
 public class Main {
 
@@ -114,8 +116,13 @@ public class Main {
 		System.out.println();
 
 		System.out.println("-- AST --");
-		Module ast = Parser.parse(tokens);
+		ParseResult parsed = Parser.parse(tokens);
+		Module ast = parsed.ast();
+		Seq<SyntaxError> parseErrors = parsed.errors();
 		System.out.println(ast.buildString());
+		if(!parseErrors.isEmpty()) {
+			parseErrors.forEach(e -> System.out.println(e));
+		}
 		System.out.println();
 
 		System.out.println("-- NAME EVAL --");

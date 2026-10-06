@@ -7,9 +7,11 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.id.Id;
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.CompilationOptions;
+import zlk.compiler.CompilationOptions.Key;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
+import zlk.compiler.id.Id;
 import zlk.util.collection.Seq;
 
 public class BytecodeStmtInfoTest {
@@ -19,7 +21,10 @@ public class BytecodeStmtInfoTest {
 
 		Driver.CompilationResult defaultResult = Driver.compile("Main.zlk", src);
 		Driver.CompilationResult disabledResult = Driver.compile(
-				"Main.zlk", src, Driver.CompilationOptions.DEFAULT.reportBytecodeStmtOrder(false));
+				"Main.zlk",
+				src,
+				CompilationOptions.DEFAULT
+						.disable(Key.REPORT_BYTECODE_STMT_ORDER));
 
 		assertEquals(0, diagnostics(defaultResult, Diagnostic.BytecodeStmt.class).size());
 		assertEquals(0, diagnostics(disabledResult, Diagnostic.BytecodeStmt.class).size());
@@ -41,7 +46,7 @@ public class BytecodeStmtInfoTest {
 				Driver.compile(
 						"Main.zlk",
 						src,
-						Driver.CompilationOptions.DEFAULT.reportBytecodeStmtOrder(true)));
+						CompilationOptions.DEFAULT.enable(Key.REPORT_BYTECODE_STMT_ORDER)));
 		Seq<Diagnostic.BytecodeStmt> stmts = result.diags()
 				.filter(Diagnostic.BytecodeStmt.class::isInstance)
 				.map(Diagnostic.BytecodeStmt.class::cast);
@@ -65,9 +70,9 @@ public class BytecodeStmtInfoTest {
 				Driver.compile(
 						"Main.zlk",
 						src,
-						Driver.CompilationOptions.DEFAULT
-								.reportInferredTypes(true)
-								.reportBytecodeStmtOrder(true)));
+						CompilationOptions.DEFAULT
+								.enable(Key.REPORT_INFERRED_TYPES)
+								.enable(Key.REPORT_BYTECODE_STMT_ORDER)));
 
 		assertEquals(1, diagnostics(result, Diagnostic.InferredType.class).size());
 		assertEquals(1, diagnostics(result, Diagnostic.BytecodeStmt.class).size());

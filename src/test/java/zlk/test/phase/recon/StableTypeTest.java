@@ -6,8 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import zlk.common.RecordField;
-import zlk.common.Type;
+
+import zlk.compiler.ir.typing.RecordField;
+import zlk.compiler.ir.typing.Type;
 import zlk.util.collection.Seq;
 
 public class StableTypeTest {

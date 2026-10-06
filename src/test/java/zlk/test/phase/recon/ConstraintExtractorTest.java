@@ -7,14 +7,14 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.diagnostic.Diagnostic;
-import zlk.phase.recon.constraint.Constraint;
-import zlk.phase.recon.constraint.Constraint.CEqual;
-import zlk.phase.recon.constraint.Constraint.CExists;
-import zlk.phase.recon.constraint.Constraint.CForeign;
-import zlk.phase.recon.constraint.Constraint.CLet;
-import zlk.phase.recon.constraint.Constraint.CLocal;
-import zlk.phase.recon.constraint.Constraint.CPattern;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.phase.recon.Constraint;
+import zlk.compiler.phase.recon.Constraint.CEqual;
+import zlk.compiler.phase.recon.Constraint.CExists;
+import zlk.compiler.phase.recon.Constraint.CForeign;
+import zlk.compiler.phase.recon.Constraint.CLet;
+import zlk.compiler.phase.recon.Constraint.CLocal;
+import zlk.compiler.phase.recon.Constraint.CPattern;
 import zlk.util.tester.ModuleTester;
 import zlk.util.tester.ModuleTester.CompileLevel;
 

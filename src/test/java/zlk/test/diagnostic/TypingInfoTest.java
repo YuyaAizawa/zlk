@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.Type;
-import zlk.common.id.Id;
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.CompilationOptions;
+import zlk.compiler.CompilationOptions.Key;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
+import zlk.compiler.id.Id;
+import zlk.compiler.ir.typing.Type;
 import zlk.util.collection.Seq;
 import zlk.util.fixture.CompilationFixture;
 
@@ -22,7 +24,7 @@ public class TypingInfoTest {
 				Driver.compile(
 						"Main.zlk",
 						src,
-						Driver.CompilationOptions.DEFAULT.reportInferredTypes(false)));
+						CompilationOptions.DEFAULT.disable(Key.REPORT_INFERRED_TYPES)));
 
 		assertEquals(0, defaultResult.diags().size());
 		assertEquals(0, disabledResult.diags().size());

@@ -1,0 +1,505 @@
+package zlk.compiler.ir.typing;
+
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Optional;
+
+import zlk.compiler.id.Id;
+import zlk.compiler.ir.typing.Type.Arrow;
+import zlk.compiler.ir.typing.Type.CtorApp;
+import zlk.compiler.ir.typing.Type.Record;
+import zlk.compiler.ir.typing.Type.Var;
+import zlk.util.collection.Seq;
+import zlk.util.collection.SeqBuffer;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
+
+/**
+ * 型
+ * 主に型注釈などで利用する
+ *
+ * <ul>
+ *   <li> {@link CtorApp} -- 関数型以外の型
+ *   <li> {@link Arrow} -- 関数型
+ *   <li> {@link Var} -- 型変数
+ *   <li> {@link Record} -- レコード型（{@link Row}を包む）
+ * </ul>
+ *
+ * row変数（{@link RowVar}）はTypeを実装しない独立クラスであり，
+ * ArrowやCtorAppの位置には現れない構造を表す．Rowの末尾拡張のみで用いる．
+ */
+public sealed interface Type extends PrettyPrintable
+permits CtorApp, Arrow, Var, Record {
+
+	/**
+	 * 関数型以外の型
+	 * @param id 型構築子
+	 * @param args 型パラメータ．独立したRowは直接保持せず，
+	 *             {@link Record}で包んだ型として保持する
+	 */
+	record CtorApp(Id id, Seq<Type> args) implements Type {
+		public CtorApp(Id id) {
+			this(id, Seq.of());
+		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
+
+	/**
+	 * 関数型
+	 * @param arg 引数の型
+	 * @param ret 戻り値の型
+	 */
+	record Arrow(Type arg, Type ret) implements Type {
+
+		/**
+		 * 複数引数として見たときの引数型を返す．
+		 * @return 複数引数として見た引数の型
+		 */
+		public Seq<Type> args() {
+			SeqBuffer<Type> result = new SeqBuffer<>();
+
+			Type ret = this;
+			while(ret instanceof Arrow fun) {
+				result.add(fun.arg());
+				ret = fun.ret();
+			}
+			return result.toSeq();
+		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
+
+	/**
+	 * 型変数
+	 * @param name 変数名
+	 */
+	record Var(String name) implements Type {
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
+
+	/**
+	 * row変数．{@link Row}の末尾拡張のみに現れ，{@link Type}とは独立した存在．
+	 *
+	 * @param name 変数名
+	 */
+	record RowVar(String name) {
+		public RowVar {
+			Objects.requireNonNull(name);
+		}
+
+		@Override
+		public final String toString() {
+			return name;
+		}
+	}
+
+	/**
+	 * レコードの列（row）．
+	 * {@link Record}が包んで使う．フィールドはcanonicalize済み．
+	 *
+	 * Row自体はTypeを実装しない．
+	 *
+	 * @param fields canonicalize済みのフィールド列
+	 * @param extension 末尾のrow変数．空ならclosed row
+	 */
+	record Row(Seq<RecordField<Type>> fields, Optional<RowVar> extension) {
+		public Row {
+			fields = RecordField.canonicalize(fields);
+			Objects.requireNonNull(extension);
+		}
+
+		public Row(Seq<RecordField<Type>> fields) {
+			this(fields, Optional.empty());
+		}
+
+		public boolean isOpen() {
+			return extension.isPresent();
+		}
+
+		@Override
+		public final String toString() {
+			return buildRowString(this);
+		}
+	}
+
+	/**
+	 * レコード型．{@link Row}を包む．
+	 * 既存call site互換のため Record(fields) / Record(fields, Optional<RowVar>) の各constructor，
+	 * fields() / extension() accessorを提供する．
+	 *
+	 * @param row 包むrow
+	 */
+	record Record(Row row) implements Type {
+		public Record(Seq<RecordField<Type>> fields) {
+			this(new Row(fields, Optional.empty()));
+		}
+
+		public Record(Seq<RecordField<Type>> fields, Optional<RowVar> extension) {
+			this(new Row(fields, extension));
+		}
+
+		public Seq<RecordField<Type>> fields() {
+			return row.fields();
+		}
+
+		public Optional<RowVar> extension() {
+			return row.extension();
+		}
+
+		@Override
+		public final String toString() {
+			return buildString();
+		}
+	}
+
+	public static final CtorApp UNIT = new CtorApp(Id.intern("Unit"));
+	public static final CtorApp BOOL = new CtorApp(Id.intern("Bool"));
+	public static final CtorApp I32  = new CtorApp(Id.intern("I32"));
+
+	public static final Seq<CtorApp> BUILTIN = Seq.of(UNIT, BOOL, I32);
+
+	public static Type.Arrow arrow(Type... rest) {
+		if(rest.length < 2) {
+			throw new IllegalArgumentException("length: "+rest.length);
+		}
+
+		Type tail = rest[rest.length - 1];
+		for(int idx = rest.length - 2; idx > 0; idx--) {
+			tail = new Arrow(rest[idx], tail);
+		}
+		return new Arrow(rest[0], tail);
+	}
+
+	public static Type.Arrow arrow(Seq<Type> args, Type ret) {
+		if(args.isEmpty()) {
+			throw new IllegalArgumentException();
+		}
+
+		Seq<Type> argsReversed = args.reversed();
+		Type.Arrow result = new Arrow(argsReversed.head(), ret);
+
+		for(Type arg : argsReversed.tail()) {
+			result = new Arrow(arg, result);
+		}
+
+		return result;
+	}
+
+	public static Type.Arrow arrow(Seq<Type> types) {
+		int size = types.size();
+		if(size < 2) {
+			throw new IllegalArgumentException("types.size(): "+size);
+		}
+		return arrow(types.dropLast(), types.last());
+	}
+
+	default CtorApp asAtom() {
+		return switch(this) {
+		case CtorApp atom -> atom;
+		default -> null;
+		};
+	}
+
+	default Arrow asArrow() {
+		return switch(this) {
+		case Arrow arrow -> arrow;
+		default -> null;
+		};
+	}
+
+	default boolean isArrow() {
+		return asArrow() != null;
+	}
+
+	/**
+	 * 指定した個数の引数を除いた残りの型を返す．途中でArrowでなくなった場合は例外を投げる．
+	 * @param cnt 除去する引数の個数
+	 * @return 除去後の型
+	 * @throws IndexOutOfBoundsException 指定回数適用できない場合
+	 */
+	default Type dropArgs(int cnt) {
+		Type result = this;
+		for(int i = 0; i < cnt ; i++) {
+			result = switch(result) {
+			case CtorApp _ -> throw tooManyApplies(this, cnt);
+			case Arrow(_, Type ret) -> ret;
+			case Var _ -> throw tooManyApplies(this, cnt);
+			case Record _ -> throw tooManyApplies(this, cnt);
+			};
+		}
+		return result;
+	}
+	private static IndexOutOfBoundsException tooManyApplies(Type type, int cnt) {
+		return new IndexOutOfBoundsException(String.format(
+				"too many applies. type: %s, cnt: %d",
+				type,
+				cnt));
+	}
+
+	/**
+	 * idx番目(0-based)の引数を返す．
+	 * @param idx インデックス
+	 * @return 指定した位置の型
+	 * @throws IndexOutOfBoundsException 指定回数適用できないか適用後の型が引数を持たない場合
+	 */
+	default Type arg(int idx) {
+		return switch(dropArgs(idx)) {
+		case CtorApp _ -> throw typeMissmatch(Arrow.class, CtorApp.class);
+		case Arrow(Type arg, _) -> arg;
+		case Var _ -> throw typeMissmatch(Arrow.class, Var.class);
+		case Record _ -> throw typeMissmatch(Arrow.class, Record.class);
+		};
+	}
+	private static IndexOutOfBoundsException typeMissmatch(Class<?> expected, Class<?> actual) {
+		return new IndexOutOfBoundsException(String.format(
+				"type missmatch. expected: %s, actual: %s",
+				expected.getTypeName(),
+				actual.getTypeName()));
+	}
+
+	default Seq<Type> flatten() {
+		SeqBuffer<Type> flatten = new SeqBuffer<>();
+
+		Type ret = this;
+		while(ret instanceof Arrow fun) {
+			flatten.add(fun.arg());
+			ret = fun.ret();
+		}
+		flatten.add(ret);
+		return flatten.toSeq();
+	}
+
+	public static Type fromSeq(Seq<Type> tys) {
+		if(tys.isEmpty()) {
+			throw new IllegalArgumentException();
+		}
+		if(tys.size() == 1) {
+			return tys.head();
+		}
+
+		return arrow(tys);
+	}
+
+	default Seq<String> getVarNames() {
+		SeqBuffer<String> result = new SeqBuffer<>();
+		getVarNamesHelp(result);
+		return result.toSeq();
+	}
+	default void getVarNamesHelp(SeqBuffer<String> acc) {
+		switch(this) {
+		case CtorApp(_, Seq<Type> typeArguments) -> {
+			for(Type arg : typeArguments) {
+				arg.getVarNamesHelp(acc);
+			}
+		}
+		case Arrow(Type arg, Type ret) -> {
+			arg.getVarNamesHelp(acc);
+			ret.getVarNamesHelp(acc);
+		}
+		case Var(String name) -> {
+			if(!acc.contains(name)) {
+				acc.add(name);
+			}
+		}
+		case Record(Row row) -> {
+			row.fields().forEach(field -> field.value().getVarNamesHelp(acc));
+			row.extension().ifPresent(ext -> {
+				if(!acc.contains(ext.name())) {
+					acc.add(ext.name());
+				}
+			});
+		}
+		}
+	}
+
+	/**
+	 * この関数型を指定した型に適用した戻り値型を返す．
+	 * @param arg
+	 * @return
+	 */
+	default Type apply(Type arg) {
+		return switch(this) {
+		case CtorApp _ -> throw invalidTypeApply(this, arg);
+		case Arrow(Type pattern, Type ret) -> {
+			try {
+				BindList binds = new BindList();
+				pattern.bind(arg, binds);
+				yield ret.subst(binds);
+			} catch (IllegalArgumentException e) {
+				throw invalidTypeApply(this, arg);
+			}
+		}
+		case Var _ -> throw invalidTypeApply(this, arg);
+		case Record _ -> throw invalidTypeApply(this, arg);
+		};
+	}
+	private static IllegalArgumentException invalidTypeApply(Type fun, Type arg) {
+		return new IllegalArgumentException(
+				String.format("Invalid type apply. fun: %s, arg: %s", fun, arg));
+	}
+	record BindPair(String name, Type ty) {}
+	static class BindList extends ArrayList<BindPair> {  // TODO IdMapに統合できないか
+		Type getOrNull(String name) {
+			for(BindPair registered : this) {
+				if(registered.name.equals(name)) {
+					return registered.ty;
+				}
+			}
+			return null;
+		}
+		void putOrConfirm(String name, Type ty) {
+			Type prev = getOrNull(name);
+			if(prev == null) {
+				add(new BindPair(name, ty));
+			} else if(prev.equals(ty)) {
+				// OK
+			} else {
+				throw new IllegalArgumentException(
+						String.format("var conflicted. prev: %s, new: %s", prev, ty));
+			}
+		}
+	}
+	default void bind(Type target, BindList binds) {
+		switch(this) {
+		case Var(String name) -> {
+			binds.putOrConfirm(name, target);
+		}
+		case CtorApp(Id ctor, Seq<Type> args) -> {
+			if(target instanceof CtorApp(Id targetCtor, Seq<Type> targetArgs)) {
+				if(ctor.equals(targetCtor)) {
+					Seq.zip(args, targetArgs).forEach(
+							(arg, targetArg) -> arg.bind(targetArg, binds));
+					return;
+				}
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
+		case Arrow(Type arg, Type ret) -> {
+			if(target instanceof Arrow(Type targetArg, Type targetRet)) {
+				arg.bind(targetArg, binds);
+				ret.bind(targetRet, binds);
+				return;
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
+		case Record(Row row) -> {
+			if(target instanceof Record(Row targetRow)
+					&& row.extension().isPresent() == targetRow.extension().isPresent()) {
+
+				Seq.zip(row.fields(), targetRow.fields()).forEach((field, targetField) -> {
+					if(!field.name().equals(targetField.name())) {
+						throw new IllegalArgumentException("record label mismatch");
+					}
+					field.value().bind(targetField.value(), binds);
+				});
+
+				// row変数は型変数ではないためbind対象外．
+				// 既存closed挙動を壊さず，open tailの変換はkind対応後に行う．
+				if(row.extension().isPresent() && targetRow.extension().isPresent()) {
+					if(!row.extension().orElseThrow().name()
+							.equals(targetRow.extension().orElseThrow().name())) {
+						throw new IllegalArgumentException(
+								"row variable mismatch. this: "
+								+ row.extension().orElseThrow().name()
+								+ ", target: "
+								+ targetRow.extension().orElseThrow().name());
+					}
+				}
+				return;
+			}
+			throw new IllegalArgumentException(
+					String.format("Invalid type bind. this: %s, target: %s", this, target));
+		}
+		}
+	}
+	default Type subst(BindList binds) {
+		return switch(this) {
+		case Var(String name) -> {
+			Type bound = binds.getOrNull(name);
+			yield (bound != null) ? bound : this;
+		}
+		case CtorApp(Id ctor, Seq<Type> args) -> {
+			yield new CtorApp(ctor, args.map(t -> t.subst(binds)));
+		}
+		case Arrow(Type arg, Type ret) -> {
+			yield new Arrow(arg.subst(binds), ret.subst(binds));
+		}
+		case Record(Row row) -> {
+			yield new Record(new Row(
+					row.fields().map(field -> new RecordField<>(field.name(), field.value().subst(binds))),
+					row.extension()));
+		}
+		};
+	}
+
+	@Override
+	default void mkString(PrettyPrinter pp) {
+		switch(this) {
+		case CtorApp(Id id, Seq<Type> typeArguments) -> {
+			pp.append(id);
+			typeArguments.forEach(a -> {
+				if(a instanceof Arrow ||
+						(a instanceof CtorApp(_, Seq<Type> args) && !args.isEmpty())) {
+					pp.append(" (").append(a).append(")");
+				} else {
+					pp.append(" ").append(a);
+				}
+			});
+		}
+		case Arrow(Type arg, Type ret) -> {
+			if(arg.isArrow()) {
+				pp.append("(").append(arg).append(")");
+			} else {
+				pp.append(arg);
+			}
+			pp.append(" -> ").append(ret);
+		}
+		case Var(String name) -> {
+			pp.append(name);
+		}
+		case Record(Row row) -> {
+			appendRow(pp, row);
+		}
+		}
+	}
+
+	/**
+	 * Rowのpretty print．closedは `{ x : I32 }`，openは `{ row | x : I32 }`．
+	 */
+	static void appendRow(PrettyPrinter pp, Row row) {
+		pp.append(buildRowString(row));
+	}
+
+	/**
+	 * Rowのcanonical文字列表現を構築する．
+	 */
+	static String buildRowString(Row row) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("{ ");
+		if(row.extension().isPresent()) {
+			sb.append(row.extension().orElseThrow().name()).append(" | ");
+		}
+		Seq<RecordField<Type>> fields = row.fields();
+		for(int i = 0; i < fields.size(); i++) {
+			if(i > 0) {
+				sb.append(", ");
+			}
+			RecordField<Type> f = fields.at(i);
+			sb.append(f.name()).append(" : ").append(f.value().buildString());
+		}
+		sb.append(" }");
+		return sb.toString();
+	}
+}

@@ -7,24 +7,24 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
-import zlk.common.ConstValue;
-import zlk.common.Location;
-import zlk.common.Type;
-import zlk.common.id.Id;
-import zlk.ir.reuse.LocalVar;
-import zlk.ir.reuse.anf.AnfBind;
-import zlk.ir.reuse.anf.AnfBlock;
-import zlk.ir.reuse.anf.AnfBranch;
-import zlk.ir.reuse.anf.AnfFunDecl;
-import zlk.ir.reuse.anf.AnfModule;
-import zlk.ir.reuse.anf.AnfPattern;
-import zlk.ir.reuse.anf.AnfRhs;
-import zlk.ir.reuse.own.OwnFunDecl;
-import zlk.ir.reuse.own.OwnRhs;
-import zlk.ir.reuse.own.OwnStmt;
-import zlk.ir.reuse.own.OwnUse;
-import zlk.ir.reuse.own.UseMode;
-import zlk.phase.reuse.OwnershipElaborator;
+import zlk.compiler.id.Id;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.reuse.LocalVar;
+import zlk.compiler.ir.reuse.anf.AnfBind;
+import zlk.compiler.ir.reuse.anf.AnfBlock;
+import zlk.compiler.ir.reuse.anf.AnfBranch;
+import zlk.compiler.ir.reuse.anf.AnfFunDecl;
+import zlk.compiler.ir.reuse.anf.AnfModule;
+import zlk.compiler.ir.reuse.anf.AnfPattern;
+import zlk.compiler.ir.reuse.anf.AnfRhs;
+import zlk.compiler.ir.reuse.own.OwnFunDecl;
+import zlk.compiler.ir.reuse.own.OwnRhs;
+import zlk.compiler.ir.reuse.own.OwnStmt;
+import zlk.compiler.ir.reuse.own.OwnUse;
+import zlk.compiler.ir.reuse.own.UseMode;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.reuse.OwnershipElaborator;
+import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 
 public class OwnershipElaboratorTest {

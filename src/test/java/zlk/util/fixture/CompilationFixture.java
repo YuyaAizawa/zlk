@@ -10,17 +10,16 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.function.Function;
 
-import zlk.common.id.Id;
-import zlk.compiler.Driver;
-import zlk.diagnostic.Diagnostic;
+import zlk.compiler.CompilationOptions;
+import zlk.compiler.CompilationOptions.Key;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.driver.Driver;
+import zlk.compiler.id.Id;
 import zlk.util.collection.Seq;
 import zlk.util.tester.DumpOnFailureWatcher;
 
 /** Driverの型情報出力を有効にしたtest用コンパイル結果． */
 public final class CompilationFixture {
-	private static final Driver.CompilationOptions REPORT_TYPES =
-			Driver.CompilationOptions.DEFAULT.reportInferredTypes(true);
-
 	private final Driver.CompilationResult result;
 	private final Seq<String> generatedClassNames;
 	private final InMemoryClassLoader classLoader;
@@ -39,11 +38,22 @@ public final class CompilationFixture {
 	}
 
 	public static CompilationFixture compile(String src) {
-		return new CompilationFixture(Driver.compile("Main.zlk", "module Main\n" + src, REPORT_TYPES));
+		return compile(src, CompilationOptions.DEFAULT);
+	}
+
+	public static CompilationFixture compile(String src, CompilationOptions options) {
+		return new CompilationFixture(Driver.compile(
+				"Main.zlk",
+				"module Main\n" + src,
+				options.enable(Key.REPORT_INFERRED_TYPES)));
 	}
 
 	public static CompilationFixture compileSucceeded(String src) {
-		CompilationFixture compilation = compile(src);
+		return compileSucceeded(src, CompilationOptions.DEFAULT);
+	}
+
+	public static CompilationFixture compileSucceeded(String src, CompilationOptions options) {
+		CompilationFixture compilation = compile(src, options);
 		assertInstanceOf(
 				Driver.CompilationResult.Succeeded.class,
 				compilation.result,

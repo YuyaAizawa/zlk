@@ -1,15 +1,18 @@
 package zlk.util.tester;
 
-import zlk.diagnostic.Diagnostic;
-import zlk.ir.ast.Module;
-import zlk.ir.idcalc.IcModule;
-import zlk.ir.token.Tokenized;
-import zlk.phase.nameeval.NameEvaluator;
-import zlk.phase.patterncheck.PatternChecker;
-import zlk.phase.recon.ConstraintExtractor;
-import zlk.phase.recon.FreshFlex;
-import zlk.phase.recon.TypeReconstructor;
-import zlk.phase.recon.constraint.Constraint;
+import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.ir.ast.Module;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.token.Tokenized;
+import zlk.compiler.phase.nameeval.NameEvaluator;
+import zlk.compiler.phase.parse.Lexer;
+import zlk.compiler.phase.parse.Parser;
+import zlk.compiler.phase.parse.Parser.ParseResult;
+import zlk.compiler.phase.patterncheck.PatternChecker;
+import zlk.compiler.phase.recon.Constraint;
+import zlk.compiler.phase.recon.ConstraintExtractor;
+import zlk.compiler.phase.recon.FreshFlex;
+import zlk.compiler.phase.recon.TypeReconstructor;
 import zlk.util.collection.IntSeq;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -45,17 +48,16 @@ public class ModuleTester {
 		this.compileLevel = level;
 		this.src = "module " + TARGET_MODULE_NAME + "\n" + src;  // TODO: これ要る？
 
-		Tokenized tokens = new zlk.phase.parse.Lexer(TARGET_FILE_NAME, this.src).lex();
-		var parsed = zlk.phase.parse.Parser.parseResult(tokens);
-		this.ast = parsed.module();
-		this.parseErrors = parsed.diagnostics();
-
+		Tokenized tokens = new Lexer(TARGET_FILE_NAME, this.src).lex();
+		ParseResult parsed = Parser.parse(tokens);
+		this.ast = parsed.ast();
+		this.parseErrors = parsed.errors();
 		if(this.compileLevel == CompileLevel.PARSE) {
 			return;
 		}
 		if(!parseErrors.isEmpty()) {
 			throw new IllegalStateException("parse errors in line "
-					+ parseErrors.map(error -> error.location().startLine()).join(", "));
+					+ parseErrors.map(se -> se.location().startLine()).join(", "));
 		}
 
 		this.module = new NameEvaluator(ast).eval();

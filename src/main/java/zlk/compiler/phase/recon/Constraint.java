@@ -1,0 +1,190 @@
+package zlk.compiler.phase.recon;
+
+import zlk.compiler.diagnostic.Diagnostic.TypingContext;
+import zlk.compiler.id.Id;
+import zlk.compiler.id.IdMap;
+import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.recon.Constraint.CEqual;
+import zlk.compiler.phase.recon.Constraint.CExists;
+import zlk.compiler.phase.recon.Constraint.CForeign;
+import zlk.compiler.phase.recon.Constraint.CLet;
+import zlk.compiler.phase.recon.Constraint.CLocal;
+import zlk.compiler.phase.recon.Constraint.CPattern;
+import zlk.compiler.source.Location;
+import zlk.util.collection.Seq;
+import zlk.util.pp.PrettyPrintable;
+import zlk.util.pp.PrettyPrinter;
+
+public sealed interface Constraint extends PrettyPrintable
+permits CEqual, CLocal, CForeign, CPattern, CLet, CExists {
+
+	/** Source information attached by {@link zlk.compiler.phase.recon.ConstraintExtractor}. */
+	record Provenance(Location location, TypingContext context) {
+		public static final Provenance NONE = new Provenance(Location.noLocation(), TypingContext.NONE);
+	}
+
+	/**
+	 * 型の等式制約
+	 */
+	record CEqual(
+			RcType type,
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CEqual(RcType type, RcType expected) {
+			this(type, expected, Provenance.NONE);
+		}
+	}
+
+	/**
+	 * 出現した変数の型
+	 */
+	record CLocal(
+			Id id,
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CLocal(Id id, RcType expected) {
+			this(id, expected, Provenance.NONE);
+		}
+	}
+
+	/**
+	 * 出現した外部変数（コンストラクタ含む）の型
+	 */
+	record CForeign(
+			Id id,
+			Type ty,
+			RcType expected,
+			Provenance provenance) implements Constraint {
+		public CForeign(Id id, Type ty, RcType expected) {
+			this(id, ty, expected, Provenance.NONE);
+		}
+	}
+
+	/**
+	 * パターンによる制約
+	 */
+	record CPattern(
+			Id constructor,
+			Id family,
+			RcType ctorTy,
+			RcType expected,
+			Location location) implements Constraint {}
+
+	/**
+	 * letやcaseのパターンとスコープに関わる制約．
+	 *
+	 * @param rigids 型注釈や再帰定義によって固定する型変数 単一化されない
+	 * @param flexes スコープ内で導入した自由型変数 量化の候補
+	 * @param header スコープ内で導入された変数と型情報の対応
+	 * @param headerCons 定義部の制約(要素は強連結成分ごとで順序は依存関係を反映)
+	 * @param bodyCons スコープ（letやcaseの分岐）の中で得られた本体式に対する制約
+	 *
+	 * <h3>注意する箇所</h3>
+	 * <li>header に現れる自由変数のうち CLet 内で新規に作ったものは flexes に入っている
+	 * <li>headerCons でのみ使われる fresh も、その CLet 内で新規なら flexes に入っている
+	 * <li>外から渡された expected 由来の変数は flexes に入れない
+	 * <li>genTargets に入る binder だけが generalize 対象
+	 *
+	 */
+	record CLet(
+			Seq<Variable> rigids,
+			Seq<Variable> flexes,
+			IdMap<RcType> header,
+			Seq<CPhase> headerCons,
+			Seq<Constraint> bodyCon,
+			IdMap<Location> declarationLocations) implements Constraint {
+
+		public CLet(
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
+				IdMap<RcType> header,
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCon) {
+			this(rigids, flexes, header, headerCons, bodyCon, new IdMap<>());
+		}
+
+		public CLet(
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
+				IdMap<RcType> header,
+				Seq<CPhase> headerCons,
+				Constraint bodyCon) {
+			this(rigids, flexes, header, headerCons, Seq.of(bodyCon), new IdMap<>());
+		}
+	}
+
+	/**
+	 * 一度に制約を解決すべき，依存が強連結になっている制約の集まり．
+	 *
+	 * @param cons 依存が強連結になっている定義の制約
+	 * @param genTargets この集まりを解決したタイミングで一般化すべき対象
+	 */
+	record CPhase(
+			Seq<Constraint> cons,
+			Seq<Id> genTargets
+	) implements PrettyPrintable {  // 単独でConstraintではない
+
+		@Override
+		public void mkString(PrettyPrinter pp) {
+			pp.append("Phase:").endl();
+			pp.indent(() -> {
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons)).endl();
+				pp.append("genTargets: ").append(PrettyPrintable.oneLine(genTargets));
+			});
+		}
+	}
+
+	/**
+	 * 型変数のスコープ（正確には制約ではない）．
+	 * 関数の引数やcaseのパターンと戻り値など，
+	 * 導入した型変数が外と繋がらないことを確定させるのに使う．
+	 *
+	 * @param vars 型変数
+	 * @param cons 制約
+	 */
+	record CExists(
+			Seq<Variable> vars,
+			Seq<Constraint> cons) implements Constraint {}
+
+	@Override
+	default void mkString(PrettyPrinter pp) {
+		switch (this) {
+		case CEqual(RcType type, RcType expected, Provenance _) -> {
+			pp.append(type).append(" = ").append(expected);
+		}
+		case CLocal(Id id, RcType expected, Provenance _) -> {
+			pp.append("Local: ").append(id).append(" = ").append(expected);
+		}
+		case CForeign(Id id, Type type, RcType expected, Provenance _) -> {
+			pp.append("Foreign: ").append(id).append(":").append(type).append(" = ").append(expected);
+		}
+		case CPattern(Id constructor, Id _, RcType ctorTy, RcType expected, Location _) -> {
+			pp.append("Pattern: ").append(constructor).append(": ").append(ctorTy).append(" = ").append(expected);
+		}
+		case CLet(
+				Seq<Variable> rigids,
+				Seq<Variable> flexes,
+				IdMap<RcType> header,
+				Seq<CPhase> headerCons,
+				Seq<Constraint> bodyCons,
+				IdMap<Location> _
+		) -> {
+			pp.append("Let:").endl();
+			pp.indent(() -> {
+				pp.append("rigids: ").append("[").append(PrettyPrintable.join(rigids, ", ")).append("]").endl();
+				pp.append("flexes: ").append("[").append(PrettyPrintable.join(flexes, ", ")).append("]").endl();
+				pp.append("header: ").append(header).endl();
+				pp.append("headerCons: ").append(PrettyPrintable.tailComma(headerCons)).endl();
+				pp.append("bodyCons:").append(PrettyPrintable.tailComma(bodyCons));
+			});
+		}
+		case CExists(Seq<Variable> vars, Seq<Constraint> cons) -> {
+			pp.append("Exists:").endl();
+			pp.indent(() -> {
+				pp.append("vars: ").append("[").append(PrettyPrintable.join(vars, ", ")).append("]").endl();
+				pp.append("cons: ").append(PrettyPrintable.tailComma(cons));
+			});
+		}
+		}
+	}
+}
