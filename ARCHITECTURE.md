@@ -3,6 +3,7 @@
 この文書は，ZLKコンパイラの全体構造，コンパイルフェーズ，主要なデータ構造，およびコードを読むための用語と命名の凡例を示す．個々のクラスやアルゴリズムの詳細は，関連するソースコードとコメントに記載されている．
 
 
+
 ## コンパイルフェーズ
 
 ```mermaid
@@ -106,6 +107,8 @@ flowchart TB
 
 `compiler.driver.Driver`は，これらのフェーズを順に実行する公開入口である．コンパイルオプションを適用し，生成クラスと診断を`CompilationResult`へまとめる．エラー時は後続フェーズへ進まず，警告・情報診断だけの場合はコンパイルを継続する．
 
+
+
 ## レコード型
 
 ZLKのレコード型は，行多相を持つ構造的型である．重要な設計は次のとおり．
@@ -117,6 +120,8 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 - **open rowによる一様な型推論**：アクセス，更新，レコードパターンは`ConstraintExtractor`でopen rowを含む`CEqual`へlowerする．solverはrowのlabel差分をtailへ束縛し，lacks制約で重複labelを防ぐため，個別構文向けの特例を必要としない．
 - **宣言全体でのkind解決と透明alias**：`TypeResolver`は前方参照や相互再帰を含む全型宣言からparameter kindを解決する．型aliasはkind確定後に展開され，alias identityやkind情報をbackendへ持ち越さない．
 - **後段では型のopen／closedを消去**：record patternは`PatternChecker`では反駁不能なbinderとして扱う．runtimeではopen／closedの区別を消去し，全レコード値をpublic `ZlkRecord` interfaceへ統一する．
+
+
 
 ## `Id`とクラスファイル中の名前
 
@@ -145,6 +150,8 @@ M.f._case1_1.x
 M.f._case2_1.x
 M.f._case2_1._case1_1.y
 ```
+
+
 
 ## パッケージ構成
 
@@ -180,6 +187,18 @@ M.f._case2_1._case1_1.y
 | `zlk.util.tester` | コンパイルフェーズの内部IRおよびphase固有アルゴリズムを直接検査するテスト支援ユーティリティ |
 
 `Main.java`は，各フェーズの中間結果と生成bytecodeを表示して実行するための手動サンプルであり，通常のコンパイル入口ではない．
+
+### 最適化ベンチマーク
+
+JUnit + JMHの最適化効果測定システム．依存関係の解決にはMavenの`benchmark` profileを有効化．
+
+- **`src/benchmark/java/zlk/benchmark`**：共通基盤とヘルパー
+- **`src/benchmark-test/java/zlk/benchmark`**：ベンチマーク定義と共通CLI
+
+
+詳しくは`benchmarks/README.md`を参照．
+
+
 
 ## 用語と命名
 
