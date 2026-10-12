@@ -16,12 +16,14 @@ public final class ZlkBenchmarkRunner {
 		Files.createDirectories(output);
 		var results = new Runner(options(definition, output, false, jvmArgs)).run();
 		BenchmarkMetadata.write(definition, output, false, results);
+		JmhReport.write(definition, output, false, results);
 		return results;
 	}
 	public static Collection<RunResult> smoke(Class<?> definition, Path output, String... jvmArgs) throws Exception {
 		Files.createDirectories(output);
 		var results = new Runner(options(definition, output, true, jvmArgs)).run();
 		BenchmarkMetadata.write(definition, output, true, results);
+		JmhReport.write(definition, output, true, results);
 		return results;
 	}
 	public static org.openjdk.jmh.runner.options.Options options(Class<?> type, Path output, boolean smoke, String... jvmArgs) {

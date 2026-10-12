@@ -1,7 +1,19 @@
 package zlk.benchmark;
 
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import zlk.compiler.CompilationOptions;
 
 /** public static生成関数を解釈する，benchmark専用reflection境界． */
@@ -44,6 +56,21 @@ public final class BenchmarkDefinition {
 	public static BenchmarkDefinition of(Class<?> type) { return new BenchmarkDefinition(type); }
 
 	public ZlkBenchmark configuration() { return type.getAnnotation(ZlkBenchmark.class); }
+	public String name() { return type.getName(); }
+	public List<ReportChart> charts() { return List.of(type.getAnnotationsByType(ReportChart.class)); }
+	public JmhChart jmhChart() { return type.getAnnotation(JmhChart.class); }
+	/** case文字列を再解釈せず，定義境界で検査済みの引数をreportへ渡す． */
+	public Map<String, String> parameters(BenchmarkCase item) {
+		if(!item.definitionClass().equals(type.getName()) || !sources.containsKey(item.sourceCase()) || !settings.containsKey(item.optionCase()))
+			throw new IllegalArgumentException("case does not belong to definition: " + item);
+		Map<String, String> result = new LinkedHashMap<>();
+		putParameters(result, "source.", source, sources.get(item.sourceCase()));
+		if(options != null) putParameters(result, "option.", options, settings.get(item.optionCase()));
+		return Collections.unmodifiableMap(result);
+	}
+	private static void putParameters(Map<String, String> out, String prefix, Method method, Object[] args) {
+		for(int i = 0; i < args.length; i++) out.put(prefix + method.getParameters()[i].getName(), args[i].toString());
+	}
 	public List<BenchmarkCase> cases() {
 		List<BenchmarkCase> result = new ArrayList<>();
 		Map<String, String> hashes = new HashMap<>();

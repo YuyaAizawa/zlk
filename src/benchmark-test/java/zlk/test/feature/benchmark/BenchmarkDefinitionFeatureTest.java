@@ -1,11 +1,76 @@
 package zlk.test.feature.benchmark;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import org.junit.jupiter.api.Test;
-import zlk.benchmark.*;
+
+import zlk.benchmark.BenchmarkDefinition;
+import zlk.benchmark.BenchmarkMain;
+import zlk.benchmark.BenchmarkMetadata;
+import zlk.benchmark.BenchmarkSources;
+import zlk.benchmark.CompiledBenchmark;
+import zlk.benchmark.ForkDefinitionFixture;
+import zlk.benchmark.IntToIntJmhBenchmark;
+import zlk.benchmark.IntToRecordJmhBenchmark;
+import zlk.benchmark.InvocationShape;
+import zlk.benchmark.Options;
+import zlk.benchmark.Source;
+import zlk.benchmark.Values;
+import zlk.benchmark.ZlkBenchmark;
+import zlk.benchmark.ZlkBenchmarkRunner;
+import zlk.benchmark.ZlkJmhState;
 import zlk.compiler.CompilationOptions;
 
 public class BenchmarkDefinitionFeatureTest {
+	@ZlkBenchmark(shape = InvocationShape.INT_TO_RECORD, gc = false)
+	@zlk.benchmark.JmhChart(x = "source.updates", series = "option.reuse")
+	public static class ColoredRecord {
+		@Source public static String source(@Values({"8"}) int fields, @Values({"32", "1", "8"}) int updates) {
+			return zlk.benchmark.RecordMultiFieldBenchmark.source(fields, updates);
+		}
+		@Options public static CompilationOptions options(@Values({"true", "false"}) boolean reuse, @Values({"false", "true"}) boolean stack) {
+			return CompilationOptions.DEFAULT.set(CompilationOptions.Key.OPT_REUSE_RECORD, reuse).set(CompilationOptions.Key.OPT_USE_OPERAND_STACK, stack);
+		}
+		public static void verify(CompiledBenchmark compiled, int fields, int updates) throws Throwable {
+			zlk.benchmark.RecordMultiFieldBenchmark.verify(compiled, fields, updates);
+		}
+	}
+	@Test void recordRunComparesColoredReuseBarsAcrossSortedUpdateCounts() throws Exception {
+		var output = java.nio.file.Path.of("target/benchmarks/colored-record-fixture", java.util.UUID.randomUUID().toString());
+		var results = ZlkBenchmarkRunner.smoke(ColoredRecord.class, output);
+		assertEquals(12, results.size());
+		String md = java.nio.file.Files.readString(output.resolve("report.md"));
+		assertEquals(2, md.split("```mermaid", -1).length - 1);
+		assertTrue(md.contains("## source.fields=8; option.stack=false"));
+		assertTrue(md.contains("## source.fields=8; option.stack=true"));
+		assertTrue(md.contains("plotColorPalette: '#D55E00, #0072B2'"));
+		assertTrue(md.contains("x-axis \"source.updates\" [\"1 / false\", \"1 / true\", \"8 / false\", \"8 / true\", \"32 / false\", \"32 / true\"]"));
+		assertTrue(md.contains("option.reuse=false：橙，option.reuse=true：青"));
+		assertTrue(md.contains(".bar-plot-0 rect:nth-child(odd)"));
+		assertTrue(md.contains(".bar-plot-0 rect:nth-child(even)"));
+		assertEquals(2, md.split("    bar \\[", -1).length - 1);
+		assertTrue(!md.contains("line ["));
+		for(boolean stack : new boolean[] {false, true}) {
+			var section = md.split("## source.fields=8; option.stack=" + stack + "\\n", 2)[1].split("\\n## ", 2)[0];
+			var scores = new java.util.ArrayList<String>();
+			for(int updates : new int[] {1, 8, 32}) {
+				for(boolean reuse : new boolean[] {false, true}) {
+					var result = results.stream().filter(r -> r.getParams().getParam("sourceCase").equals("fields=8;updates=" + updates)
+							&& r.getParams().getParam("optionCase").equals("reuse=" + reuse + ";stack=" + stack)).findFirst().orElseThrow();
+					String score = java.math.BigDecimal.valueOf(result.getPrimaryResult().getScore()).toPlainString();
+					assertTrue(section.contains("| " + updates + " | " + reuse + " | " + score + " |"));
+					scores.add(score);
+				}
+			}
+			assertTrue(section.contains("bar [" + String.join(", ", scores) + "]"));
+		}
+	}
 	@Test void rejectsMissingParameterNamesRatherThanInventingArgZero() {
 		var cw = new org.objectweb.asm.ClassWriter(0);
 		cw.visit(org.objectweb.asm.Opcodes.V23, org.objectweb.asm.Opcodes.ACC_PUBLIC, "zlk/benchmark/UnnamedDefinition", null, "java/lang/Object", null);
@@ -111,11 +176,14 @@ public class BenchmarkDefinitionFeatureTest {
 		}
 		var csv = first.resolve("bytecode.csv");
 		var dump = first.resolve("classes/case-0/Bench.zlk");
+		var markdown = first.resolve("report.md");
+		java.nio.file.Files.writeString(markdown, "saved markdown");
 		java.nio.file.Files.writeString(csv, "saved csv");
 		java.nio.file.Files.writeString(dump, "saved source");
 		BenchmarkMain.main(new String[] {"report", CustomSettings.class.getName(), root.toString()});
 		assertEquals("saved csv", java.nio.file.Files.readString(csv));
 		assertEquals("saved source", java.nio.file.Files.readString(dump));
+		assertEquals("saved markdown", java.nio.file.Files.readString(markdown));
 		try(var directories = java.nio.file.Files.list(root)) {
 			var reports = directories.filter(java.nio.file.Files::isDirectory).toList();
 			assertEquals(2, reports.size());
@@ -123,6 +191,7 @@ public class BenchmarkDefinitionFeatureTest {
 			assertEquals(2, java.nio.file.Files.readAllLines(second.resolve("bytecode.csv")).size());
 			assertEquals(CustomSettings.source(), java.nio.file.Files.readString(second.resolve("classes/case-0/Bench.zlk")));
 			assertTrue(java.nio.file.Files.exists(second.resolve("classes/case-0/Bench.class")));
+			assertTrue(java.nio.file.Files.readString(second.resolve("report.md")).contains("# Bytecode report"));
 		}
 	}
 	@Test void cliRunsUnregisteredTestDefinitionAndReportsJoinKeys() throws Exception {
@@ -142,6 +211,13 @@ public class BenchmarkDefinitionFeatureTest {
 			assertEquals(1, resultFiles.size());
 			String json = java.nio.file.Files.readString(resultFiles.getFirst());
 			assertTrue(json.contains("IntToRecordJmhBenchmark.run")); assertTrue(json.contains("-Xint"));
+			String markdown = java.nio.file.Files.readString(resultFiles.getFirst().resolveSibling("report.md"));
+			assertTrue(markdown.contains("# JMH report"));
+			assertTrue(markdown.contains("smoke：true"));
+			assertTrue(markdown.contains("-Xint"));
+			assertTrue(markdown.contains("bar ["));
+			assertTrue(markdown.contains("ns/op"));
+			assertTrue(markdown.contains("GC profilerが無効"));
 		}
 	}
 	@ZlkBenchmark(shape = InvocationShape.INT_TO_RECORD, gc = false, forks = 2, warmupIterations = 3, measurementIterations = 4, seconds = 2)
@@ -176,6 +252,18 @@ public class BenchmarkDefinitionFeatureTest {
 		for(var subject : BenchmarkSources.Subject.values()) {
 			Class<?> type = Class.forName("zlk.benchmark." + subject.benchmarkName());
 			var definition = BenchmarkDefinition.of(type);
+			assertNotNull(definition.jmhChart());
+			assertEquals(switch(subject) {
+				case RECORD_SINGLE_FIELD, RECORD_MULTI_FIELD, COMBINED -> "source.updates";
+				case RECORD_SHARED -> "source.fields";
+				case OPERAND_STACK -> "source.depth";
+				case NAMED_LOCAL -> "option.stack";
+			}, definition.jmhChart().x());
+			assertEquals(switch(subject) {
+				case RECORD_SINGLE_FIELD, RECORD_MULTI_FIELD, RECORD_SHARED, COMBINED -> "option.reuse";
+				case OPERAND_STACK -> "option.stack";
+				case NAMED_LOCAL -> "";
+			}, definition.jmhChart().series());
 			for(var item : definition.cases()) {
 				var args = new java.util.HashMap<String, Integer>();
 				if(!item.sourceCase().equals("fixed")) for(String part : item.sourceCase().split(";")) {
@@ -197,6 +285,30 @@ public class BenchmarkDefinitionFeatureTest {
 			}
 		}
 		assertEquals(60, count);
+	}
+	@Test void namedLocalRunUsesBooleanXAxisWithoutArtificialSourceParameters() throws Exception {
+		var output = java.nio.file.Path.of("target/benchmarks/named-local-chart-fixture", java.util.UUID.randomUUID().toString());
+		var results = ZlkBenchmarkRunner.smoke(zlk.benchmark.NamedLocalBenchmark.class, output);
+		assertEquals(2, results.size());
+		String md = java.nio.file.Files.readString(output.resolve("report.md"));
+		assertEquals(2, md.split("```mermaid", -1).length - 1);
+		assertTrue(md.contains("x-axis \"option.stack\" [\"false\", \"true\"]"));
+		assertTrue(md.contains("option.stack=false：橙，option.stack=true：青"));
+		assertTrue(md.contains("| option.stack | score (ns/op) |"));
+		assertTrue(!md.contains("| option.stack |  |"));
+		assertTrue(!md.contains("false / false"));
+		for(String metric : java.util.List.of("primary", "gc.alloc.rate.norm")) {
+			var scores = new java.util.ArrayList<String>();
+			for(String stack : java.util.List.of("false", "true")) {
+				var result = results.stream().filter(r -> r.getParams().getParam("optionCase").equals("stack=" + stack)).findFirst().orElseThrow();
+				assertEquals("fixed", result.getParams().getParam("sourceCase"));
+				var value = metric.equals("primary") ? result.getPrimaryResult() : result.getSecondaryResults().get(metric);
+				String score = java.math.BigDecimal.valueOf(value.getScore()).toPlainString();
+				scores.add(score);
+				assertTrue(md.contains("| " + stack + " | " + score + " |"));
+			}
+			assertTrue(md.contains("bar [" + String.join(", ", scores) + "]"));
+		}
 	}
 	@ZlkBenchmark(shape = InvocationShape.INT_TO_INT)
 	public static class WrongAbi {
@@ -302,18 +414,27 @@ public class BenchmarkDefinitionFeatureTest {
 	void testSourceDefinitionRunsInRealFork() throws Exception {
 		Class<?> fixture = Class.forName("zlk.benchmark.ForkDefinitionFixture");
 		Class<?> runner = Class.forName("zlk.benchmark.ZlkBenchmarkRunner");
+		var output = java.nio.file.Path.of("target/benchmarks/fork-fixture", java.util.UUID.randomUUID().toString());
 		var results = (java.util.Collection<?>) runner.getMethod("smoke", Class.class, java.nio.file.Path.class, String[].class)
-				.invoke(null, fixture, java.nio.file.Path.of("target/benchmarks/fork-fixture"), new String[0]);
+				.invoke(null, fixture, output, new String[0]);
 		assertEquals(1, results.size());
 		var result = (org.openjdk.jmh.results.RunResult) results.iterator().next();
 		assertEquals(1, result.getParams().getForks());
 		assertEquals(fixture.getName(), result.getParams().getParam("definitionClass"));
 		assertTrue(result.getSecondaryResults().containsKey("gc.alloc.rate.norm"));
-		String metadata = java.nio.file.Files.readString(java.nio.file.Path.of("target/benchmarks/fork-fixture/metadata.json"));
+		String metadata = java.nio.file.Files.readString(output.resolve("metadata.json"));
 		assertTrue(metadata.contains("\"definitionClass\":\"" + fixture.getName() + "\""));
 		assertTrue(metadata.contains("\"sourceSha256\""));
 		assertTrue(metadata.contains("OPT_REUSE_RECORD"));
 		assertTrue(metadata.contains("\"smoke\":true"));
 		assertTrue(metadata.contains("\"forks\":1"));
+		String markdown = java.nio.file.Files.readString(output.resolve("report.md"));
+		assertTrue(markdown.contains("# JMH report"));
+		assertTrue(markdown.contains("gc.alloc.rate.norm (B/op)"));
+		for(var metric : java.util.List.of(result.getPrimaryResult(), result.getSecondaryResults().get("gc.alloc.rate.norm"))) {
+			String score = java.math.BigDecimal.valueOf(metric.getScore()).toPlainString();
+			assertTrue(markdown.contains("bar [" + score + "]"));
+			assertTrue(markdown.contains("| fixed | " + score + " |"));
+		}
 	}
 }

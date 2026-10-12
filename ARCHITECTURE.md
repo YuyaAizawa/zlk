@@ -193,7 +193,8 @@ M.f._case2_1._case1_1.y
 JUnit + JMHの最適化効果測定システム．依存関係の解決にはMavenの`benchmark` profileを有効化．
 
 - **`src/benchmark/java/zlk/benchmark`**：共通基盤とヘルパー
-- **`src/benchmark-test/java/zlk/benchmark`**：ベンチマーク定義
+- **`src/benchmark-test/java/zlk/benchmark`**：ベンチマーク定義と共通CLI
+
 
 詳しくは`benchmarks/README.md`を参照．
 

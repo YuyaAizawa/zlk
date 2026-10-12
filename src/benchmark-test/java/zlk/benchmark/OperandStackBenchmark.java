@@ -4,6 +4,9 @@ import zlk.compiler.CompilationOptions;
 import zlk.compiler.CompilationOptions.Key;
 
 @ZlkBenchmark(shape = InvocationShape.INT_TO_INT)
+@JmhChart(x = "source.depth", series = "option.stack")
+@ReportChart(x = "source.depth", series = {"option.stack"},
+	metrics = {ReportChart.Metric.CODE_LENGTH, ReportChart.Metric.ALOAD, ReportChart.Metric.ASTORE, ReportChart.Metric.MAX_LOCALS})
 public class OperandStackBenchmark extends ZlkBenchmarkTest {
 	@Source public static String source(@Values({"8", "32", "128"}) int depth) {
 		return new BenchmarkSources.Sample(BenchmarkSources.Subject.OPERAND_STACK, 0, 0, depth).source();
