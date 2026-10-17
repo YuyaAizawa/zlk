@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import zlk.compiler.diagnostic.Diagnostic;
+import zlk.compiler.diagnostic.DiagnosticReporter;
 import zlk.compiler.id.Id;
 import zlk.compiler.id.IdMap;
 import zlk.compiler.ir.ast.AnType;
@@ -16,6 +17,7 @@ import zlk.compiler.ir.typing.RecordField;
 import zlk.compiler.ir.typing.Type;
 import zlk.compiler.ir.typing.Type.Row;
 import zlk.compiler.ir.typing.Type.RowVar;
+import zlk.compiler.phase.recon.TypeMatcher;
 import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -71,6 +73,21 @@ final class TypeResolver {
 		register(decls, scopeId);
 		resolveParameterKinds();
 		resolveAliases();
+	}
+
+	/** 宣言済みの全aliasについて，最初の同値な先行宣言との重複を報告する． */
+	void reportDuplicateAliases(DiagnosticReporter reporter) {
+		SeqBuffer<Id> preceding = new SeqBuffer<>();
+		aliasIds.forEach(id -> {
+			preceding.toSeq().findFirst(prev -> TypeMatcher.equivalent(
+					aliasStates.get(id).template,
+					aliasStates.get(prev).template)
+			).ifPresent(prev -> {
+				reporter.report(new Diagnostic.DuplicateTypeAlias(declarationLocations.get(id),
+						id.simpleName(), prev.simpleName(), declarationLocations.get(prev)));
+			});
+			preceding.add(id);
+		});
 	}
 
 	/** 全型名を登録し，型宣言Idとalias Idを宣言順のimmutableな列として保持する． */
@@ -202,9 +219,31 @@ final class TypeResolver {
 		return resolvedConstructors.get(ctorId).args();
 	}
 
+	/** 直接closed record構文を持つaliasの解決済みtemplateを返す． */
+	Optional<Type.Record> getRecordAliasType(TypeAlias alias) {
+		if (alias.body() instanceof AnType.Record record
+				&& record.extension().isEmpty()) {
+			return Optional.of((Type.Record) aliasStates.get(getTypeId(alias.name())).template);
+		}
+		return Optional.empty();
+	}
+
+
 	/** value annotation型を評価する．未宣言変数は暗黙導入する． */
 	Type evalAnnotation(AnType aTy) {
 		return evalAsType(aTy, new TypeVarContext.Implicit());
+	}
+
+	/** 型印字の候補を元の宣言順で返す．parameter名とkindは展開前の宣言から保持する． */
+	Seq<zlk.compiler.ir.typing.TypeAlias> typeAliases() {
+		return aliasIds.map(id -> {
+			var alias = (TyDeclInfo.Alias) declInfos.get(id);
+			var parameters = Seq.zip(alias.params(), kindsOf(id)).map((param, kind) ->
+					new zlk.compiler.ir.typing.TypeAlias.Parameter(param.name(),
+							kind == Kind.ROW ? zlk.compiler.ir.typing.TypeAlias.Kind.ROW
+									: zlk.compiler.ir.typing.TypeAlias.Kind.TYPE));
+			return new zlk.compiler.ir.typing.TypeAlias(id, parameters, aliasStates.get(id).template);
+		});
 	}
 
 	/** nominal型の安定Typeを取得する． */

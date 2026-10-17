@@ -6,7 +6,11 @@ import zlk.compiler.id.Id;
 import zlk.compiler.ir.typing.Type;
 
 /**
- * ANF上の値をLocalIdで識別する．
+ * 単一代入形式の変数
+ *
+ * @param localId 変数を識別する関数内で一意な連番
+ * @param id letで宣言された名前（letで宣言されていなければempty）
+ * @param type この変数の使用出現の型
  *
  * id == empty はsingle-useを示し，Anf/OwnBlock内で高々1回 value operand として利用される．
  * （式は木構造のとき親に，式またはlet束縛もしくはトップレベルを1つのみ持つため）

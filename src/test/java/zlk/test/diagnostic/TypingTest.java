@@ -13,6 +13,27 @@ import zlk.util.fixture.CompilationFixture;
 
 public class TypingTest {
 	@Test
+	void annotatedConstructorFamilyMismatchRemainsAPublicTypingError() {
+		var result = assertDoesNotThrow(() -> Driver.compile("typing.zlk", """
+				module Main
+				type Box a = Box a
+				type Other a = Other a
+				type alias YX = { y : Bool, x : I32 }
+				f : Box YX -> I32
+				f (Other value) = 10
+				"""));
+		assertInstanceOf(Driver.CompilationResult.Failed.class, result);
+		var errors = result.diags().filter(d -> d instanceof Diagnostic.ConstructorFamilyMismatch);
+		assertEquals(1, errors.size());
+		var error = (Diagnostic.ConstructorFamilyMismatch) errors.head();
+		assertEquals(Diagnostic.Severity.ERROR, error.severity());
+		assertEquals(6, error.location().startLine());
+		assertEquals("Other", error.constructor().simpleName());
+		assertEquals("Other", error.actualFamily().simpleName());
+		assertEquals("Box", error.expectedFamily().simpleName());
+	}
+
+	@Test
 	void ordinaryTypeMismatchIsReportedAtTheMismatchingExpression() {
 		Diagnostic.TypeMismatch error = only(Diagnostic.TypeMismatch.class,
 				"""

@@ -47,6 +47,13 @@ public class StableTypeTest {
 	}
 
 	@Test
+	void emptyClosedRowPrintsWithoutSpaces() {
+		var row = new Type.Row(Seq.of());
+		assertEquals("{}", row.toString());
+		assertEquals("{}", new Type.Record(row).buildString());
+	}
+
+	@Test
 	void openRowPrettyPrintPlacesRowVarBeforeFields() {
 		Type.RowVar rowVar = new Type.RowVar("row");
 		Type.Record openRecord = new Type.Record(

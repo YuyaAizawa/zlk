@@ -9,6 +9,7 @@ import java.util.function.Function;
 import zlk.compiler.id.Id;
 import zlk.compiler.ir.typing.RecordField;
 import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.recon.Content.Structure;
 import zlk.compiler.phase.recon.RcType.AppN;
 import zlk.compiler.phase.recon.RcType.FunN;
 import zlk.compiler.phase.recon.RcType.RecordN;
@@ -111,7 +112,7 @@ permits VarN, AppN, FunN, RecordN {
 		Map<String, Variable> typeVars = new HashMap<>();
 		Map<String, Variable> rowVars = new HashMap<>();
 		SeqBuffer<Variable> flexes = new SeqBuffer<>();
-		RcType type = convert(ty, name -> typeVars.computeIfAbsent(name, _ -> {
+		RcType type = fromType(ty, name -> typeVars.computeIfAbsent(name, _ -> {
 			Variable flex = freshFlex.getVariable(name, 0, Variable.Kind.TYPE);
 			flexes.add(flex);
 			return flex;
@@ -134,7 +135,7 @@ permits VarN, AppN, FunN, RecordN {
 		Map<String, Variable> typeVars = new HashMap<>(outerTypeVars);
 		Map<String, Variable> rowVars = new HashMap<>();
 		SeqBuffer<Variable> rigids = new SeqBuffer<>();
-		RcType type = convert(ty, name -> typeVars.computeIfAbsent(name, _ -> {
+		RcType type = fromType(ty, name -> typeVars.computeIfAbsent(name, _ -> {
 			Variable rigid = Variable.ofRigid(name);
 			rigids.add(rigid);
 			return rigid;
@@ -152,12 +153,10 @@ permits VarN, AppN, FunN, RecordN {
 	}
 
 	/**
-	 * TypeからRcTypeへのkind-aware変換．
-	 * Type.VarはTYPE-kind，Type.RowVarはROW-kindのVariableへ変換する．
-	 * 同名をType.VarとRowVarの両方に使うとrejectする．
-	 * Type.Rowのextensionをsilentに捨てない．
+	 * 型を制約用の型へ変換する．変数の取得・生成と同名出現の共有は呼出し側が担う．
+	 * 同名のTYPE／ROW変数の混在は拒否し，row extensionを保持する．
 	 */
-	private static RcType convert(
+	public static RcType fromType(
 			Type ty,
 			Function<String, Variable> typeVar,
 			Function<String, Variable> rowVar) {
@@ -241,6 +240,21 @@ permits VarN, AppN, FunN, RecordN {
 				row.fields().map(field ->
 					new RecordField<>(field.name(), field.value().toType())),
 				ext));
+		}
+		};
+	}
+
+	default Variable toVariable(int letRank) {
+		return switch (this) {
+		case RcType.VarN(Variable variable) -> variable;
+		case RcType.AppN(Id id, Seq<RcType> args) -> new Variable(
+				new Structure(new FlatType.CtorApp1(id, args.map(arg -> arg.toVariable(letRank)))),letRank);
+		case RcType.FunN(RcType arg, RcType ret) -> new Variable(
+				new Structure(new FlatType.Fun1(arg.toVariable(letRank), ret.toVariable(letRank))), letRank);
+		case RcType.RecordN(RowN row) -> {
+			var fields = row.fields().map(field -> new RecordField<>(field.name(), field.value().toVariable(letRank)));
+			var rowVar = new Variable(new Structure(new FlatType.Row1(fields, row.extension())), letRank, Variable.Kind.ROW);
+			yield new Variable(new Structure(new FlatType.Record1(rowVar)), letRank);
 		}
 		};
 	}

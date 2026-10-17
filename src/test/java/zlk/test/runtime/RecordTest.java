@@ -22,6 +22,18 @@ import zlk.runtime.ZlkRecord;
 import zlk.runtime.internal.RecordOps;
 
 public class RecordTest {
+	@Test
+	void arrayImplementationHasOnlyCanonicalNamesAndValuesStorage() {
+		ZlkRecord record = ZlkRecord.of(Map.of("y", 2, "x", 1));
+		var fields = java.util.Arrays.stream(record.getClass().getDeclaredFields())
+				.filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers())).toList();
+		assertEquals(2, fields.size());
+		assertEquals(Map.of("names", String[].class, "values", Object[].class), fields.stream()
+				.collect(java.util.stream.Collectors.toMap(java.lang.reflect.Field::getName, java.lang.reflect.Field::getType)));
+		org.junit.jupiter.api.Assertions.assertNotSame(record.names(), record.names());
+		assertEquals(List.of("x", "y"), record.names());
+	}
+
 	private static class Pair {
 		int x;
 		int y;

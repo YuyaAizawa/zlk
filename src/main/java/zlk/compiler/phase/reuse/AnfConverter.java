@@ -102,10 +102,13 @@ final class FunctionConverter {
 			return switch(exp) {
 			case CcExp.CcCnst(ConstValue value, Location loc) ->
 					bind(new AnfRhs.Cnst(value), value.type(), loc, resultName);
-			case CcExp.CcVar(Id id, Type _, Location _) -> {
+			case CcExp.CcVar(Id id, Type type, Location _) -> {
 				LocalVar source = vars.get(id);
-				resultName.ifPresent(alias -> vars.put(alias, source));
-				yield source;
+				// CcVarの型が具体化されていれば型を更新
+				LocalVar value = source.type().equals(type) ? source
+						: new LocalVar(source.localId(), source.id(), type);
+				resultName.ifPresent(alias -> vars.put(alias, value));
+				yield value;
 			}
 			case CcExp.CcDirectApp(Id funId, Seq<CcExp> args, Type type, Location loc) ->
 					bind(new AnfRhs.DirectApp(funId, args.map(this::convert)), type, loc, resultName);

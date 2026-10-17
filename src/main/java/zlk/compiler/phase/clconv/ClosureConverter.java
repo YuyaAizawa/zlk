@@ -10,9 +10,6 @@ import zlk.compiler.id.IdSet;
 import zlk.compiler.ir.ConstValue;
 import zlk.compiler.ir.clcalc.CcCaseBranch;
 import zlk.compiler.ir.clcalc.CcExp;
-import zlk.compiler.ir.clcalc.CcFunDecl;
-import zlk.compiler.ir.clcalc.CcModule;
-import zlk.compiler.ir.clcalc.CcPattern;
 import zlk.compiler.ir.clcalc.CcExp.CcCase;
 import zlk.compiler.ir.clcalc.CcExp.CcClosureApp;
 import zlk.compiler.ir.clcalc.CcExp.CcCnst;
@@ -25,12 +22,12 @@ import zlk.compiler.ir.clcalc.CcExp.CcRecordAccess;
 import zlk.compiler.ir.clcalc.CcExp.CcRecordField;
 import zlk.compiler.ir.clcalc.CcExp.CcRecordUpdate;
 import zlk.compiler.ir.clcalc.CcExp.CcVar;
+import zlk.compiler.ir.clcalc.CcFunDecl;
+import zlk.compiler.ir.clcalc.CcModule;
+import zlk.compiler.ir.clcalc.CcPattern;
 import zlk.compiler.ir.idcalc.ExpOrPatternMap;
 import zlk.compiler.ir.idcalc.IcCaseBranch;
 import zlk.compiler.ir.idcalc.IcExp;
-import zlk.compiler.ir.idcalc.IcModule;
-import zlk.compiler.ir.idcalc.IcPattern;
-import zlk.compiler.ir.idcalc.IcValDecl;
 import zlk.compiler.ir.idcalc.IcExp.IcApp;
 import zlk.compiler.ir.idcalc.IcExp.IcCase;
 import zlk.compiler.ir.idcalc.IcExp.IcCnst;
@@ -44,6 +41,9 @@ import zlk.compiler.ir.idcalc.IcExp.IcRecordUpdate;
 import zlk.compiler.ir.idcalc.IcExp.IcVarCtor;
 import zlk.compiler.ir.idcalc.IcExp.IcVarForeign;
 import zlk.compiler.ir.idcalc.IcExp.IcVarLocal;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.idcalc.IcPattern;
+import zlk.compiler.ir.idcalc.IcValDecl;
 import zlk.compiler.ir.typing.Type;
 import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
@@ -119,13 +119,13 @@ public final class ClosureConverter {
 		} else {
 			CcFunDecl closureFunc = makeClosure(id, frees, args_, ccBody, body.loc());
 			toplevels.add(closureFunc);
-			arities.remove(id);  // 直接呼出し出来なかったので取り除く
+			arities.remove(id);
+			// 元のIdは局所closure値であり，後続lambdaからはcaptureが必要である．
+			knowns.remove(id);
 			knowns.add(closureFunc.id());
-			return Optional.of(new CcMkCls(
-					closureFunc.id(),
+			return Optional.of(new CcMkCls(closureFunc.id(),
 					frees.map(id_ -> (CcExp) new CcVar(id_, type.get(id_), Location.noLocation())),
-					type.get(id),
-					closureFunc.loc()));
+					type.get(id), closureFunc.loc()));
 		}
 	}
 

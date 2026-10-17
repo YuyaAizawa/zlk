@@ -486,6 +486,9 @@ permits CtorApp, Arrow, Var, Record {
 	 * Rowのcanonical文字列表現を構築する．
 	 */
 	static String buildRowString(Row row) {
+		if(row.fields().isEmpty() && row.extension().isEmpty()) {
+			return "{}";
+		}
 		StringBuilder sb = new StringBuilder();
 		sb.append("{ ");
 		if(row.extension().isPresent()) {

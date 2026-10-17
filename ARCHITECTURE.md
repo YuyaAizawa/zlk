@@ -94,7 +94,7 @@ flowchart TB
 |---|---|
 | `parse.Lexer` | ソース文字列を字句列へ分割．構文の組立てはParserの責務 |
 | `parse.Parser` | 字句列からASTを構築．名前の参照先や型は解決しない |
-| `nameeval.NameEvaluator` | 名前の参照先，型名，型aliasを解決．式の型の整合性は型推論で検査 |
+| `nameeval.NameEvaluator` | 名前の参照先，型名，型aliasを解決し，alias宣言の実体同値な重複を警告．式の型の整合性は型推論で検査 |
 | `recon.ConstraintExtractor` | 式・パターン・型注釈から型制約を抽出．制約の解決は行わない |
 | `recon.TypeReconstructor` | 単一化と汎化により型制約を解き，型を再構築．パターンの網羅性は検査しない |
 | `patterncheck.PatternChecker` | 型が確定したパターンの冗長性と網羅性を検査．IRの変換やパターンのコード生成は行わない |
@@ -118,7 +118,9 @@ ZLKのレコード型は，行多相を持つ構造的型である．重要な�
 
 - **RecordとRowの分離**：安定層では`Type.Record`が`Type.Row`を包み，row tailの`Type.RowVar`は値型`Type`を実装しない．制約層の`RcType.RecordN`／`RowN`，flat層の`FlatType.Record1`／`Row1`も同じ境界を保つ．union-find rootはTYPE／ROW kindを持ち，rank，generalize，instantiateの機構を共有する．
 - **open rowによる一様な型推論**：アクセス，更新，レコードパターンは`ConstraintExtractor`でopen rowを含む`CEqual`へlowerする．solverはrowのlabel差分をtailへ束縛し，lacks制約で重複labelを防ぐため，個別構文向けの特例を必要としない．
-- **宣言全体でのkind解決と透明alias**：`TypeResolver`は前方参照や相互再帰を含む全型宣言からparameter kindを解決する．型aliasはkind確定後に展開され，alias identityやkind情報をbackendへ持ち越さない．
+- **宣言全体でのkind解決と透明alias**：`TypeResolver`は前方参照や相互再帰を含む全型宣言からparameter kindを解決する．型aliasはkind確定後に透明展開する．全aliasの重複検査は宣言だけから名前評価で行い，未使用parameterを除いた実体同値性を扱う．式の利用や型出力オプションには依存しない．
+- **型の文字列化と値の表示の分離**：`presentation.TypePrinter.convert`は透明な推論型と`IcModule`のimmutableなalias表から，alias適用を`CtorApp`で表す印字専用の`Type`を生成する．strict subsetで一般的候補を除き，残る同等・比較不能候補は元の宣言順で無警告に選択する．照合は`recon.TypeMatcher`を重複検査と共有し，試行ごとに独立したflex／skolem graphで既存の単一化を利用する．未束縛parameterも保持し，変換時に文脈内で衝突しないfresh名を与える．名前と括弧の書式は既存の`Type.mkString`へ委譲し，closedな空rowは`{}`とする．Driverの型情報診断とMainの型出力が利用するが，変換結果は推論やbackendへ戻さず，診断の意味型payloadも元の透明な型を維持する．alias表を閉包変換以降へ渡さず，実行時の値は常にcanonicalなfield順で表示する．
+- **直接closed record aliasの生成関数**：同名の通常関数を名前評価で合成し，field宣言順に引数を受け取る．空aliasは値とし，open／連鎖aliasには生成しない．引数順は意味論であり，型印字の候補選択とは独立である．
 - **後段では型のopen／closedを消去**：record patternは`PatternChecker`では反駁不能なbinderとして扱う．runtimeではopen／closedの区別を消去し，全レコード値をpublic `ZlkRecord` interfaceへ統一する．
 
 
@@ -165,6 +167,7 @@ M.f._case2_1._case1_1.y
 | `compiler.diagnostic` | 構造化診断と診断の報告先 |
 | `compiler.id` | 解決済み識別子`Id`と，その対応表・集合 |
 | `compiler.source` | ソース文字列と位置・範囲 |
+| `compiler.presentation` | 透明な型とalias表から，印字専用のalias適用を含む型への純粋な変換 |
 | `compiler.ir`以下 | 各段階のIR，安定した型情報，解析結果．詳細は「コンパイルフェーズ」を参照 |
 | `compiler.phase`以下 | 各コンパイルフェーズの実装と内部表現．詳細は「コンパイルフェーズ」を参照 |
 | `compiler.jvm` | 組込み定義とコード生成で共有する，ASMを用いたJVM命令生成部品 |
@@ -182,6 +185,7 @@ M.f._case2_1._case1_1.y
 | `zlk.test.feature.*` | Driverを入口とする言語機能，推論型，生成クラスのlink・実行時意味論のテスト |
 | `zlk.test.diagnostic` | Driverを入口とする公開診断とコンパイル成否のテスト |
 | `zlk.test.phase.*` | 対象フェーズを直接利用した，内部アルゴリズムとIRの検査 |
+| `zlk.test.presentation` | 型表示の純粋な変換，構造的fallback，入力型の非変更の検査 |
 | `zlk.test.runtime` | runtime APIを直接利用した，値の振舞いと内部ABIの検査 |
 | `zlk.util.fixture` | `Driver`のコンパイル結果，推論型，および生成bytecodeのload・実行を扱うテスト支援ユーティリティ |
 | `zlk.util.tester` | コンパイルフェーズの内部IRおよびphase固有アルゴリズムを直接検査するテスト支援ユーティリティ |

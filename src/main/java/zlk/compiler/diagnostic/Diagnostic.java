@@ -212,6 +212,26 @@ public sealed interface Diagnostic {
 		}
 	}
 
+	/**
+	 * 展開後の実体が同値な型alias
+	 *
+	 * @param location alias宣言位置
+	 * @param name aliasの名前
+	 * @param previousName 最初の同値な先行aliasの名前
+	 * @param previousLocation 先行宣言の位置
+	 */
+	record DuplicateTypeAlias(
+			Location location,
+			String name,
+			String previousName,
+			Location previousLocation
+	) implements Diagnostic {
+		@Override
+		public Severity severity() {
+			return Severity.WARN;
+		}
+	}
+
 	// ================== typing ==================
 
 	/**
@@ -220,8 +240,9 @@ public sealed interface Diagnostic {
 	 * @param location 宣言の位置
 	 * @param declaration 宣言の識別子
 	 * @param type 再構築後の安定した型
+	 * @param renderedType aliasを考慮した型の表示文字列
 	 */
-	record InferredType(Location location, Id declaration, Type type) implements Diagnostic {
+	record InferredType(Location location, Id declaration, Type type, String renderedType) implements Diagnostic {
 		@Override
 		public Severity severity() {
 			return Severity.INFO;

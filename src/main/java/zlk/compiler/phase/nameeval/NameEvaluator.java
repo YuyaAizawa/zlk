@@ -11,15 +11,14 @@ import zlk.compiler.diagnostic.DiagnosticReporter;
 import zlk.compiler.id.Id;
 import zlk.compiler.id.IdMap;
 import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.ast.AnType;
 import zlk.compiler.ir.ast.CaseBranch;
 import zlk.compiler.ir.ast.Decl;
-import zlk.compiler.ir.ast.Exp;
-import zlk.compiler.ir.ast.Module;
-import zlk.compiler.ir.ast.Pattern;
 import zlk.compiler.ir.ast.Decl.TypeAlias;
 import zlk.compiler.ir.ast.Decl.TypeErr;
 import zlk.compiler.ir.ast.Decl.ValDecl;
 import zlk.compiler.ir.ast.Decl.ValErr;
+import zlk.compiler.ir.ast.Exp;
 import zlk.compiler.ir.ast.Exp.App;
 import zlk.compiler.ir.ast.Exp.Case;
 import zlk.compiler.ir.ast.Exp.Cnst;
@@ -28,11 +27,10 @@ import zlk.compiler.ir.ast.Exp.If;
 import zlk.compiler.ir.ast.Exp.Lamb;
 import zlk.compiler.ir.ast.Exp.Let;
 import zlk.compiler.ir.ast.Exp.Var;
+import zlk.compiler.ir.ast.Module;
+import zlk.compiler.ir.ast.Pattern;
 import zlk.compiler.ir.idcalc.IcCaseBranch;
 import zlk.compiler.ir.idcalc.IcExp;
-import zlk.compiler.ir.idcalc.IcModule;
-import zlk.compiler.ir.idcalc.IcPattern;
-import zlk.compiler.ir.idcalc.IcValDecl;
 import zlk.compiler.ir.idcalc.IcExp.IcApp;
 import zlk.compiler.ir.idcalc.IcExp.IcCase;
 import zlk.compiler.ir.idcalc.IcExp.IcCnst;
@@ -42,6 +40,9 @@ import zlk.compiler.ir.idcalc.IcExp.IcLet;
 import zlk.compiler.ir.idcalc.IcExp.IcVarCtor;
 import zlk.compiler.ir.idcalc.IcExp.IcVarForeign;
 import zlk.compiler.ir.idcalc.IcExp.IcVarLocal;
+import zlk.compiler.ir.idcalc.IcModule;
+import zlk.compiler.ir.idcalc.IcPattern;
+import zlk.compiler.ir.idcalc.IcValDecl;
 import zlk.compiler.ir.typing.Ctor;
 import zlk.compiler.ir.typing.Type;
 import zlk.compiler.ir.typing.TypeDecl;
@@ -120,7 +121,16 @@ public final class NameEvaluator {
 						throw duplicateName(def.loc(), Diagnostic.NameNamespace.VALUE, name, e);
 					}
 				}
-				case TypeAlias _ -> {}
+				case TypeAlias alias -> {
+					if (typeResolver.getRecordAliasType(alias).isPresent()) {
+						try {
+							Id id = env.register(alias.name());
+							nameLocations.put(id, alias.loc());
+						} catch (DuplicatedNameException e) {
+							throw duplicateName(alias.loc(), Diagnostic.NameNamespace.VALUE, alias.name(), e);
+						}
+					}
+				}
 				case ValErr _, TypeErr _ -> {
 					throw new IllegalStateException();
 				}
@@ -138,14 +148,28 @@ public final class NameEvaluator {
 				}
 			});
 
-			return new IcModule(module.name(), icTypes.toSeq(), icDecls.toSeq());
+			// TypeAliasから合成したコンストラクタを末尾へ追加する
+			for (Decl def : module.decls()) {
+				if (def instanceof TypeAlias alias) {
+					typeResolver.getRecordAliasType(alias).ifPresent(type -> icDecls.add(eval(alias, type)));
+				}
+			}
+
+			return new IcModule(module.name(), icTypes.toSeq(), typeResolver.typeAliases(), icDecls.toSeq());
 		});
 	}
 
-	/** Source-facing resolution failures are reported and stop this phase. */
+	/**
+	 * 宣言由来の警告と名前解決エラーを報告する．警告だけなら後段へ進む．
+	 *
+	 * @param reporter 診断の送信先
+	 * @return 名前解決済みmodule，またはエラーによる停止
+	 */
 	public PhaseResult<IcModule> eval(DiagnosticReporter reporter) {
 		try {
-			return PhaseResult.ready(eval());
+			IcModule result = eval();
+			typeResolver.reportDuplicateAliases(reporter);
+			return PhaseResult.ready(result);
 		} catch (ResolutionException error) {
 			reporter.report(error.diagnostic());
 			return PhaseResult.blocked();
@@ -165,6 +189,25 @@ public final class NameEvaluator {
 
 		return new TypeDecl(id, vars, ctors, union.loc());
 	}
+
+	/** 宣言field順の引数と，cache済みtemplateを共有する注釈を持つ関数を合成する． */
+	private IcValDecl eval(TypeAlias alias, Type.Record type) {
+		Id id = env.get(alias.name());
+		AnType.Record record = (AnType.Record) alias.body();
+		return env.withScope(alias.name(), _ -> {
+			Seq<IcPattern> args = record.fields().map(field ->
+					eval(new Pattern.Var(field.name(), field.loc())));
+			Seq<IcExp.IcRecordField> fields = Seq.zip(record.fields(), args).map((field, arg) ->
+					new IcExp.IcRecordField(field.name(),
+							new IcVarLocal(((IcPattern.Var) arg).id(), field.loc()), field.loc()));
+			Seq<Type> argTypes = record.fields().map(field ->
+					type.fields().filter(resolved -> resolved.name().equals(field.name())).head().value());
+			Type anno = Type.fromSeq(Seq.concat(argTypes, Seq.of(type)));
+			return new IcValDecl(id, Optional.of(anno), args,
+					new IcExp.IcRecord(fields, record.loc()), alias.loc());
+		});
+	}
+
 
 	public IcValDecl eval(ValDecl decl) {
 		try {

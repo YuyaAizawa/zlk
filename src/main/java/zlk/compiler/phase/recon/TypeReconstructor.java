@@ -1,7 +1,6 @@
 package zlk.compiler.phase.recon;
 
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
 import zlk.compiler.PhaseResult;
@@ -21,11 +20,6 @@ import zlk.compiler.phase.recon.Constraint.CPattern;
 import zlk.compiler.phase.recon.Constraint.CPhase;
 import zlk.compiler.phase.recon.Constraint.Provenance;
 import zlk.compiler.phase.recon.Content.Structure;
-import zlk.compiler.phase.recon.RcType.AppN;
-import zlk.compiler.phase.recon.RcType.FunN;
-import zlk.compiler.phase.recon.RcType.RecordN;
-import zlk.compiler.phase.recon.RcType.RowN;
-import zlk.compiler.phase.recon.RcType.VarN;
 import zlk.util.collection.Seq;
 
 public class TypeReconstructor {
@@ -98,25 +92,25 @@ public class TypeReconstructor {
 	) {
 		switch(con) {
 		case CEqual(RcType type, RcType expectation, Provenance provenance) -> {
-			Variable actual = typeToVar(letRank, type, IdMap.of());
-			Variable expected = typeToVar(letRank, expectation, IdMap.of());
+			Variable actual = type.toVariable(letRank);
+			Variable expected = expectation.toVariable(letRank);
 			unify(actual, expected, provenance, letRank);
 		}
 		case CLocal(Id id, RcType expectation, Provenance provenance) -> {
 			Variable actual = instantiateIfGeneralized(letRank, env.get(id));
-			Variable expected = typeToVar(letRank, expectation, IdMap.of());
+			Variable expected = expectation.toVariable(letRank);
 			unify(actual, expected, provenance, letRank);
 		}
 		case CForeign(Id _, Type type, RcType expectation, Provenance provenance) -> {
 			RcType.Inst inst = RcType.instantiate(type, freshFlex);
 			introduce(inst.flexes(), letRank);
-			Variable actual = typeToVar(letRank, inst.type(), IdMap.of());
-			Variable expected = typeToVar(letRank, expectation, IdMap.of());
+			Variable actual = inst.type().toVariable(letRank);
+			Variable expected = expectation.toVariable(letRank);
 			unify(actual, expected, provenance, letRank);
 		}
-		case CPattern(Id constructor, Id family, RcType ctorTy, RcType expection, var location) -> {
-			Variable actual = typeToVar(letRank, ctorTy, IdMap.of());
-			Variable expected = typeToVar(letRank, expection, IdMap.of());
+		case CPattern(Id constructor, Id family, RcType ctorTy, RcType expectation, var location) -> {
+			Variable actual = ctorTy.toVariable(letRank);
+			Variable expected = expectation.toVariable(letRank);
 			unifyPattern(actual, expected, constructor, family, location, letRank);
 		}
 		case CLet(
@@ -132,7 +126,7 @@ public class TypeReconstructor {
 			introduce(rigids, nextRank);
 			introduce(flexes, nextRank);
 
-			IdMap<Variable> locals = header.traverse(ty -> typeToVar(nextRank, ty, IdMap.of()));  // TODO: 型エイリアスを追加
+			IdMap<Variable> locals = header.traverse(ty -> ty.toVariable(letRank));
 			introduce(locals.values(), nextRank);
 			IdMap<Variable> newEnv = IdMap.union(env, locals);
 
@@ -271,54 +265,6 @@ public class TypeReconstructor {
 
 	private static ReconstructionAbort abort(Diagnostic diagnostic, Throwable cause) {
 		return new ReconstructionAbort(diagnostic, cause);
-	}
-
-	/**
-	 * 指定した型を示す型変数を導入する
-	 */
-	private Variable typeToVar(int letRank, RcType ty, IdMap<Variable> aliases) {
-		Function<RcType, Variable> go = t -> typeToVar(letRank, t, aliases);
-
-		switch(ty) {
-		case VarN(Variable var) -> {
-			return var;
-		}
-		case AppN(Id id, Seq<RcType> args) -> {
-			Seq<Variable> argVars = args.map(go);
-			return register(letRank, new Structure(new FlatType.CtorApp1(id, argVars)));
-		}
-		case FunN(var arg, var ret) -> {
-			Variable aVar = go.apply(arg);
-			Variable bVar = go.apply(ret);
-			return register(letRank, new Structure(new FlatType.Fun1(aVar, bVar)));
-		}
-		case RecordN(RowN row) -> {
-					return buildRecordVar(freshFlex, letRank,
-						row.fields().map(field ->
-							new RecordField<>(field.name(), go.apply(field.value()))),
-						row.extension());
-				}
-		}
-	}
-
-	static Variable buildRecordVar(
-			FreshFlex freshFlex,
-			int letRank,
-			Seq<RecordField<Variable>> fields,
-			Optional<Variable> extension) {
-		Variable row = new Variable(
-				new Structure(new FlatType.Row1(fields, extension)),
-				letRank,
-				Variable.Kind.ROW);
-		return new Variable(
-				new Structure(new FlatType.Record1(row)),
-				letRank,
-				Variable.Kind.TYPE);
-	}
-
-	private Variable register(int letRank, Content content) {
-		Variable var = new Variable(content, letRank);
-		return var;
 	}
 
 	private void occurCheck(Id id, Variable var, zlk.compiler.source.Location location) {
