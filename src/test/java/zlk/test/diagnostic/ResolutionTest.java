@@ -11,6 +11,165 @@ import zlk.compiler.driver.Driver;
 
 public class ResolutionTest {
 	@Test
+	void aliasTemplateEquivalencePreservesTypeAndRowSharing() {
+		String[][] equivalent = {
+				{ "F a = a -> a", "G b = b -> b" },
+				{ "F r a = { r | x : a }", "G s b = { s | x : b }" },
+				{ "F a = { left : { x : a }, right : a }", "G b = { right : b, left : { x : b } }" },
+				{ "F r = { r | x : I32 } -> { r | y : Bool }", "G s = { s | x : I32 } -> { s | y : Bool }" },
+				// 実体だけの同値性を検査するため，未使用parameterの個数や位置は問わない．
+				{ "F unused = I32", "G = I32" },
+				{ "F unused a = a -> a", "G b ignored = b -> b" },
+				{ "F a = Box a", "G b = Box b" }
+		};
+		for (String[] aliases : equivalent) {
+			var warnings = duplicateAliases("module Main\ntype Box a = Box a\ntype alias "
+					+ aliases[0] + "\ntype alias " + aliases[1] + "\n");
+			assertEquals(1, warnings.size(), java.util.Arrays.toString(aliases));
+			var warning = warnings.head();
+			assertEquals("G", warning.name());
+			assertEquals("F", warning.previousName());
+			assertEquals(Diagnostic.Severity.WARN, warning.severity());
+			assertEquals(4, warning.location().startLine());
+			assertEquals(3, warning.previousLocation().startLine());
+		}
+		String[][] distinct = {
+				{ "F a = a -> a", "G a b = a -> b" },
+				{ "F a = a -> a", "G = I32 -> I32" },
+				{ "F r = { r | x : I32 }", "G = { x : I32 }" },
+				{ "F a = { left : { x : a }, right : a }", "G a b = { left : { x : a }, right : b }" },
+				{ "F r = { r | x : I32 } -> { r | y : Bool }", "G r s = { r | x : I32 } -> { s | y : Bool }" },
+				{ "F r a = { r | x : a }", "G s = { s | x : I32 }" },
+				{ "F a = Box a", "G a = Other a" },
+				{ "F a = a", "G r = { r | x : I32 }" }
+		};
+		for (String[] aliases : distinct) {
+			for (boolean reverse : new boolean[] { false, true }) {
+				assertTrue(duplicateAliases("module Main\ntype Box a = Box a\ntype Other a = Other a\ntype alias "
+						+ aliases[reverse ? 1 : 0] + "\ntype alias " + aliases[reverse ? 0 : 1] + "\n").isEmpty(),
+						java.util.Arrays.toString(aliases));
+			}
+		}
+	}
+
+	@Test
+	void duplicateWarningsDependOnlyOnDeclarationsNotReportingOrUses() {
+		String declarations = """
+				module Main
+				type alias A = I32
+				type alias B = A
+				type alias F a = a -> a
+				type alias G b = b -> b
+				type alias XY a b = { x : a, y : b }
+				type alias YX c d = { y : d, x : c }
+				""";
+		var expected = duplicateAliases(declarations);
+		assertEquals(zlk.util.collection.Seq.of("B", "G", "YX"), expected.map(Diagnostic.DuplicateTypeAlias::name));
+		for (String uses : new String[] { "", "value = 10\n", "value : B\nvalue = 10\n",
+				"value : B\nvalue = 10\nid : G I32\nid x = x\nfirst = id value\nsecond = id first\nrecord = YX True second\nagain = record\n" }) {
+			for (boolean reportTypes : new boolean[] { false, true }) {
+				for (boolean reportBytecode : new boolean[] { false, true }) {
+					var result = Driver.compile("aliases.zlk", declarations + uses, zlk.compiler.CompilationOptions.DEFAULT
+							.set(zlk.compiler.CompilationOptions.Key.REPORT_INFERRED_TYPES, reportTypes)
+							.set(zlk.compiler.CompilationOptions.Key.REPORT_BYTECODE_STMT_ORDER, reportBytecode));
+					assertInstanceOf(Driver.CompilationResult.Succeeded.class, result);
+					var actual = result.diags().filter(d -> d instanceof Diagnostic.DuplicateTypeAlias)
+							.map(d -> (Diagnostic.DuplicateTypeAlias) d);
+					assertEquals(expected.size(), actual.size());
+					for (int i = 0; i < expected.size(); i++) {
+						assertEquals(expected.at(i).name(), actual.at(i).name());
+						assertEquals(expected.at(i).previousName(), actual.at(i).previousName());
+						assertEquals(expected.at(i).severity(), actual.at(i).severity());
+						assertEquals(expected.at(i).location().toString(), actual.at(i).location().toString());
+						assertEquals(expected.at(i).previousLocation().toString(), actual.at(i).previousLocation().toString());
+					}
+				}
+			}
+		}
+	}
+
+	private zlk.util.collection.Seq<Diagnostic.DuplicateTypeAlias> duplicateAliases(String source) {
+		var result = Driver.compile("aliases.zlk", source);
+		assertInstanceOf(Driver.CompilationResult.Succeeded.class, result);
+		return result.diags().filter(d -> d instanceof Diagnostic.DuplicateTypeAlias)
+				.map(d -> (Diagnostic.DuplicateTypeAlias) d);
+	}
+
+	@Test
+	void equivalentAliasesWarnAtLaterDeclarationAndCompilationSucceeds() {
+		var result = Driver.compile("display.zlk", """
+				module Main
+				type alias XY a b = { x : a, y : b }
+				type alias YX c d = { y : d, x : c }
+				value = { x = 10, y = True }
+				""");
+		assertInstanceOf(Driver.CompilationResult.Succeeded.class, result);
+		var warnings = result.diags().filter(d -> d instanceof Diagnostic.DuplicateTypeAlias);
+		assertEquals(1, warnings.size());
+		var warning = (Diagnostic.DuplicateTypeAlias) warnings.head();
+		assertEquals(Diagnostic.Severity.WARN, warning.severity());
+		assertEquals("YX", warning.name());
+		assertEquals("XY", warning.previousName());
+		assertEquals(3, warning.location().startLine());
+		assertEquals(2, warning.previousLocation().startLine());
+	}
+
+	@Test
+	void incomparableDisplayCandidatesRemainSilentForAnnotatedAndNestedUses() {
+		String source = """
+				module Main
+				type alias X r = { r | x : I32 }
+				type alias Y r = { r | y : I32 }
+				make a = { inner = { x = a, y = a } }
+				concrete = make 10
+				explicit : { nested : { x : I32, y : I32 } }
+				explicit = { nested = { x = 10, y = 20 } }
+				""";
+		for (boolean reportTypes : new boolean[] { false, true }) {
+			var result = Driver.compile("aliases.zlk", source, zlk.compiler.CompilationOptions.DEFAULT
+					.set(zlk.compiler.CompilationOptions.Key.REPORT_INFERRED_TYPES, reportTypes));
+			assertInstanceOf(Driver.CompilationResult.Succeeded.class, result);
+			assertTrue(result.diags().filter(d -> d.severity() == Diagnostic.Severity.WARN).isEmpty());
+		}
+	}
+
+	@Test
+	void unusedNominalAliasesWarnInDeclarationOrderWithFirstRelatedLocation() {
+		var result = Driver.compile("aliases.zlk", """
+				module Main
+				type alias A = I32
+				type alias B = A
+				type alias C = I32
+				""");
+		assertInstanceOf(Driver.CompilationResult.Succeeded.class, result);
+		var warnings = result.diags().filter(d -> d instanceof Diagnostic.DuplicateTypeAlias)
+				.map(d -> (Diagnostic.DuplicateTypeAlias) d);
+		assertEquals(2, warnings.size());
+		assertEquals(zlk.util.collection.Seq.of("B", "C"), warnings.map(Diagnostic.DuplicateTypeAlias::name));
+		assertEquals(zlk.util.collection.Seq.of(3, 4), warnings.map(d -> d.location().startLine()));
+		for (var warning : warnings) {
+			assertEquals(Diagnostic.Severity.WARN, warning.severity());
+			assertEquals("A", warning.previousName());
+			assertEquals(2, warning.previousLocation().startLine());
+		}
+	}
+
+	@Test
+	void recordAliasConstructorNameCollisionRetainsBothLocations() {
+		for (boolean aliasFirst : new boolean[] { true, false }) {
+			String alias = "type alias Box = { value : I32 }\n";
+			String adt = "type Choice = Box I32\n";
+			Diagnostic.DuplicateName error = only(Diagnostic.DuplicateName.class,
+					"module Main\n" + (aliasFirst ? alias + adt : adt + alias));
+			assertEquals("Box", error.name());
+			assertEquals(aliasFirst ? Diagnostic.NameNamespace.CONSTRUCTOR : Diagnostic.NameNamespace.VALUE,
+					error.namespace());
+			assertEquals(3, error.location().startLine());
+			assertEquals(2, error.previousLocation().startLine());
+		}
+	}
+
+	@Test
 	void unknownTypeNameIsRejected() {
 		Diagnostic.UnknownName error = only(Diagnostic.UnknownName.class,
 				"""

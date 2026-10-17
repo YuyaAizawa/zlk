@@ -3,6 +3,7 @@ package zlk.compiler.phase.recon;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -164,28 +165,31 @@ public class Variable extends UnionFind<VariableState, Variable> implements Pret
 	 * 無限型の出現をエラーにまとめる
 	 */
 	public boolean occurs() {
-		return occursHelp(new SeqBuffer<>(), false);
+		return occursHelp(Collections.newSetFromMap(new IdentityHashMap<>()));
 	}
-	private boolean occursHelp(SeqBuffer<Variable> seen, boolean foundCycle) {
-		if(seen.contains(this)) {  // 再出現を確認するのは内部の等価性ではない
+	private boolean occursHelp(Set<VariableState> path) {
+		// rootの状態をidentityで比較し，現在の探索経路への再出現だけをcycleとする．
+		VariableState state = get();
+		if(!path.add(state)) {
 			return true;
 		}
-
-		seen.add(this);
-		return switch(get().content) {
-		case FlexVar _ -> foundCycle;
-		case RigidVar _ -> foundCycle;
-		case Structure(FlatType.CtorApp1(_, Seq<Variable> args)) ->
-			args.anyMatch(arg -> arg.occursHelp(seen, foundCycle));
-		case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
-			arg.occursHelp(seen, ret.occursHelp(new SeqBuffer<>(seen), foundCycle));
-		case Structure(FlatType.Record1(Variable row)) ->
-			row.occursHelp(seen, foundCycle);
-		case Structure(FlatType.Row1(Seq<RecordField<Variable>> fields, Optional<Variable> extension)) ->
-			fields.anyMatch(field -> field.value().occursHelp(seen, foundCycle))
-			|| (extension.isPresent() && extension.get().occursHelp(seen, foundCycle));
-		case Content.Error() -> foundCycle;
-		};
+		try {
+			return switch(state.content) {
+			case FlexVar _, RigidVar _, Content.Error _ -> false;
+			case Structure(FlatType.CtorApp1(_, Seq<Variable> args)) ->
+				args.anyMatch(arg -> arg.occursHelp(path));
+			case Structure(FlatType.Fun1(Variable arg, Variable ret)) ->
+				arg.occursHelp(path) || ret.occursHelp(path);
+			case Structure(FlatType.Record1(Variable row)) ->
+				row.occursHelp(path);
+			case Structure(FlatType.Row1(Seq<RecordField<Variable>> fields, Optional<Variable> extension)) ->
+				fields.anyMatch(field -> field.value().occursHelp(path))
+				|| (extension.isPresent() && extension.get().occursHelp(path));
+			};
+		} finally {
+			// 兄弟部分の共有DAGはcycleではないため，戻るときに経路から除く．
+			path.remove(state);
+		}
 	}
 
 	/**

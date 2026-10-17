@@ -11,6 +11,19 @@ import zlk.util.tester.DumpOnFailureWatcher;
 @ExtendWith(DumpOnFailureWatcher.class)
 public class FunctionFeatureTest {
 	@Test
+	void lambdaCapturesPreviouslyConvertedLocalClosure() {
+		var module = CompilationFixture.compileSucceeded("""
+				probe value =
+				  let
+				    original x = add value x
+				    returned ignored = \\ignoredAgain -> original
+				  in
+				    returned 0 0 10
+				""");
+		assertEquals(30, module.value("probe", 20));
+	}
+
+	@Test
 	void selfRecursiveFunction() {
 		String src =
 				"""

@@ -225,6 +225,10 @@ extends ExpOrPattern, PrettyPrintable, LocationHolder {
 			});
 		}
 		case IcRecord(Seq<IcRecordField> fields, Location _) -> {
+			if (fields.isEmpty()) {
+				pp.append("{}");
+				break;
+			}
 			pp.append("{ ");
 			IcRecordField head = fields.head();
 			pp.append(head.name).append(" = ").append(head.value);

@@ -27,6 +27,10 @@ public final class IdSet {
 		impl.putIfAbsent(id, id);
 	}
 
+	public void remove(Id id) {
+		impl.remove(id);
+	}
+
 	public void forEach(Consumer<? super Id> action) {
 		impl.values().forEach(action);
 	}

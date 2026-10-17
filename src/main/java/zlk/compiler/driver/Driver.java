@@ -4,8 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import zlk.compiler.CompilationOptions;
-import zlk.compiler.PhaseResult;
 import zlk.compiler.CompilationOptions.Key;
+import zlk.compiler.PhaseResult;
 import zlk.compiler.builtin.Builtin;
 import zlk.compiler.diagnostic.Diagnostic;
 import zlk.compiler.diagnostic.DiagnosticReporter;
@@ -34,6 +34,7 @@ import zlk.compiler.phase.recon.TypeReconstructor;
 import zlk.compiler.phase.reuse.AnfConverter;
 import zlk.compiler.phase.reuse.OwnershipElaborator;
 import zlk.compiler.phase.reuse.ReusePlanner;
+import zlk.compiler.presentation.TypePrinter;
 import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
@@ -172,15 +173,16 @@ public final class Driver {
 			IdMap<Type> types,
 			DiagnosticReporter sink
 	) {
+		TypePrinter printer = new TypePrinter(module.typeAliases());
 		module.types().forEach(type ->
 				type.ctors().forEach(ctor ->
-					reportInferredType(ctor.loc(), ctor.id(), types, sink)));
+					reportInferredType(ctor.loc(), ctor.id(), types, printer, sink)));
 		module.decls().forEach(decl -> {
-			reportInferredType(decl.loc(), decl.id(), types, sink);
+			reportInferredType(decl.loc(), decl.id(), types, printer, sink);
 			decl.body().walk(exp -> {
 				if(exp instanceof IcExp.IcLet let) {
 					let.defs().forEach(local ->
-						reportInferredType(local.loc(), local.id(), types, sink));
+						reportInferredType(local.loc(), local.id(), types, printer, sink));
 				}
 			});
 		});
@@ -190,11 +192,12 @@ public final class Driver {
 			Location location,
 			Id declaration,
 			IdMap<Type> types,
+			TypePrinter printer,
 			DiagnosticReporter sink
 	) {
 		Type type = types.getOptional(declaration).orElseThrow(() -> new IllegalStateException(
 				"missing reconstructed type for declaration: " + declaration));
-		sink.report(new Diagnostic.InferredType(location, declaration, type));
+		sink.report(new Diagnostic.InferredType(location, declaration, type, printer.convert(type).buildString()));
 	}
 
 

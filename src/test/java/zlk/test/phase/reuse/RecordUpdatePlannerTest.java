@@ -1,6 +1,7 @@
 package zlk.test.phase.reuse;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
@@ -8,8 +9,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import zlk.compiler.id.Id;
+import zlk.compiler.ir.ConstValue;
+import zlk.compiler.ir.clcalc.CcExp;
+import zlk.compiler.ir.clcalc.CcFunDecl;
+import zlk.compiler.ir.clcalc.CcModule;
 import zlk.compiler.ir.reuse.LocalSet;
 import zlk.compiler.ir.reuse.LocalVar;
+import zlk.compiler.ir.reuse.anf.AnfRhs;
 import zlk.compiler.ir.reuse.own.OwnBlock;
 import zlk.compiler.ir.reuse.own.OwnFunDecl;
 import zlk.compiler.ir.reuse.own.OwnModule;
@@ -20,7 +26,10 @@ import zlk.compiler.ir.reuse.own.Ownership;
 import zlk.compiler.ir.reuse.own.UseMode;
 import zlk.compiler.ir.reuse.plan.ReusePlan;
 import zlk.compiler.ir.reuse.plan.UniquenessFacts;
+import zlk.compiler.ir.typing.RecordField;
 import zlk.compiler.ir.typing.Type;
+import zlk.compiler.phase.reuse.AnfConverter;
+import zlk.compiler.phase.reuse.OwnershipElaborator;
 import zlk.compiler.phase.reuse.RecordUpdatePlanner;
 import zlk.compiler.phase.reuse.ReusePlanner;
 import zlk.compiler.phase.reuse.UniquenessAnalyzer;
@@ -28,6 +37,28 @@ import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
 
 public class RecordUpdatePlannerTest {
+	@Test
+	void selectsUpdateOfFreshRecordThroughAnfAndOwnershipLowering() {
+		var loc = Location.noLocation();
+		var type = new Type.Record(Seq.of(new RecordField<>("x", Type.I32), new RecordField<>("y", Type.BOOL)));
+		CcExp literal = new CcExp.CcRecord(Seq.of(
+				new CcExp.CcRecordField("y", new CcExp.CcCnst(ConstValue.TRUE, loc), loc),
+				new CcExp.CcRecordField("x", new CcExp.CcCnst(new ConstValue.I32(10), loc), loc)), type, loc);
+		CcExp body = new CcExp.CcRecordUpdate(literal,
+				Seq.of(new CcExp.CcRecordField("x", new CcExp.CcCnst(new ConstValue.I32(20), loc), loc)), type, loc);
+		var source = new CcModule("Main", Seq.of(), Seq.of(new CcFunDecl(Id.intern("Main.value"), Seq.of(), body, loc)));
+		var anf = AnfConverter.convert(source);
+		var binds = anf.funcs().head().body().binds();
+		var input = assertInstanceOf(AnfRhs.RecordUpdate.class, binds.at(4).rhs()).target();
+		var own = OwnershipElaborator.convert(anf);
+		var fun = own.funcs().head();
+		var update = (OwnStmt.Bind) fun.body().stmts().findFirst(stmt ->
+				stmt instanceof OwnStmt.Bind bind && bind.rhs() instanceof OwnRhs.RecordUpdate).orElseThrow();
+		var facts = UniquenessAnalyzer.analyze(fun);
+		assertTrue(facts.isUniqueAt(update.dst(), input));
+		assertTrue(RecordUpdatePlanner.plan(fun, facts).contains(update.dst()));
+	}
+
 	private static final Location NO_LOC = Location.noLocation();
 	private static final Type RECORD = new Type.Record(Seq.of());
 

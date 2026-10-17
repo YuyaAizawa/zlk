@@ -8,8 +8,8 @@ import zlk.util.pp.PrettyPrinter;
 public record CcModule(
 		String name,
 		Seq<TypeDecl> types,
-		Seq<CcFunDecl> funcs)
-implements PrettyPrintable {
+		Seq<CcFunDecl> funcs
+) implements PrettyPrintable {
 
 	@Override
 	public void mkString(PrettyPrinter pp) {

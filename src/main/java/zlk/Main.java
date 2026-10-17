@@ -40,6 +40,7 @@ import zlk.compiler.phase.recon.TypeReconstructor;
 import zlk.compiler.phase.reuse.AnfConverter;
 import zlk.compiler.phase.reuse.OwnershipElaborator;
 import zlk.compiler.phase.reuse.ReusePlanner;
+import zlk.compiler.presentation.TypePrinter;
 import zlk.util.collection.Seq;
 import zlk.util.collection.SeqBuffer;
 
@@ -128,7 +129,9 @@ public class Main {
 		System.out.println("-- NAME EVAL --");
 		Seq<Id> builtinIds = Builtin.functions().map(b -> b.id());
 		NameEvaluator ne = new NameEvaluator(ast);
-		IcModule idcalc = ne.eval();
+		IcModule idcalc = ne.eval(System.out::println).fold(
+				resolved -> resolved,
+				() -> { throw new IllegalStateException("name evaluation failed"); });
 		System.out.println(idcalc.buildString());
 		System.out.println();
 
@@ -147,7 +150,8 @@ public class Main {
 					throw new IllegalStateException("type reconstruction failed: " + reconDiagnostics.toSeq());
 				});
 		IdMap<Type> types = reconed.types();
-		System.out.println(types.buildString());
+		TypePrinter typePrinter = new TypePrinter(idcalc.typeAliases());
+		types.forEach((id, type) -> System.out.println(id + " : " + typePrinter.convert(type).buildString()));
 		System.out.println();
 
 		System.out.println("-- PATTERN CHECK --");

@@ -2,11 +2,13 @@ package zlk.test.phase.anfconv;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
+import zlk.compiler.builtin.Builtin;
 import zlk.compiler.id.Id;
 import zlk.compiler.ir.ConstValue;
 import zlk.compiler.ir.clcalc.CcExp;
@@ -21,11 +23,36 @@ import zlk.compiler.ir.typing.Ctor;
 import zlk.compiler.ir.typing.RecordField;
 import zlk.compiler.ir.typing.Type;
 import zlk.compiler.ir.typing.TypeDecl;
+import zlk.compiler.phase.clconv.ClosureConverter;
+import zlk.compiler.phase.recon.ConstraintExtractor;
+import zlk.compiler.phase.recon.FreshFlex;
+import zlk.compiler.phase.recon.TypeReconstructor;
 import zlk.compiler.phase.reuse.AnfConverter;
 import zlk.compiler.source.Location;
 import zlk.util.collection.Seq;
+import zlk.util.tester.ModuleTester;
+import zlk.util.tester.ModuleTester.CompileLevel;
 
 public class AnfConverterTest {
+	@Test
+	void preservesFieldEvaluationOrderAndUpdateTargetIdentity() {
+		var loc = Location.noLocation();
+		var type = new Type.Record(Seq.of(new RecordField<>("x", Type.I32), new RecordField<>("y", Type.BOOL)));
+		CcExp literal = new CcExp.CcRecord(Seq.of(
+				new CcExp.CcRecordField("y", new CcExp.CcCnst(ConstValue.TRUE, loc), loc),
+				new CcExp.CcRecordField("x", new CcExp.CcCnst(new ConstValue.I32(10), loc), loc)), type, loc);
+		CcExp body = new CcExp.CcRecordUpdate(literal,
+				Seq.of(new CcExp.CcRecordField("x", new CcExp.CcCnst(new ConstValue.I32(20), loc), loc)), type, loc);
+		var source = new CcModule("Main", Seq.of(), Seq.of(new CcFunDecl(Id.intern("Main.value"), Seq.of(), body, loc)));
+		var anf = AnfConverter.convert(source);
+		var binds = anf.funcs().head().body().binds();
+		assertEquals(ConstValue.TRUE, assertInstanceOf(AnfRhs.Cnst.class, binds.at(0).rhs()).value());
+		assertEquals(Seq.of("y", "x"), assertInstanceOf(AnfRhs.MakeRecord.class, binds.at(2).rhs()).fields().map(AnfRhs.AnfRecordField::name));
+		assertEquals(5, binds.size());
+		var input = assertInstanceOf(AnfRhs.RecordUpdate.class, binds.at(4).rhs()).target();
+		assertEquals(binds.at(2).dst(), input);
+	}
+
 	private static final Location NO_LOC = Location.noLocation();
 
 	@Test
@@ -204,6 +231,46 @@ public class AnfConverterTest {
 	}
 
 	@Test
+	void preservesPolymorphicUseTypesThroughVariableAliases() {
+		Id funId = Id.intern("Main.polymorphicUses");
+		Id originalId = Id.intern("Main.polymorphicUses.original");
+		Id aliasId = Id.intern("Main.polymorphicUses.alias");
+		Type generic = Type.arrow(new Type.Var("a"), new Type.Var("a"));
+		Type integer = Type.arrow(Type.I32, Type.I32);
+		Type bool = Type.arrow(Type.BOOL, Type.BOOL);
+		Type resultType = new Type.Record(Seq.of(
+				new RecordField<>("integer", Type.I32), new RecordField<>("bool", Type.BOOL)));
+		CcExp integerCall = new CcExp.CcClosureApp(
+				new CcExp.CcVar(aliasId, integer, NO_LOC),
+				Seq.of(new CcExp.CcCnst(new ConstValue.I32(42), NO_LOC)), Type.I32, NO_LOC);
+		CcExp boolCall = new CcExp.CcClosureApp(
+				new CcExp.CcVar(originalId, bool, NO_LOC),
+				Seq.of(new CcExp.CcCnst(ConstValue.TRUE, NO_LOC)), Type.BOOL, NO_LOC);
+		CcExp result = new CcExp.CcRecord(Seq.of(
+				new CcExp.CcRecordField("integer", integerCall, NO_LOC),
+				new CcExp.CcRecordField("bool", boolCall, NO_LOC)), resultType, NO_LOC);
+		CcExp body = new CcExp.CcLet(originalId,
+				new CcExp.CcMkCls(Id.intern("Main.identity"), Seq.of(), generic, NO_LOC),
+				new CcExp.CcLet(aliasId, new CcExp.CcVar(originalId, integer, NO_LOC),
+						result, resultType, NO_LOC), resultType, NO_LOC);
+		var source = new CcModule("Main", Seq.of(),
+				Seq.of(new CcFunDecl(funId, Seq.of(), body, NO_LOC)));
+
+		var block = AnfConverter.convert(source).funcs().head().body();
+		var definition = block.binds().head().dst();
+		var calls = block.binds().map(AnfBind::rhs).filter(rhs -> rhs instanceof AnfRhs.ClosureApp);
+		var integerUse = assertInstanceOf(AnfRhs.ClosureApp.class, calls.at(0)).fun();
+		var boolUse = assertInstanceOf(AnfRhs.ClosureApp.class, calls.at(1)).fun();
+		assertEquals(generic, definition.type());
+		assertEquals(definition.localId(), integerUse.localId());
+		assertEquals(definition.localId(), boolUse.localId());
+		assertEquals(integer, integerUse.type());
+		assertEquals(bool, boolUse.type());
+		assertEquals(resultType, block.result().type());
+		assertEquals(6, block.binds().size());
+	}
+
+	@Test
 	void preservesRecordEvaluationOrderAndNamedFieldAssociation() {
 		Id funId = Id.intern("Main.recordValue");
 		Id baseId = Id.intern("Main.recordValue.base");
@@ -311,6 +378,44 @@ public class AnfConverterTest {
 		assertInstanceOf(
 				AnfRhs.ClosureApp.class,
 				assertInstanceOf(AnfBind.class, block.binds().at(3)).rhs());
+	}
+
+	@Test
+	void preservesInstantiatedOccurrenceTypesOfOneReconstructedLocal() {
+		var module = convertSourceToCc(
+				"""
+				type alias IntFns = { y : I32 -> I32, x : I32 -> I32 }
+				probe ignored =
+				  let
+				    identity value = value
+				    original = { x = identity, y = identity }
+				    ints : IntFns
+				    ints = original
+				    bools : { x : Bool -> Bool, y : Bool -> Bool }
+				    bools = original
+				  in
+				    { integers = ints, booleans = bools, generic = original }
+				""");
+		var anf = AnfConverter.convert(module);
+		var probe = anf.funcs().filter(decl -> decl.id().simpleName().equals("probe")).head();
+		var fields = assertInstanceOf(AnfRhs.MakeRecord.class,
+				probe.body().binds().last().rhs()).fields();
+		var ints = fields.at(0).value();
+		var bools = fields.at(1).value();
+		var generic = fields.at(2).value();
+		assertEquals(ints.localId(), bools.localId());
+		assertEquals(ints.localId(), generic.localId());
+		org.junit.jupiter.api.Assertions.assertNotEquals(ints.type(), bools.type());
+	}
+
+	private static CcModule convertSourceToCc(String source) {
+		var module = new ModuleTester(source, CompileLevel.NAME_EVAL).getIdcalcModule();
+		var fresh = new FreshFlex();
+		var extracted = ConstraintExtractor.extract(module, fresh);
+		var inferred = TypeReconstructor.recon(extracted, fresh, diagnostic -> fail(diagnostic.toString()))
+				.fold(result -> result, () -> fail("type reconstruction failed"));
+		return new ClosureConverter(module, inferred.types(), inferred.partExpType(),
+				Builtin.functions().map(Builtin::id)).convert();
 	}
 
 	private static AnfRhs.DirectApp directAppAt(AnfBlock block, int index) {
